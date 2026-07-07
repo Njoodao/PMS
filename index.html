@@ -6313,11 +6313,15 @@
         return raw ? JSON.parse(raw) : {};
       } catch(e) { return {}; }
     }
-    function _saveKpiGrant(email, kpiAccess, fnAccess) {
+    function _saveKpiGrant(email, kpiAccess, fnAccess, levelAccess) {
       var grants = _loadKpiGrants();
       var lc = (email || '').toLowerCase();
       if (kpiAccess) {
-        grants[lc] = { kpiAccess: true, fnAccess: Array.isArray(fnAccess) ? fnAccess : [] };
+        grants[lc] = {
+          kpiAccess: true,
+          fnAccess: Array.isArray(fnAccess) ? fnAccess : [],
+          levelAccess: (levelAccess && typeof levelAccess === 'object') ? levelAccess : {}
+        };
       } else {
         delete grants[lc];
       }
@@ -6328,6 +6332,16 @@
       var lc = (email || '').toLowerCase();
       return grants[lc] || null;
     }
+
+    // v67.21: Get allowed levels for a manager on a given function
+    function _getKpiLevelAccess(email, fnKey) {
+      var ALL_LEVELS = ['Staff Level', 'Management', 'Top Management'];
+      var grant = _hasKpiGrant(email);
+      if (!grant || !grant.levelAccess || !grant.levelAccess[fnKey]) return ALL_LEVELS; // default: all
+      var lvls = grant.levelAccess[fnKey];
+      return Array.isArray(lvls) && lvls.length > 0 ? lvls : ALL_LEVELS;
+    }
+    window._getKpiLevelAccess = _getKpiLevelAccess;
 
     function rebuildEmployeeUsers() {
       // Wipe prior employee entries (keep system users)
@@ -6472,6 +6486,11 @@
       return true;
     }
     let sels = {}, subs = [], hcT = 'pe';
+    // v67.21 CRITICAL: Expose to window so kpiGenerate/kpiInlineSuggest (other <script> blocks)
+    // access the SAME objects. Without this, window.sels creates a SEPARATE empty object
+    // and all AI-generated KPI selections go into the wrong place. (Section 10.5: let-Global Trap)
+    window.sels = sels;
+    window.subs = subs;
 
     // v67.9 CRITICAL FIX: Persist KPI submissions to localStorage.
     // Without this, every page reload loses all manager KPI submissions!
@@ -6553,11 +6572,32 @@
       // correctly everywhere, with or without CSS support.
       function _nl2br(t){ if(!t) return t; return String(t).replace(/\r\n/g,'\n').replace(/\n/g,'<br>'); }
 
+      // v67.22 (ADR 1.6 Phase 3): Tabler icon as an email-embedded inline SVG.
+      // The SVG string is baked into the outgoing HTML at build time (emails are
+      // self-contained; the portal's MutationObserver/hydration never runs in a
+      // mail client). Rendering reality, stated honestly per Section 10.3:
+      //   - Renders: Apple Mail, Outlook for macOS, most WebKit/Blink clients.
+      //   - Silently stripped/ignored: Gmail web, classic Outlook for Windows
+      //     (Word engine), Outlook.com — these show the text badge WITHOUT the
+      //     icon. That is deliberate graceful degradation: a clean text pill,
+      //     never a broken glyph, and NO emoji fallback (ADR 1.6 forbids emoji).
+      // Icon color is passed as an explicit hex stroke (never a CSS class —
+      // classes/stylesheets do not survive email clients).
+      function _EIC(name, color, size){
+        try {
+          if (window.KABi && KABi.Icon && KABi.Icon.render) {
+            return KABi.Icon.render(name, { size: (size || 13), color: (color || '#1D57A3'), stroke: 2.25 }) + '&nbsp;';
+          }
+        } catch(e) { /* never let a decorative icon block an email */ }
+        return ''; // icon module unavailable → text-only badge (still valid email)
+      }
+
       // v67.9 Badge — solid light-tint background (no 8-digit hex; matches approved design)
-      function _B(t,c){
-        var tints={'#1D57A3':'#E8EEF6','#216AB1':'#E8EEF6','#3FAA7E':'#E7F4ED','#3BB691':'#E7F4ED','#F59E0B':'#FEF5E7','#EF4444':'#FDEEEE','#9B81BC':'#F2EEF7','#675EAA':'#EEEDF6','#62C6D3':'#E5F4F6','#0EB3AE':'#E2F3F2'};
+      // v67.22: optional 3rd arg = Tabler icon name (replaces the old emoji prefixes, ADR 1.6)
+      function _B(t,c,icon){
+        var tints={'#1D57A3':'#E8EEF6','#216AB1':'#E8EEF6','#3FAA7E':'#E7F4ED','#3BB691':'#E7F4ED','#F59E0B':'#FEF5E7','#EF4444':'#FDEEEE','#9B81BC':'#F2EEF7','#675EAA':'#EEEDF6','#62C6D3':'#E5F4F6','#0EB3AE':'#E2F3F2','#0A8A8A':'#E2F3F2'};
         var bg=tints[c]||'#F1F5F9';
-        return '<span style="display:inline-block;padding:6px 16px;border-radius:18px;font-size:11px;font-weight:700;background-color:'+bg+';color:'+c+';letter-spacing:.4px;font-family:Calibri,Arial,Helvetica,sans-serif">'+t+'</span>';
+        return '<span style="display:inline-block;padding:6px 16px;border-radius:18px;font-size:11px;font-weight:700;background-color:'+bg+';color:'+c+';letter-spacing:.4px;font-family:Calibri,Arial,Helvetica,sans-serif">'+(icon?_EIC(icon,c,13):'')+t+'</span>';
       }
       // Info row builder — v67.11: INLINE label+value (adjacent, not opposite ends), softer separator
       function _R(l,v){if(!v)return '';return '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:4px 0 2px"><tr><td style="padding:10px 10px 8px 0;font-size:12px;color:#64748b;vertical-align:middle;font-family:Calibri,Arial,Helvetica,sans-serif;letter-spacing:.2px;white-space:nowrap">'+l+'</td><td style="padding:10px 0 8px;font-size:13px;color:#0A1F52;font-weight:700;vertical-align:middle;font-family:Calibri,Arial,Helvetica,sans-serif;white-space:nowrap">'+v+'</td></tr></table>';}
@@ -6589,66 +6629,66 @@
 
       switch(type) {
         case 'kpi_submission':
-          badge=_B('\ud83d\udcca KPI SUBMISSION','#1D57A3');
+          badge=_B('KPI SUBMISSION','#1D57A3','chart-bar');
           body='<p>Dear HC Team,</p><p style="margin:8px 0">A new KPI submission requires your review:</p>'+_R('Submitted by',d.employeeName)+_R('Function',d.fnName)+_R('Department',d.dept)+_R('Date',d.timestamp||new Date().toLocaleString('en-SA',{timeZone:'Asia/Riyadh'}))+_BX('#1D57A3','Selected KPIs:',d.kpis);
           tip='Review in KABi Portal \u2192 Settings \u2192 Managers & Progress'; break;
         case 'ceo_comment':
-          badge=_B('\ud83d\udcac CEO COMMENT','#9B81BC');
+          badge=_B('CEO COMMENT','#9B81BC','message-circle');
           body='<p>Dear HC Team,</p><p style="margin:8px 0">The CEO has commented on a KPI:</p>'+_R('Function',d.fnName)+'<div style="margin:16px 0;padding:14px;background:#f8fafc;border-radius:8px;border-left:3px solid #9B81BC"><div style="font-size:11px;font-weight:700;color:#0A1F52;margin-bottom:6px">KPI:</div><div style="margin-bottom:12px">'+(d.kpiText?_nl2br(d.kpiText):'\u2014')+'</div><div style="font-size:11px;font-weight:700;color:#0A1F52;margin-bottom:6px">CEO Comment:</div><div>'+(d.comment?_nl2br(d.comment):'\u2014')+'</div></div>'; break;
         case 'kpi_approved':
-          badge=_B('\u2705 APPROVED','#3FAA7E');
+          badge=_B('APPROVED','#3FAA7E','circle-check');
           body='<p>Dear '+toName+',</p><p style="margin:8px 0">Your KPI selections have been <strong style="color:#3FAA7E">approved</strong> by Human Capital.</p>'+_R('Function',d.fnName)+_R('Department',d.dept)+_BX('#3FAA7E','Approved KPIs:',d.kpis,'#f0fdf4'); break;
         case 'kpi_rejected':
-          badge=_B('\u2717 RETURNED FOR REVISION','#EF4444');
+          badge=_B('RETURNED FOR REVISION','#EF4444','circle-x');
           body='<p>Dear '+toName+',</p><p style="margin:8px 0">Your KPI selections have been <strong style="color:#EF4444">returned for revision</strong>.</p>'+_R('Function',d.fnName)+_BX('#EF4444','Reason:',d.reason,'#fef2f2')+'<p>Please review the feedback and resubmit through the KABi Portal.</p>'; break;
         case 'eval_submitted':
-          badge=_B('\ud83d\udccb EVALUATION SUBMITTED','#1D57A3');
+          badge=_B('EVALUATION SUBMITTED','#1D57A3','clipboard-list');
           body='<p>Dear HC Team,</p><p style="margin:8px 0">A performance evaluation has been submitted and is <strong style="color:#F59E0B">waiting for your review and approval</strong>:</p>'+_R('Manager (Evaluator)',d.managerName)+_R('Employee',d.employeeName)+_R('Title',d.employeeTitle||'')+_R('Department',d.dept||'')+_R('Level',d.level||'')+_R('Period',d.period)+_SC(d.score,d.className)+_BX('#1D57A3','Evaluator Notes:',d.message);
           tip='Review in KABi Portal \u2192 Evaluations & Export'; break;
         case 'edit_request':
-          badge=_B('\u270f\ufe0f SCORE EDIT REQUEST','#F59E0B');
+          badge=_B('SCORE EDIT REQUEST','#F59E0B','pencil');
           body='<p>Dear HC Team,</p><p style="margin:8px 0">A manager has requested to modify an evaluation score:</p>'+_DT('Employee Details',[['Employee',d.employeeName],['Title',d.employeeTitle||''],['Level',d.level||''],['Department',d.dept||''],['Manager (Evaluator)',d.managerName]])+(d.oldScore&&d.newScore?_VS(d.oldScore,d.oldClass,d.newScore,d.newClass):'')+_R('KPI Modified',d.kpiName||'')+_R('KPI Score Change',d.kpiChange||'')+_BX('#F59E0B','Reason for Edit:',d.message,'#fffbeb');
           tip='Review in KABi Portal \u2192 Edit Requests'; break;
         case 'edit_approved':
-          badge=_B('\u2705 EDIT APPROVED','#3FAA7E');
+          badge=_B('EDIT APPROVED','#3FAA7E','circle-check');
           body='<p>Dear '+toName+',</p><p style="margin:8px 0">Your evaluation edit request has been <strong style="color:#3FAA7E">approved</strong>.</p>'+_R('Employee',d.employeeName||'')+(d.oldScore&&d.newScore?_VS(d.oldScore,d.oldClass,d.newScore,d.newClass):'')+'<p>The evaluation has been updated in the system.</p>'; break;
         case 'edit_rejected':
-          badge=_B('\u2717 EDIT REJECTED','#EF4444');
+          badge=_B('EDIT REJECTED','#EF4444','circle-x');
           body='<p>Dear '+toName+',</p><p style="margin:8px 0">Your evaluation edit request has been <strong style="color:#EF4444">rejected</strong>.</p>'+_R('Employee',d.employeeName||'')+_BX('#EF4444','Reason:',d.message,'#fef2f2'); break;
         case 'reminder':
-          badge=_B('\u23f0 EVALUATION REMINDER','#F59E0B');
+          badge=_B('EVALUATION REMINDER','#F59E0B','alarm');
           body='<p>Dear '+toName+',</p>'+_BX('#F59E0B','',d.message,'#fffbeb')+_CTA('Complete Evaluations \u2192'); break;
         case 'kpi_reminder':
-          badge=_B('\ud83c\udfaf KPI ASSIGNMENT REMINDER','#F59E0B');
+          badge=_B('KPI ASSIGNMENT REMINDER','#F59E0B','target');
           body='<p>Dear '+toName+',</p>'+_BX('#F59E0B','',d.message,'#fffbeb')+_CTA('Set KPIs Now \u2192'); break;
         case 'eval_cycle_open':
-          badge=_B('\ud83d\udcc5 EVALUATION CYCLE OPEN','#1D57A3');
+          badge=_B('EVALUATION CYCLE OPEN','#1D57A3','calendar-event');
           body='<p>Dear '+toName+',</p><p style="margin:8px 0">The evaluation cycle for <strong>'+(d.period||'')+'</strong> is now <strong style="color:#3FAA7E">open</strong>.</p>'+_R('Period',d.period)+_BX('#1D57A3','',d.message,'#f0f9ff')+_CTA('Open KABi Portal \u2192');
           tip='Please complete evaluations for all your direct reports before the cycle closes.'; break;
         case 'eval_cycle_closed':
-          badge=_B('\ud83d\udd12 EVALUATION CYCLE CLOSED','#675EAA');
+          badge=_B('EVALUATION CYCLE CLOSED','#675EAA','lock');
           body='<p>Dear '+toName+',</p>'+_R('Period',d.period)+_BX('#675EAA','',d.message,'#f5f3ff'); break;
         case 'inviews_open':
-          badge=_B('\ud83e\udde0 INVIEWS ASSESSMENT OPEN','#0A8A8A');
+          badge=_B('INVIEWS ASSESSMENT OPEN','#0A8A8A','brain');
           body='<p>Dear '+toName+',</p>'+_R('Assessment Type',d.assessmentType||'Behavioral & Technical')+_R('Period',d.period||'')+_BX('#62C6D3','',d.message,'#f0fdfa')+_CTA('Start INVIEWS \u2192');
           tip='Complete assessments for all your direct reports.'; break;
         case 'inviews_closed':
-          badge=_B('\ud83e\udde0 INVIEWS ASSESSMENT CLOSED','#675EAA');
+          badge=_B('INVIEWS ASSESSMENT CLOSED','#675EAA','brain');
           body='<p>Dear '+toName+',</p>'+_R('Period',d.period||'')+_BX('#675EAA','',d.message,'#f5f3ff'); break;
         case 'results_released':
-          badge=_B('\ud83c\udfc6 RESULTS AVAILABLE','#3FAA7E');
+          badge=_B('RESULTS AVAILABLE','#3FAA7E','trophy');
           body='<p>Dear '+toName+',</p><p style="margin:8px 0">Your performance evaluation results are now available on your KABi Dashboard.</p>'+_BX('#3FAA7E','',d.message||'Please log in to review your results and schedule a 1:1 with your manager.','#f0fdf4')+_CTA('View My Dashboard \u2192');
           tip='For questions about your results, schedule a 1:1 with your direct manager.'; break;
         case 'test':
-          badge=_B('\ud83e\uddea TEST EMAIL','#62C6D3');
-          body='<p>Dear HC Team,</p><p style="color:#3FAA7E;font-weight:700;font-size:14px;margin:12px 0">\u2705 Email integration is working correctly!</p>'+_R('Sent at',new Date().toLocaleString('en-SA',{timeZone:'Asia/Riyadh'})); break;
+          badge=_B('TEST EMAIL','#62C6D3','flask');
+          body='<p>Dear HC Team,</p><p style="color:#3FAA7E;font-weight:700;font-size:14px;margin:12px 0">'+_EIC('circle-check','#3FAA7E',15)+'Email integration is working correctly!</p>'+_R('Sent at',new Date().toLocaleString('en-SA',{timeZone:'Asia/Riyadh'})); break;
         default:
-          badge=_B('\ud83d\udce7 NOTIFICATION','#1D57A3');
+          badge=_B('NOTIFICATION','#1D57A3','mail');
           body='<p>Dear '+toName+',</p><div style="margin:12px 0">'+_nl2br(d.message||d.body||'\u2014')+'</div>';
       }
 
       // v67.9: tipHtml is now INLINE in footer (matches image 2 — no callout box, just emoji + text)
-      var tipHtml = tip ? '<div style="font-size:12px;color:#64748b;line-height:1.6;margin:0 0 16px;font-family:Calibri,Arial,Helvetica,sans-serif">\ud83d\udca1 '+tip+'</div>' : '';
+      var tipHtml = tip ? '<div style="font-size:12px;color:#64748b;line-height:1.6;margin:0 0 16px;font-family:Calibri,Arial,Helvetica,sans-serif">'+_EIC('bulb','#64748b',14)+tip+'</div>' : '';
 
       var _titleMap = {'kpi_submission':'KPI Submission','ceo_comment':'CEO Comment','kpi_approved':'KPIs Approved','kpi_rejected':'KPIs Rejected','eval_submitted':'Evaluation Submitted','edit_request':'Score Edit Request','edit_approved':'Edit Approved','edit_rejected':'Edit Rejected','reminder':'Evaluation Reminder','kpi_reminder':'KPI Assignment Reminder','eval_cycle_open':'Evaluation Cycle Open','eval_cycle_closed':'Evaluation Cycle Closed','inviews_open':'INVIEWS Cycle Open','inviews_closed':'INVIEWS Cycle Closed','results_released':'Results Released','test':'Test Email'};
       var _ttl = _titleMap[type] || 'Notification';
@@ -6728,27 +6768,6 @@
       'ceo-admin': { name:'Admin — CEO Office', pillar:'ADMIN', dept:'CEO Office', ceoOnly: true, kpis:['CEO Calendar Management Accuracy','Executive Requests SLA','Travel & Event Coordination Accuracy','Confidentiality Compliance','Meeting Readiness','Communication Response Time'] },
     };
 
-    // v67.21: Populate FNS sections with actual KPI text from _KPI_DB.
-    // Without this, FNS sections have empty placeholders ['', '', '', '']
-    // and users see blank KPI slots instead of the curated library.
-    (function _mergeFnsWithKpiDb() {
-      if (typeof FNS === 'undefined' || typeof _KPI_DB === 'undefined') return;
-      Object.keys(_KPI_DB).forEach(function(fnKey) {
-        if (!FNS[fnKey]) return;
-        var dbEntry = _KPI_DB[fnKey];
-        if (!dbEntry.kpis || !dbEntry.kpis.length) return;
-        // Replace the first section's empty kpis with actual library KPIs
-        if (FNS[fnKey].sections && FNS[fnKey].sections[0]) {
-          var sec = FNS[fnKey].sections[0];
-          // Only replace if current kpis are empty placeholders
-          var allEmpty = sec.kpis.every(function(k) { return !k || k.trim() === ''; });
-          if (allEmpty) {
-            sec.kpis = dbEntry.kpis.slice(); // copy the library KPIs
-          }
-        }
-      });
-      console.log('[KABi] FNS sections populated with _KPI_DB library (' + Object.keys(_KPI_DB).length + ' functions)');
-    })();
 
 
 
@@ -8294,7 +8313,10 @@
       // classification only — NOT a separate counter. All approved initiatives
       // count toward the same annual target.
       let initSectionHtml = '';
-      if (!isCEO && emp && peInitiativesVisible(emp)) {
+      // v67.21: Also check that target > 0 or there are actual initiatives — hide "0/0"
+      var _initTarget1 = (emp && typeof getEmpInitiativeTarget === 'function') ? getEmpInitiativeTarget(emp) : 0;
+      var _initCount1 = INITIATIVES.filter(function(i){ return i.empEmail === me.email; }).length;
+      if (!isCEO && emp && peInitiativesVisible(emp) && (_initTarget1 > 0 || _initCount1 > 0)) {
         const myInits = INITIATIVES.filter(i => i.empEmail === me.email);
         const approvedInits = myInits.filter(i => i.status === 'approved');
         const target = getEmpInitiativeTarget(emp);
@@ -13259,7 +13281,10 @@
       // HIDDEN completely when the initiatives weight for this employee's level is 0%
       // v66.8: Single annual target per level. Type (academic/general) is a
       // classification badge only, not a separate counter.
-      if (emp && peInitiativesVisible(emp)) {
+      // v67.21: Hide section when target=0 AND no initiatives exist
+      var _initTarget2 = (emp && typeof getEmpInitiativeTarget === 'function') ? getEmpInitiativeTarget(emp) : 0;
+      var _initCount2 = INITIATIVES.filter(function(i){ return i.empEmail === me.email; }).length;
+      if (emp && peInitiativesVisible(emp) && (_initTarget2 > 0 || _initCount2 > 0)) {
       const myInits = INITIATIVES.filter(i => i.empEmail === me.email);
       const approvedInits = myInits.filter(i => i.status === 'approved');
       const target = getEmpInitiativeTarget(emp);
@@ -13825,9 +13850,11 @@
       document.getElementById('fn-sub').textContent = subText;
       // v66.6: paired-aware submission lookup
       // v67.9: ignore superseded (re-submitted after rejection) entries — pick the active one
+      // v67.21: Filter by current level so each level has independent submission state
+      var _curLevel = (window._kpiSelectedLevel && window._kpiSelectedLevel[primary]) || 'Staff Level';
       const sub = paired
         ? subs.filter(s => !s.superseded).find(s => (s.fnKey === primary || s.pairedFnKey === primary) && (isCEOOwner ? s.ceoOwned : s.email === me?.email))
-        : subs.filter(s => !s.superseded).find(s => s.fnKey === primary && (isCEOOwner ? s.ceoOwned : s.email === me?.email));
+        : subs.filter(s => !s.superseded).find(s => s.fnKey === primary && (s.level || 'Staff Level') === _curLevel && (isCEOOwner ? s.ceoOwned : s.email === me?.email));
       const cont = document.getElementById('kpi-container'); cont.innerHTML = '';
       cont.classList.remove('submitted');
       document.getElementById('sub-ok').style.display = 'none';
@@ -13836,11 +13863,21 @@
 
       // init per-section selections — for paired, init both sides
       if (isMgr && (!sub || sub.status === 'rejected')) {
+        // v67.21: Level-scoped selections — each level gets its own sels namespace
+        var _lvlKey = function(fn) {
+          var lvl = (window._kpiSelectedLevel && window._kpiSelectedLevel[fn]) || 'Staff Level';
+          return fn + '::' + lvl;
+        };
+        // Map the original fnKey to the level-scoped key for this session
+        window._kpiLvlKey = _lvlKey;
         pairKeys.forEach(function (x) {
-          if (!sels[x]) sels[x] = {};
+          var lk = _lvlKey(x);
+          if (!sels[lk]) sels[lk] = {};
           FNS[x].sections.forEach(function (sec, si) {
-            if (!sels[x][si]) sels[x][si] = { sel: [], edits: {} };
+            if (!sels[lk][si]) sels[lk][si] = { sel: [], edits: {} };
           });
+          // Point the base key to the level-scoped one for backward compat
+          sels[x] = sels[lk];
         });
       }
       // v67.9: REJECTED submissions re-open the form — manager can submit new KPIs.
@@ -13866,6 +13903,30 @@
         document.getElementById('sel-bar').style.display = 'flex';
         document.getElementById('act-row').style.display = 'flex';
         updSelUI(primary);
+
+        // v67.21: Level selector tabs
+        var _allowedLevels = (typeof _getKpiLevelAccess === 'function' && typeof me !== 'undefined')
+          ? _getKpiLevelAccess(me.email, primary) : ['Staff Level', 'Management', 'Top Management'];
+        if (!window._kpiSelectedLevel) window._kpiSelectedLevel = {};
+        if (!window._kpiSelectedLevel[primary]) window._kpiSelectedLevel[primary] = _allowedLevels[0];
+        var _curLvl = window._kpiSelectedLevel[primary];
+
+        if (_allowedLevels.length > 0) {
+          var lvlBar = document.createElement('div');
+          lvlBar.style.cssText = 'display:flex;gap:8px;margin-bottom:16px;padding:12px 16px;background:linear-gradient(135deg,rgba(155,129,188,.08),rgba(103,94,170,.04));border:1px solid rgba(155,129,188,.2);border-radius:12px;align-items:center;flex-wrap:wrap';
+          var lvlHtml = '<span style="font-size:11px;font-weight:800;color:#9B81BC;margin-right:8px;display:flex;align-items:center;gap:5px"><i class="ti ti-users" style="font-size:14px"></i> Assign KPIs for:</span>';
+          _allowedLevels.forEach(function(lvl) {
+            var isAct = _curLvl === lvl;
+            var lvlColors = { 'Staff Level': { bg: 'rgba(59,182,145,.15)', border: 'rgba(59,182,145,.4)', color: '#3BB691' },
+                              'Management': { bg: 'rgba(155,129,188,.15)', border: 'rgba(155,129,188,.4)', color: '#9B81BC' },
+                              'Top Management': { bg: 'rgba(245,158,11,.15)', border: 'rgba(245,158,11,.4)', color: '#F59E0B' } };
+            var lc = lvlColors[lvl] || lvlColors['Staff Level'];
+            lvlHtml += '<button onclick="window._kpiSelectedLevel[\'' + primary + '\']=\'' + lvl + '\';openFn(\'' + primary + '\')" style="padding:7px 16px;border-radius:8px;font-size:11px;font-weight:' + (isAct ? '800' : '600') + ';cursor:pointer;border:1px solid ' + (isAct ? lc.border : 'rgba(255,255,255,.1)') + ';background:' + (isAct ? lc.bg : 'transparent') + ';color:' + (isAct ? lc.color : 'var(--text-dim)') + ';font-family:inherit;transition:all .2s">' + lvl + '</button>';
+          });
+          lvlBar.innerHTML = lvlHtml;
+          cont.appendChild(lvlBar);
+        }
+
         pairKeys.forEach(function (x) {
           FNS[x].sections.forEach(function (sec, si) {
             cont.appendChild(buildSec(sec, x, si, true, null));
@@ -14228,8 +14289,8 @@
               <button class="btn-ai-validate" onclick="event.stopPropagation();validateKPI('${fnKey}',${si},${li})" title="Check this KPI against SMART criteria (Specific, Measurable, Achievable, Relevant, Time-bound)" style="background:rgba(0,194,224,.1);color:var(--cyan);border:1px solid rgba(0,194,224,.2);padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;cursor:pointer"><i class=\"ti ti-circle-check ti-green\"></i> AI Validate</button>
             </div>
           </div>
-          <textarea id="kpi-inp-${fnKey}-${si}-${li}" class="kpi-edit-ta" placeholder="Write KPI ${li + 1} here, or click <i class=\"ti ti-sparkles ti-cyan\"></i> AI Generate above to draft this section..."
-            oninput="saveEdit('${fnKey}',${si},${li},this.value)">${ed || ''}</textarea>
+          <textarea id="kpi-inp-${fnKey}-${si}-${li}" class="kpi-edit-ta" placeholder="Write KPI ${li + 1} here, or click AI Generate above to draft this section..."
+            oninput="saveEdit('${fnKey}',${si},${li},this.value)">${ed !== kpi ? ed : ''}</textarea>
         </div>`: ''}
       </div>`;
         if (editable) item.addEventListener('click', e => { if (e.target.tagName === 'TEXTAREA') return; toggleKPI(fnKey, si, li, item); });
@@ -14314,15 +14375,7 @@
         const cap = peMaxKPIsPerSec(fnKey, si);
         if (secSel.sel.length >= cap) return;
         secSel.sel.push(li); el.classList.add('on');
-        // v67.21: Auto-populate edit text with library KPI so _kpiHasText passes.
-        // User can still customize; this just ensures "selected = has text" by default.
-        if (!secSel.edits) secSel.edits = {};
-        if (!secSel.edits[li]) {
-          var _f = FNS[fnKey];
-          if (_f && _f.sections && _f.sections[si] && _f.sections[si].kpis && _f.sections[si].kpis[li]) {
-            secSel.edits[li] = _f.sections[si].kpis[li];
-          }
-        }
+
       }
       // For paired functions OR cx-partnership: refresh ALL sections across both sides
       const isPairedFn = fnIsPaired(fnKey);
@@ -14380,9 +14433,18 @@
     function saveEdit(fnKey, si, li, val) {
       if (!sels[fnKey]) sels[fnKey] = {};
       if (!sels[fnKey][si]) sels[fnKey][si] = { sel: [], edits: {} };
-      // v61: store trimmed value as-is (no template fallback — templates are blank now)
       sels[fnKey][si].edits[li] = (val || '').trim();
-      // v61: re-evaluate Submit button state when text changes
+      // v67.21: Auto-select the KPI item when text is injected (by AI or user typing)
+      var selArr = sels[fnKey][si].sel;
+      if (val && val.trim().length > 0 && selArr.indexOf(li) === -1) {
+        var cap = (typeof peMaxKPIsPerSec === 'function') ? peMaxKPIsPerSec(fnKey, si) : 4;
+        if (selArr.length < cap) {
+          selArr.push(li);
+          var itemEl = document.querySelector('.kpi-item[data-fn="' + fnKey + '"][data-si="' + si + '"][data-li="' + li + '"]');
+          if (itemEl && !itemEl.classList.contains('on')) itemEl.classList.add('on');
+        }
+      }
+      updSelUI(fnKey);
       updBtn(fnKey);
     }
 
@@ -14569,6 +14631,8 @@
         email: me.email, name: me.name,
         dept: f.dept, ts,
         sel: selKPIs.map(x => x.li),
+        level: window._kpiSelectedLevel ? (window._kpiSelectedLevel[primary] || 'Staff Level') : 'Staff Level',
+        _levelKey: primary + '::' + (window._kpiSelectedLevel ? (window._kpiSelectedLevel[primary] || 'Staff Level') : 'Staff Level'),
         secSels,
         selKPIs,
         status: 'pending',
@@ -14582,8 +14646,9 @@
       }
       // v67.9: If re-submitting after rejection, mark the old rejected sub as superseded
       // so the manager view shows the NEW submission as the active one.
+      var _subLevel = submission.level || 'Staff Level';
       var existingRejected = subs.find(function(s){
-        return s.email === me.email && s.fnKey === primary && s.status === 'rejected' && !s.superseded;
+        return s.email === me.email && s.fnKey === primary && (s.level || 'Staff Level') === _subLevel && s.status === 'rejected' && !s.superseded;
       });
       if (existingRejected) {
         existingRejected.superseded = true;
@@ -14610,7 +14675,8 @@
         });
       }
       sendEmail({ fnKey: primary, fnName: submission.fnName, email: me.email, name: me.name, dept: f.dept, ts, selKPIs });
-      toast('Submitted to HC successfully',  'ok');
+      var _submittedLvl = submission.level || '';
+      toast('<i class="ti ti-circle-check ti-green"></i> Submitted to HC — ' + (submission.fnName || '') + (_submittedLvl ? ' (' + _submittedLvl + ')' : ''), 'ok');
     }
 
     function sendEmail(s) {
@@ -14826,6 +14892,7 @@
         <div style="display:flex;gap:6px;align-items:center">
           ${edited.length ? `<span style="font-size:9px;padding:2px 8px;border-radius:10px;background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.2)">${edited.length} edited</span>` : ''}
           <span style="font-size:9px;padding:2px 8px;border-radius:10px;background:rgba(34,197,94,.1);color:#4ade80;border:1px solid rgba(74,222,128,.2)"><i class=\"ti ti-circle-check ti-green\"></i> ${s.selKPIs.length} approved</span>
+                ${s.level ? '<span style="font-size:8px;padding:2px 6px;border-radius:8px;background:rgba(155,129,188,.1);color:#9B81BC;border:1px solid rgba(155,129,188,.2);margin-left:4px">' + s.level + '</span>' : ''}
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;">
@@ -15585,7 +15652,7 @@
       const recent = subs.slice(-3).reverse().map(s => `
     <div class="sub-card">
       <div class="sub-hd">
-        <div><div class="sub-user">${s.name}</div><div class="sub-dept">${s.fnName}</div></div>
+        <div><div class="sub-user">${s.name}</div><div class="sub-dept">${s.fnName}${s.level ? ' · <span style="color:#9B81BC;font-weight:700">' + s.level + '</span>' : ''}</div></div>
         <div style="text-align:right"><div class="sub-time">${s.ts}</div><span class="status s${s.status[0]}">${s.status}</span></div>
       </div>
       <div style="font-size:12px;color:var(--text-muted)">${s.selKPIs.length} KPIs · ${s.selKPIs.filter(k => k.edited).length} edited</div>
@@ -15613,7 +15680,7 @@
               </div>` : '';
           return `<div class="sub-card">
           <div class="sub-hd">
-            <div><div class="sub-user">${s.name}</div><div class="sub-dept">${s.fnName} · ${s.dept}</div></div>
+            <div><div class="sub-user">${s.name}</div><div class="sub-dept">${s.fnName} · ${s.dept}${s.level ? ' · <span style="padding:2px 8px;border-radius:8px;background:rgba(155,129,188,.12);color:#9B81BC;border:1px solid rgba(155,129,188,.2);font-size:9px;font-weight:800">' + s.level + '</span>' : ''}</div></div>
             <div style="text-align:right"><div class="sub-time">${s.ts}</div><span class="status s${s.status[0]}">${s.status}</span></div>
           </div>
           ${chgs}
@@ -15641,7 +15708,7 @@
       const s = subs.find(s => s.id === id);
       if (!s || s.status !== 'pending') return;
       if (action === 'approved') {
-        if (!confirm(`Approve KPI submission from ${s.name}?\n\n"${s.fnName}"\n\nThis decision is final and cannot be changed.`)) return;
+        if (!confirm(`Approve KPI submission from ${s.name}?\n\n"${s.fnName}"${s.level ? ' — ' + s.level : ''}\n\nThis decision is final and cannot be changed.`)) return;
         finalizeDecision(id, 'approved', '');
       } else {
         showRejectDialog(id, s);
@@ -19135,26 +19202,34 @@
     }
     // Returns ONLY KPIs that have been FULLY approved by HC (final approval).
     // Employees should see no KPIs until their manager submits AND HC approves them.
-    function peGetApprovedKPIs(fnArr, forEmail) {
+    function peGetApprovedKPIs(fnArr, forEmail, forLevel) {
       if (!fnArr) return [];
       if (!Array.isArray(fnArr)) fnArr = [fnArr];
-      // forEmail: if provided, only return KPIs from submissions by this user
-      // If not provided, return any approved submission for the function (backward compat)
       const email = forEmail || (typeof me !== 'undefined' ? me?.email : null);
       let allKPIs = [];
       fnArr.forEach(fnKey => {
         const isPaired = (typeof fnIsPaired === 'function') && fnIsPaired(fnKey);
         let sub;
+        // v67.21: If forLevel is specified, prefer submissions for that level
         if (email) {
-          sub = isPaired
-            ? subs.find(s => (s.fnKey === fnKey || s.pairedFnKey === fnKey) && s.status === 'approved' && s.email === email)
-            : subs.find(s => s.fnKey === fnKey && s.status === 'approved' && s.email === email);
+          if (forLevel) {
+            sub = subs.find(s => s.fnKey === fnKey && s.status === 'approved' && s.email === email && s.level === forLevel);
+          }
+          if (!sub) {
+            sub = isPaired
+              ? subs.find(s => (s.fnKey === fnKey || s.pairedFnKey === fnKey) && s.status === 'approved' && s.email === email)
+              : subs.find(s => s.fnKey === fnKey && s.status === 'approved' && s.email === email);
+          }
         }
-        // Fallback: if no personal submission found, look for any approved (for HC/CEO views)
         if (!sub) {
-          sub = isPaired
-            ? subs.find(s => (s.fnKey === fnKey || s.pairedFnKey === fnKey) && s.status === 'approved')
-            : subs.find(s => s.fnKey === fnKey && s.status === 'approved');
+          if (forLevel) {
+            sub = subs.find(s => s.fnKey === fnKey && s.status === 'approved' && s.level === forLevel);
+          }
+          if (!sub) {
+            sub = isPaired
+              ? subs.find(s => (s.fnKey === fnKey || s.pairedFnKey === fnKey) && s.status === 'approved')
+              : subs.find(s => s.fnKey === fnKey && s.status === 'approved');
+          }
         }
         if (sub) {
           if (isPaired && Array.isArray(sub.selKPIs)) {
@@ -25204,9 +25279,24 @@
               </div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;max-height:160px;overflow-y:auto;background:rgba(0,0,0,.2);padding:10px;border-radius:7px;border:1px solid rgba(255,255,255,.06)">
-              ${fns.map(f => `<label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-primary);cursor:pointer;padding:4px;border-radius:4px"><input type="checkbox" class="epe-fn-chk" value="${f.key}" ${currentFnAccess.includes(f.key) ? 'checked' : ''}> <span>${f.name}</span></label>`).join('')}
+              ${fns.map(f => `<label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-primary);cursor:pointer;padding:4px;border-radius:4px"><input type="checkbox" class="epe-fn-chk" value="${f.key}" ${currentFnAccess.includes(f.key) ? 'checked' : ''} onchange="var b=document.querySelector('[data-fn-lvl-block=&quot;'+this.value+'&quot;]');if(b)b.style.display=this.checked?'block':'none'"> <span>${f.name}</span></label>`).join('')}
             </div>
             <div style="font-size:9px;color:var(--text-muted);margin-top:6px">Leave all unchecked = access to ALL functions</div>
+            <!-- v67.21: Level Access per function -->
+            <div style="margin-top:10px;padding-top:10px;border-top:1px dashed rgba(74,222,128,.15)">
+              <label style="font-size:10px;font-weight:700;color:var(--text-primary);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px"><i class="ti ti-users" style="color:rgba(155,129,188,.85)"></i> Level Access per Function</label>
+              <div style="font-size:9px;color:var(--text-muted);margin-bottom:8px">Select which employee levels this manager can assign KPIs for in each function. Leave unchecked = all levels.</div>
+              ${fns.map(f => {
+                var safeKey = f.key.replace(/[^a-z0-9]/gi, '-');
+                var grant = (typeof _hasKpiGrant === 'function') ? _hasKpiGrant(emp.email) : null;
+                var lvls = (grant && grant.levelAccess && grant.levelAccess[f.key]) || [];
+                return '<div style="display:' + (currentFnAccess.includes(f.key) ? 'block' : 'none') + ';margin-bottom:6px;padding:6px 8px;background:rgba(155,129,188,.04);border:1px solid rgba(155,129,188,.12);border-radius:6px" data-fn-lvl-block="' + f.key + '"><div style="font-size:9px;font-weight:700;color:#9B81BC;margin-bottom:4px">' + f.name + '</div><div style="display:flex;gap:10px;flex-wrap:wrap">' +
+                  ['Staff Level','Management','Top Management'].map(function(lvl) {
+                    return '<label style="display:flex;align-items:center;gap:4px;font-size:9px;color:var(--text-primary);cursor:pointer"><input type="checkbox" class="epe-lvl-' + safeKey + '" value="' + lvl + '" ' + (lvls.indexOf(lvl) >= 0 ? 'checked' : '') + ' style="accent-color:#9B81BC"> ' + lvl + '</label>';
+                  }).join('') +
+                '</div></div>';
+              }).join('')}
+            </div>
           </div>
         </div>
 
@@ -25274,14 +25364,22 @@
 
       // KPI access + deptInsight + manager flag
       emp.kpiAccess = _gc('epe-kpi-access') || emp.kpiAccess || false;
-      // v67.21: Persist KPI access grant to localStorage so it survives page reload
+      // v67.21: Persist KPI access + level grants to localStorage
       if (emp.kpiAccess) {
         var _fnAcc = [];
         var _fnChecks = document.querySelectorAll('#epe-fn-access-block input[type="checkbox"]:checked');
         _fnChecks.forEach(function(cb) { if (cb.value) _fnAcc.push(cb.value); });
-        _saveKpiGrant(emp.email, true, _fnAcc.length > 0 ? _fnAcc : emp.fnAccess);
+        // Collect level access per function
+        var _lvlAccess = {};
+        _fnAcc.forEach(function(fn) {
+          var lvls = [];
+          var lvlChecks = document.querySelectorAll('.epe-lvl-' + fn.replace(/[^a-z0-9]/gi,'-') + ':checked');
+          lvlChecks.forEach(function(cb) { if (cb.value) lvls.push(cb.value); });
+          if (lvls.length > 0) _lvlAccess[fn] = lvls;
+        });
+        _saveKpiGrant(emp.email, true, _fnAcc.length > 0 ? _fnAcc : emp.fnAccess, _lvlAccess);
       } else {
-        _saveKpiGrant(emp.email, false, []);
+        _saveKpiGrant(emp.email, false, [], {});
       }
       var _diEl = document.getElementById('epe-dept-insight');
       if (_diEl) { emp.deptInsight = _diEl.checked; }
@@ -26232,7 +26330,7 @@
     // ── EDIT REQUEST (multi-section with +) ──
     function peRequestEdit(empId, quarter) {
       const emp = PE_EMPLOYEES.find(e => e.id === empId); if (!emp) return;
-      const kpis = peGetApprovedKPIs(emp.fn);
+      const kpis = peGetApprovedKPIs(emp.fn, null, emp.level);
       const existingEval = PE_EVALS[`${empId}_${quarter}`];
       const w = peGetWeights(emp);
 
@@ -26424,7 +26522,7 @@
     function peStartEval(empId, editSections) {
       const emp = PE_EMPLOYEES.find(e => e.id === empId); if (!emp) return;
       const openQ = peGetOpenQ(); if (!openQ) { toast('No open quarter', 'err'); return; }
-      const kpis = peGetApprovedKPIs(emp.fn);
+      const kpis = peGetApprovedKPIs(emp.fn, null, emp.level);
       const bComp = PE_BEHAVIORAL.filter(c => c.active !== false);
       const lComp = PE_LEADERSHIP.filter(c => c.active !== false);
       const tComp = peGetTechComps(emp.fn).filter(c => c.active !== false);
@@ -26839,7 +26937,7 @@
 
     function peCheckComplete(emp) {
       const w = peGetWeights(emp);
-      const kpis = peGetApprovedKPIs(emp.fn);
+      const kpis = peGetApprovedKPIs(emp.fn, null, emp.level);
       const isPerItem = PE_CONFIG.justMode === 'per-item';
       const missing = [];
 
@@ -26908,7 +27006,7 @@
       if (!peCheckComplete(emp)) { toast('Complete all required fields', 'err'); return; }
       // Collect justifications
       document.querySelectorAll('.pe-textarea').forEach(ta => { if (ta.dataset.t) peEvalState.justs[ta.dataset.t + '_' + ta.dataset.i] = ta.value; });
-      const kpis = peGetApprovedKPIs(emp.fn);
+      const kpis = peGetApprovedKPIs(emp.fn, null, emp.level);
       kpis.forEach((_, i) => { if (!peEvalState.kpiScores[i]) peEvalState.kpiScores[i] = {}; peEvalState.kpiScores[i].name = kpis[i]; peEvalState.kpiScores[i].justification = peEvalState.justs?.[`kpi-just_${i}`] || peEvalState.justs?.['kpi-secjust_0'] || ''; });
       const r = peCalcTotal(peEvalState, emp); const rc = peRating(r.total);
       PE_EVALS[`${emp.id}_${peEvalState.quarter}`] = { empId: emp.id, quarter: peEvalState.quarter, evaluator: me.name, evaluatorEmail: me.email, timestamp: new Date().toISOString(), totalScore: r.total, totalPct: r.totalPct, kpiScores: peEvalState.kpiScores.filter(k => k), bScores: { ...peEvalState.bScores }, lScores: { ...(peEvalState.lScores || {}) }, tScores: { ...peEvalState.tScores }, bAvg: r.bAvg, lAvg: r.lAvg, tAvg: r.tAvg, clientSat: peEvalState.clientSat, digitalAdapt: peEvalState.digitalAdapt, learning: peEvalState.learning, justs: { ...peEvalState.justs }, weights: { ...peGetWeights(emp) } };
@@ -31916,7 +32014,30 @@
       try {
         return JSON.parse(jsonStr);
       } catch (e) {
-        throw new Error('JSON.parse failed: ' + e.message);
+        // v67.21: Attempt JSON repair for truncated LLM responses.
+        // Common issue: maxTokens truncates mid-array → "Expected ',' or ']'"
+        try {
+          var repaired = jsonStr;
+          // Remove trailing comma before close brackets
+          repaired = repaired.replace(/,\s*([}\]])/g, '$1');
+          // Remove incomplete last array/object entry (text after last comma in an array)
+          repaired = repaired.replace(/,\s*"[^"]*"?\s*$/g, '');
+          repaired = repaired.replace(/,\s*{[^}]*$/g, '');
+          // Balance braces/brackets
+          var opens = 0, closesN = 0, openB = 0, closeB = 0;
+          for (var ci = 0; ci < repaired.length; ci++) {
+            if (repaired[ci] === '{') opens++;
+            else if (repaired[ci] === '}') closesN++;
+            else if (repaired[ci] === '[') openB++;
+            else if (repaired[ci] === ']') closeB++;
+          }
+          // Close any unclosed brackets/braces
+          while (closeB < openB) { repaired += ']'; closeB++; }
+          while (closesN < opens) { repaired += '}'; closesN++; }
+          return JSON.parse(repaired);
+        } catch (e2) {
+          throw new Error('JSON.parse failed: ' + e.message);
+        }
       }
     }
 
@@ -32791,7 +32912,7 @@
           try {
             llmResult = await KABi.LLM.call(
               [{ role: 'user', content: userPrompt }],
-              { systemPrompt: systemPrompt, maxTokens: 2500, temperature: 0.2 }
+              { systemPrompt: systemPrompt, maxTokens: 4000, temperature: 0.2 }
               // Lower temperature for consistent issue detection
             );
           } catch (e) {
@@ -32802,7 +32923,7 @@
               try {
                 llmResult = await KABi.LLM.call(
                   [{ role: 'user', content: userPrompt }],
-                  { systemPrompt: systemPrompt, maxTokens: 2500, temperature: 0.2 }
+                  { systemPrompt: systemPrompt, maxTokens: 4000, temperature: 0.2 }
                 );
               } catch (e2){ throw new Error('checkCoherence: Both providers failed — ' + (e2.message||e2)); }
             } else {
@@ -37184,51 +37305,33 @@
 
     var li = parseInt(target.dataset.li, 10);
 
-    // Step 1 — toggle the item ON if not already (uses portal's own logic)
-    if (!target.classList.contains('on') && typeof window.toggleKPI === 'function') {
-      window.toggleKPI(fnKey, si, li, target);
-    } else if (!target.classList.contains('on')) {
-      // Fallback: mutate state + class manually
-      if (!window.sels) window.sels = {};
-      if (!window.sels[fnKey]) window.sels[fnKey] = {};
-      if (!window.sels[fnKey][si]) window.sels[fnKey][si] = { sel: [], edits: {} };
-      var sel = window.sels[fnKey][si].sel;
-      if (sel.indexOf(li) === -1) sel.push(li);
-      target.classList.add('on');
-    }
+    // v67.21 ROBUST: Direct state mutation — no toggleKPI dependency
+    if (!window.sels) window.sels = {};
+    if (!window.sels[fnKey]) window.sels[fnKey] = {};
+    if (!window.sels[fnKey][si]) window.sels[fnKey][si] = { sel: [], edits: {} };
+    var secSel = window.sels[fnKey][si];
+    if (secSel.sel.indexOf(li) === -1 && secSel.sel.length < 4) secSel.sel.push(li);
+    secSel.edits[li] = kpi.text;
+    if (!target.classList.contains('on')) target.classList.add('on');
 
-    // Step 2 — set the textarea value (now visible because item.on shows .kpi-edit-wrap)
-    var textarea = document.getElementById('kpi-inp-' + fnKey + '-' + si + '-' + li);
-    if (textarea) {
-      textarea.value = kpi.text;
-      // Step 3 — fire input event so saveEdit() persists into sels[fnKey][si].edits[li]
-      var evt;
-      try {
-        evt = new Event('input', { bubbles: true });
-      } catch (e) {
-        // Older browsers
-        evt = document.createEvent('Event');
-        evt.initEvent('input', true, true);
-      }
-      textarea.dispatchEvent(evt);
-
-      // Brief visual highlight
-      var origBg = textarea.style.backgroundColor;
-      textarea.style.transition = 'background-color 0.6s';
-      textarea.style.backgroundColor = 'rgba(59, 182, 145, 0.18)';
-      setTimeout(function () { textarea.style.backgroundColor = origBg; }, 900);
-    } else {
-      console.warn('[KABi.UI.kpiGenerate] textarea not found:', 'kpi-inp-' + fnKey + '-' + si + '-' + li);
-      // Fallback: write directly to state
-      if (window.sels && window.sels[fnKey] && window.sels[fnKey][si]) {
-        window.sels[fnKey][si].edits[li] = kpi.text;
+    // Set textarea (may need a tick for DOM to update after .on)
+    function _fillTA() {
+      var ta = document.getElementById('kpi-inp-' + fnKey + '-' + si + '-' + li);
+      if (ta) {
+        ta.value = kpi.text;
+        ta.style.transition = 'background-color 0.6s';
+        ta.style.backgroundColor = 'rgba(59, 182, 145, 0.18)';
+        setTimeout(function () { ta.style.backgroundColor = ''; }, 900);
       }
     }
+    _fillTA();
+    setTimeout(_fillTA, 60); // retry after DOM settles
 
-    // Step 4 — refresh submit button state
-    if (typeof window.updBtn === 'function') {
-      window.updBtn(fnKey);
-    }
+    // Update counters
+    var cntEl = document.getElementById('sec-cnt-' + fnKey + '-' + si);
+    if (cntEl) { cntEl.textContent = secSel.sel.length + '/4 selected'; }
+    if (typeof window.updSelUI === 'function') window.updSelUI(fnKey);
+    if (typeof window.updBtn === 'function') window.updBtn(fnKey);
 
     return true;
   }
@@ -37503,7 +37606,11 @@
         var action = btn.getAttribute('data-action');
         if (action === 'use') {
           insertSuggestionIntoSlot(fnKey, si, li, suggestion);
-          closeInline(fnKey, si, li);
+          // v67.21: Brief delay before close so user sees confirmation
+          btn.textContent = '\u2713 Done';
+          btn.style.background = '#3BB691';
+          btn.disabled = true;
+          setTimeout(function() { closeInline(fnKey, si, li); }, 600);
         } else if (action === 'another') {
           generateAndShow(fnKey, si, li, suggestion.text);
         } else if (action === 'dismiss') {
@@ -37515,46 +37622,59 @@
 
   // ─── Insert into slot (mirrors logic in kpiGenerate but for THIS specific slot) ─
   function insertSuggestionIntoSlot(fnKey, si, li, suggestion) {
-    // Find the kpi-item for this specific slot
+    // v67.21 ROBUST: Don't depend on toggleKPI — do everything directly.
+
+    // Step 1: Ensure sels state exists
+    if (!window.sels) window.sels = {};
+    if (!window.sels[fnKey]) window.sels[fnKey] = {};
+    if (!window.sels[fnKey][si]) window.sels[fnKey][si] = { sel: [], edits: {} };
+    var secSel = window.sels[fnKey][si];
+
+    // Step 2: Add to selection if not already there
+    if (secSel.sel.indexOf(li) === -1 && secSel.sel.length < 4) {
+      secSel.sel.push(li);
+    }
+
+    // Step 3: Write text to edits directly (this is the authoritative source)
+    secSel.edits[li] = suggestion.text;
+
+    // Step 4: Toggle the DOM element ON
     var item = document.querySelector(
       '.kpi-item[data-fn="' + fnKey + '"][data-si="' + si + '"][data-li="' + li + '"]'
     );
-
-    // Step 1: toggle ON if not already
-    if (item && !item.classList.contains('on') && typeof window.toggleKPI === 'function') {
-      window.toggleKPI(fnKey, si, li, item);
-    } else if (item && !item.classList.contains('on')) {
-      // Fallback
-      if (!window.sels) window.sels = {};
-      if (!window.sels[fnKey]) window.sels[fnKey] = {};
-      if (!window.sels[fnKey][si]) window.sels[fnKey][si] = { sel: [], edits: {} };
-      if (window.sels[fnKey][si].sel.indexOf(li) === -1) {
-        window.sels[fnKey][si].sel.push(li);
-      }
+    if (item && !item.classList.contains('on')) {
       item.classList.add('on');
     }
 
-    // Step 2: write text into textarea
+    // Step 5: Write text into textarea (if visible)
     var textarea = document.getElementById('kpi-inp-' + fnKey + '-' + si + '-' + li);
     if (textarea) {
       textarea.value = suggestion.text;
-      // Step 3: fire input event so saveEdit persists
-      var evt;
-      try { evt = new Event('input', { bubbles: true }); }
-      catch (e) {
-        evt = document.createEvent('Event');
-        evt.initEvent('input', true, true);
-      }
-      textarea.dispatchEvent(evt);
-
-      // Brief visual feedback
-      var origBg = textarea.style.backgroundColor;
+      // Brief visual highlight
       textarea.style.transition = 'background-color 0.6s';
       textarea.style.backgroundColor = 'rgba(59, 182, 145, 0.18)';
-      setTimeout(function () { textarea.style.backgroundColor = origBg; }, 900);
+      setTimeout(function () { textarea.style.backgroundColor = ''; }, 900);
+    } else {
+      // Textarea not visible yet (item just toggled on) — try after a tick
+      setTimeout(function() {
+        var ta2 = document.getElementById('kpi-inp-' + fnKey + '-' + si + '-' + li);
+        if (ta2) {
+          ta2.value = suggestion.text;
+          ta2.style.transition = 'background-color 0.6s';
+          ta2.style.backgroundColor = 'rgba(59, 182, 145, 0.18)';
+          setTimeout(function () { ta2.style.backgroundColor = ''; }, 900);
+        }
+      }, 50);
     }
 
-    // Step 4: update submit button
+    // Step 6: Update section counter + submit button
+    var cntEl = document.getElementById('sec-cnt-' + fnKey + '-' + si);
+    if (cntEl) {
+      var n = secSel.sel.length;
+      cntEl.textContent = n + '/4 selected';
+      cntEl.style.color = n >= 4 ? 'var(--cyan)' : 'var(--text-dim)';
+    }
+    if (typeof window.updSelUI === 'function') window.updSelUI(fnKey);
     if (typeof window.updBtn === 'function') window.updBtn(fnKey);
   }
 
