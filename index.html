@@ -2384,9 +2384,12 @@
     #kpi-container.submitted .kpi-sec-hd button {
       display: none !important;
     }
-    /* Locked badge in section header */
+    /* Locked badge in section header — v67.23: CSS content: cannot render HTML.
+       The v67.21 version put '<i class="ti ti-lock"></i>' inside content:, which
+       CSS displays as literal text (Section 10.7). Fix: text-only "SUBMITTED"
+       pill; the lock semantic is already carried by disabled state + gray tone. */
     #kpi-container.submitted .kpi-sec-hd::after {
-      content: '<i class="ti ti-lock"></i> SUBMITTED';
+      content: 'SUBMITTED';
       font-size: 9px;
       font-weight: 800;
       color: #64748B;
@@ -3786,7 +3789,9 @@
     }
 
     .pe-tab-locked::after {
-      content: '<i class="ti ti-lock"></i>';
+      /* v67.23: HTML in CSS content: renders literally. Text-only marker;
+         opacity+cursor already convey the "locked" state. */
+      content: '(locked)';
       margin-left: 6px;
       font-size: 10px;
     }
@@ -4399,8 +4404,34 @@
     /* Badge/tag icons alignment */
     button .kbi-icon-wrap, span .kbi-icon-wrap, a .kbi-icon-wrap { vertical-align: middle; }
     .tab .kbi-icon-wrap { vertical-align: middle; margin-right: 2px; }
-    /* Fix icon inside option tags (won't render HTML — use text) */
-    select option { font-family: 'FSAlbert', Calibri, Arial, sans-serif; background: #0A1F52; color: var(--white); }
+    /* v67.25: Dropdown <option> styling — root-cause fix for the "dark-on-dark
+       unreadable options" bug. Previous rule set color:var(--white), but in
+       body.light-mode --white flips to #07112c (dark), yielding dark navy
+       background + dark text = illegible (visible in Image 3).
+       Native <option> supports very limited CSS across browsers, but Chromium
+       and WebKit do honor background+color. We use a light surface in both
+       theme modes for consistent legibility, matching Material/Fluent guidance
+       for menu surfaces (surfaces are lifted above the theme, not part of it).
+       Explicit hex values — no theme variables — so the rule is invariant. */
+    select option {
+      font-family: 'FSAlbert', Calibri, Arial, sans-serif;
+      background: #ffffff;
+      color: #0f172a;
+      padding: 8px 12px;
+    }
+    select option:checked,
+    select option:hover,
+    select option:focus {
+      background: #E8EEF6; /* brand-tinted highlight */
+      color: #0A1F52;
+      font-weight: 600;
+    }
+    select option[disabled] {
+      color: rgba(15, 23, 42, .45) !important; /* wins over an inline color:var(--text-dim) that would be invisible on white */
+      font-style: italic;
+    }
+    /* Firefox honors only background; make the focused/checked marker readable there too. */
+    select:-moz-focusring option { color: #0f172a; text-shadow: none; }
 
   </style>
 
@@ -6983,7 +7014,7 @@
               const evalDone = (typeof PE_EVALS !== 'undefined' && PE_EVALS[evalKey] && !PE_EVALS[evalKey].isDraft) ? true : false;
               const evalDraft = (typeof PE_EVALS !== 'undefined' && PE_EVALS[evalKey] && PE_EVALS[evalKey].isDraft) ? true : false;
               const status = evalDone
-                ? '<span style="padding:3px 10px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:10px;font-size:9px;font-weight:800">✓ Evaluated</span>'
+                ? '<span style="padding:3px 10px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:10px;font-size:9px;font-weight:800"><i class="ti ti-check ti-green"></i> Evaluated</span>'
                 : evalDraft
                   ? '<span style="padding:3px 10px;background:rgba(0,194,224,.1);color:var(--cyan);border-radius:10px;font-size:9px;font-weight:800"><i class=\"ti ti-notes\"></i> Draft</span>'
                   : '<span style="padding:3px 10px;background:rgba(251,191,36,.1);color:#fbbf24;border-radius:10px;font-size:9px;font-weight:800"><i class="ti ti-hourglass"></i> Pending</span>';
@@ -7067,7 +7098,7 @@
               const behavScore = (typeof r.inviewsBehavScore === 'number') ? r.inviewsBehavScore : null;
               const bothDone = techDone && behavDone;
               const status = bothDone
-                ? '<span style="padding:3px 10px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:10px;font-size:9px;font-weight:800">✓ Both Complete</span>'
+                ? '<span style="padding:3px 10px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:10px;font-size:9px;font-weight:800"><i class="ti ti-check ti-green"></i> Both Complete</span>'
                 : (techDone || behavDone)
                   ? `<span style="padding:3px 10px;background:rgba(0,194,224,.1);color:var(--cyan);border-radius:10px;font-size:9px;font-weight:800"><i class="ti ti-hourglass"></i> ${techDone && !behavDone ? 'Behavioral pending' : 'Technical pending'}</span>`
                   : '<span style="padding:3px 10px;background:rgba(251,191,36,.1);color:#fbbf24;border-radius:10px;font-size:9px;font-weight:800"><i class="ti ti-hourglass"></i> Both pending</span>';
@@ -7767,6 +7798,166 @@
       renderEmployeeDashboard();
     }
 
+    // v67.28: Personal celebration detector — birthday / work anniversary of the logged-in employee.
+    // Returns null if nothing to celebrate today, otherwise:
+    //   { type: 'birthday'|'anniversary', years?: number, dismissed: boolean }
+    // Reads birthDate / hireDate directly from PE_EMPLOYEES record. Compares to today's month+day only
+    // (year-agnostic for birthday). Anniversary requires year > hire-year (min 1 year at KABi).
+    // Cultural note (Saudi context): birthday message is a warm greeting, NOT a loud celebration.
+    // Dismissal is per-day (localStorage key: kabi_celebrate_dismissed_YYYY-MM-DD_TYPE).
+    function _checkPersonalCelebration(emp) {
+      if (!emp) return null;
+      const now = new Date();
+      const todayKey = now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0');
+      const todayMD = String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0');
+
+      // Birthday check — match month+day
+      if (emp.birthDate) {
+        const parts = String(emp.birthDate).split('-'); // YYYY-MM-DD
+        if (parts.length === 3) {
+          const bdMD = parts[1] + '-' + parts[2];
+          if (bdMD === todayMD) {
+            const dismissKey = 'kabi_celebrate_dismissed_' + todayKey + '_birthday';
+            let dismissed = false;
+            try { dismissed = localStorage.getItem(dismissKey) === '1'; } catch (e) {}
+            return { type: 'birthday', dismissed: dismissed, todayKey: todayKey };
+          }
+        }
+      }
+
+      // Anniversary check — match month+day AND require year > hire-year (avoid 0-year "anniversary")
+      if (emp.hireDate) {
+        const parts = String(emp.hireDate).split('-'); // YYYY-MM-DD
+        if (parts.length === 3) {
+          const hMD = parts[1] + '-' + parts[2];
+          const hireYear = parseInt(parts[0], 10);
+          const years = now.getFullYear() - hireYear;
+          if (hMD === todayMD && years >= 1) {
+            const dismissKey = 'kabi_celebrate_dismissed_' + todayKey + '_anniversary';
+            let dismissed = false;
+            try { dismissed = localStorage.getItem(dismissKey) === '1'; } catch (e) {}
+            return { type: 'anniversary', years: years, dismissed: dismissed, todayKey: todayKey };
+          }
+        }
+      }
+
+      return null;
+    }
+
+    // v67.28: Render the celebration banner HTML for the employee dashboard.
+    // Returns empty string if nothing to show (no celebration or user dismissed).
+    // Design: tasteful bilingual card + Tabler icon + light CSS confetti.
+    // The X (close) button sets localStorage and re-renders.
+    function _renderCelebrationBanner(emp) {
+      const c = _checkPersonalCelebration(emp);
+      if (!c || c.dismissed) return '';
+
+      const firstName = (emp && emp.name) ? emp.name.split(' ')[0] : '';
+      // Prefer Arabic first name from arabicName field (first token) if present
+      let firstNameAr = '';
+      if (emp && emp.arabicName) {
+        firstNameAr = String(emp.arabicName).split(/\s+/)[0] || '';
+      }
+
+      let icon, color, colorRgb, msgEn, msgAr;
+      if (c.type === 'birthday') {
+        icon = 'ti-cake';
+        color = '#9B81BC';           // KABi brand purple
+        colorRgb = '155,129,188';
+        msgEn = 'Wishing you a wonderful day, ' + firstName + '. May the year ahead bring you good health, joy, and success.';
+        msgAr = 'أطيب التمنيات لك في يومك يا ' + (firstNameAr || firstName) + '. أعاده الله عليك بالصحة والسعادة والتوفيق.';
+      } else {
+        icon = 'ti-trophy';
+        color = '#F59E0B';           // amber
+        colorRgb = '245,158,11';
+        const y = c.years;
+        const yEn = y === 1 ? '1 year' : (y + ' years');
+        // Arabic pluralization: 1 = سنة, 2 = سنتين, 3-10 = سنوات, 11+ = سنة
+        let yAr;
+        if (y === 1) yAr = 'سنة';
+        else if (y === 2) yAr = 'سنتين';
+        else if (y >= 3 && y <= 10) yAr = y + ' سنوات';
+        else yAr = y + ' سنة';
+        msgEn = 'Thank you for ' + yEn + ' with KABi, ' + firstName + '. Your contributions are appreciated.';
+        msgAr = 'شكراً لك على ' + yAr + ' معنا في كابي يا ' + (firstNameAr || firstName) + '. نقدّر عطاءك.';
+      }
+
+      // Confetti pieces — pure CSS, animate-once (5s), no JS. Each piece uses a random delay/left.
+      // Kept modest (10 pieces) to respect a professional workspace tone.
+      let confettiHtml = '';
+      const palette = [color, '#62C6D3', '#3CA77D', '#FFFFFF'];
+      for (let i = 0; i < 10; i++) {
+        const left = (i * 9.5 + 2).toFixed(0);
+        const delay = (i * 0.15).toFixed(2);
+        const pcolor = palette[i % palette.length];
+        const size = (5 + (i % 3) * 2);
+        confettiHtml += `<span class="kabi-confetti-piece" style="left:${left}%;background:${pcolor};width:${size}px;height:${size}px;animation-delay:${delay}s"></span>`;
+      }
+
+      return `
+      <style>
+        @keyframes kabi-confetti-fall {
+          0%   { transform: translateY(-20px) rotate(0deg); opacity: 0; }
+          15%  { opacity: 1; }
+          85%  { opacity: 1; }
+          100% { transform: translateY(140px) rotate(540deg); opacity: 0; }
+        }
+        .kabi-celebrate-banner {
+          position: relative;
+          overflow: hidden;
+          background: linear-gradient(135deg, rgba(${colorRgb},.14) 0%, rgba(${colorRgb},.06) 60%, rgba(255,255,255,.02) 100%);
+          border: 1px solid rgba(${colorRgb},.35);
+          border-radius: 18px;
+          padding: 16px 22px;
+          margin-bottom: 16px;
+          backdrop-filter: blur(12px);
+        }
+        .kabi-confetti-piece {
+          position: absolute;
+          top: 0;
+          border-radius: 2px;
+          animation: kabi-confetti-fall 5s ease-out forwards;
+          pointer-events: none;
+          z-index: 1;
+        }
+        .kabi-celebrate-close {
+          background: transparent;
+          border: 1px solid rgba(255,255,255,.15);
+          color: var(--text-muted);
+          width: 26px;
+          height: 26px;
+          border-radius: 50%;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all .2s;
+        }
+        .kabi-celebrate-close:hover {
+          background: rgba(255,255,255,.08);
+          color: var(--white);
+        }
+      </style>
+      <div class="kabi-celebrate-banner">
+        ${confettiHtml}
+        <div style="display:flex;align-items:center;gap:16px;position:relative;z-index:2">
+          <div style="width:52px;height:52px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 6px 20px rgba(${colorRgb},.45)">
+            <i class="ti ${icon}" style="font-size:26px;color:#ffffff"></i>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:800;color:var(--white);margin-bottom:4px;line-height:1.4">${msgEn}</div>
+            <div dir="rtl" style="font-size:13px;font-weight:700;color:rgba(255,255,255,.85);line-height:1.5;font-family:'FS Albert Arabic Web','FS Albert Arabic',sans-serif">${msgAr}</div>
+          </div>
+          <button class="kabi-celebrate-close" onclick="(function(){try{localStorage.setItem('kabi_celebrate_dismissed_${c.todayKey}_${c.type}','1');}catch(e){}renderEmployeeDashboard();})()" title="Dismiss for today" aria-label="Dismiss">
+            <i class="ti ti-x" style="font-size:14px"></i>
+          </button>
+        </div>
+      </div>`;
+    }
+
     function renderEmployeeDashboard() {
       const emp = PE_EMPLOYEES.find(e => e.email === me.email);
       const u = me && USERS[me.email];
@@ -7780,6 +7971,7 @@
       const workspaceBg    = isCEO ? 'rgba(251,191,36,.1)' : 'rgba(167,139,250,.1)';
       const workspaceBorder= isCEO ? 'rgba(251,191,36,.2)' : 'rgba(167,139,250,.15)';
       hdr.innerHTML = `
+        ${_renderCelebrationBanner(emp)}
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:18px">
           <div>
             <div style="display:inline-flex;padding:2px 8px;border-radius:20px;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;background:${workspaceBg};color:${workspaceColor};border:1px solid ${workspaceBorder};margin-bottom:4px">${workspaceLabel}</div>
@@ -8216,7 +8408,7 @@
                   <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${peGetEmpLevel(emp)}</div>
                 </div>
                 ${techDone
-                  ? '<span style="padding:5px 10px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:8px;font-size:10px;font-weight:800">✓ Done</span>'
+                  ? '<span style="padding:5px 10px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:8px;font-size:10px;font-weight:800"><i class="ti ti-check ti-green"></i> Done</span>'
                   : '<span style="padding:6px 12px;background:linear-gradient(135deg,#216AB1,#1EAFD9);color:#fff;border-radius:8px;font-size:10px;font-weight:800">Take →</span>'
                 }
               </div>
@@ -8230,7 +8422,7 @@
                   <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Universal · all employees</div>
                 </div>
                 ${behavDone
-                  ? '<span style="padding:5px 10px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:8px;font-size:10px;font-weight:800">✓ Done</span>'
+                  ? '<span style="padding:5px 10px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:8px;font-size:10px;font-weight:800"><i class="ti ti-check ti-green"></i> Done</span>'
                   : '<span style="padding:6px 12px;background:linear-gradient(135deg,#3BB691,#9B81BC);color:#fff;border-radius:8px;font-size:10px;font-weight:800">Take →</span>'
                 }
               </div>
@@ -8725,7 +8917,7 @@
 
               let status, button;
               if (evalDone) {
-                status = '<span style="padding:3px 10px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:10px;font-size:9px;font-weight:800">✓ Evaluated</span>';
+                status = '<span style="padding:3px 10px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:10px;font-size:9px;font-weight:800"><i class="ti ti-check ti-green"></i> Evaluated</span>';
                 button = `<button onclick="showPg('pg-eval');peViewEval('${r.id}','${openQKey}')" style="padding:7px 14px;border-radius:7px;border:none;background:linear-gradient(135deg,#60a5fa,#3b72ff);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap"><i class=\"ti ti-eye\"></i> Review</button>`;
               } else if (evalDraft) {
                 status = '<span style="padding:3px 10px;background:rgba(0,194,224,.1);color:var(--cyan);border-radius:10px;font-size:9px;font-weight:800"><i class=\"ti ti-notes\"></i> Draft</span>';
@@ -8807,7 +8999,7 @@
             <div style="font-size:22px;font-weight:900;color:#a78bfa;line-height:1">${totalSent}</div>
           </div>
           <div style="padding:14px 16px;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);border-radius:10px">
-            <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:4px">✓ Read</div>
+            <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:4px"><i class="ti ti-check ti-green"></i> Read</div>
             <div style="font-size:22px;font-weight:900;color:#4ade80;line-height:1">${readCount}<span style="font-size:11px;color:var(--text-muted);margin-left:4px;font-weight:600">/${totalSent}</span></div>
           </div>
           <div style="padding:14px 16px;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.25);border-radius:10px">
@@ -9394,7 +9586,7 @@
         let integrityHtml = '';
         if (hasErrors) {
           integrityHtml = '<div style="margin-top:6px;padding:6px 8px;background:rgba(239,68,68,.06);border-left:2px solid #EF4444;border-radius:0 5px 5px 0;font-size:9px;color:#fca5a5;line-height:1.6">'
-            + _audit.integrity.errors.map(function (e) { return '✗ ' + e; }).join('<br>')
+            + _audit.integrity.errors.map(function (e) { return '<i class="ti ti-x ti-rose"></i> ' + e; }).join('<br>')
             + '</div>';
         }
         if (hasWarnings) {
@@ -9577,7 +9769,7 @@
               function statusVs(val, lo, hi) {
                 if (val < lo * 0.85) return { icon: '<i class="ti ti-clipboard-list"></i>', color: '#f87171', txt: 'below role' };
                 if (val > hi * 1.15) return { icon: '<i class="ti ti-clipboard-list"></i>', color: '#4ade80', txt: 'above role' };
-                return { icon: '✓', color: '#4ade80', txt: 'on role' };
+                return { icon: '<i class="ti ti-check ti-green"></i>', color: '#4ade80', txt: 'on role' };
               }
               const wrStatus = pattern ? statusVs(wr/100, pattern.winRateRange[0], pattern.winRateRange[1]) : { icon: '·', color: '#9CA3AF', txt: '' };
               const cycleStatus = pattern ? statusVs(cycle, pattern.cycleRangeDays[0], pattern.cycleRangeDays[1]) : { icon: '·', color: '#9CA3AF', txt: '' };
@@ -9769,7 +9961,7 @@
         '',
         '<i class=\"ti ti-ruler\"></i> Formula: ' + k.formula,
         '<i class=\"ti ti-chart-bar\"></i> Source: ' + k.source,
-        '✓ Good: ' + k.good,
+        '<i class="ti ti-check ti-green"></i> Good: ' + k.good,
         '<i class=\"ti ti-alert-triangle ti-amber\"></i> Watch: ' + k.watch
       ];
       if (valueContext) lines.push('', '— ' + valueContext);
@@ -11792,7 +11984,7 @@
         '',
         '<i class=\"ti ti-ruler\"></i> Formula: ' + k.formula,
         '<i class=\"ti ti-chart-bar\"></i> Source: ' + k.source,
-        '✓ Good: ' + k.good,
+        '<i class="ti ti-check ti-green"></i> Good: ' + k.good,
         '<i class=\"ti ti-alert-triangle ti-amber\"></i> Watch: ' + k.watch
       ];
       if (valueContext) lines.push('', '— ' + valueContext);
@@ -12680,10 +12872,10 @@
         const mtg = n.meta || {};
         if (mtg.status === 'accepted') {
           const slot = mtg.slots?.[mtg.selectedSlot];
-          statusBadge = `<span style="padding:3px 10px;background:rgba(74,222,128,.15);color:#4ade80;border:1px solid rgba(74,222,128,.3);border-radius:10px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">✓ Accepted</span>`;
+          statusBadge = `<span style="padding:3px 10px;background:rgba(74,222,128,.15);color:#4ade80;border:1px solid rgba(74,222,128,.3);border-radius:10px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px"><i class="ti ti-check ti-green"></i> Accepted</span>`;
           if (slot) statusDetails = `<div style="margin-top:6px;font-size:10.5px;color:#4ade80;font-weight:700"><i class=\"ti ti-calendar\"></i> ${formatSlotDate(slot.date)} · ${formatSlotTime(slot.time)}</div>`;
         } else if (mtg.status === 'declined') {
-          statusBadge = `<span style="padding:3px 10px;background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:10px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">✗ Declined</span>`;
+          statusBadge = `<span style="padding:3px 10px;background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:10px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px"><i class="ti ti-x ti-rose"></i> Declined</span>`;
         } else if (mtg.status === 'proposed_new') {
           statusBadge = `<span style="padding:3px 10px;background:rgba(96,165,250,.12);color:#60a5fa;border:1px solid rgba(96,165,250,.3);border-radius:10px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px"><i class=\"ti ti-bulb ti-amber\"></i> New time proposed</span>`;
           if (mtg.newProposal?.note) statusDetails = `<div style="margin-top:6px;font-size:10.5px;color:#60a5fa">"${escapeHtml(mtg.newProposal.note)}"</div>`;
@@ -12693,7 +12885,7 @@
       } else {
         // Regular note — read vs unread
         if (n.read) {
-          statusBadge = `<span style="padding:3px 10px;background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.25);border-radius:10px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">✓ Read</span>`;
+          statusBadge = `<span style="padding:3px 10px;background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.25);border-radius:10px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px"><i class="ti ti-check ti-green"></i> Read</span>`;
         } else {
           statusBadge = `<span style="padding:3px 10px;background:rgba(148,163,184,.1);color:#94a3b8;border:1px solid rgba(148,163,184,.25);border-radius:10px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">◷ Unread</span>`;
         }
@@ -12882,7 +13074,7 @@
 
               // Top-level status pill (combined)
               const status = bothDone
-                ? '<span style="padding:3px 10px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:10px;font-size:9px;font-weight:800">✓ Both Complete</span>'
+                ? '<span style="padding:3px 10px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:10px;font-size:9px;font-weight:800"><i class="ti ti-check ti-green"></i> Both Complete</span>'
                 : (techDone || behavDone)
                   ? `<span style="padding:3px 10px;background:rgba(0,194,224,.1);color:var(--cyan);border-radius:10px;font-size:9px;font-weight:800"><i class="ti ti-hourglass"></i> ${techDone && !behavDone ? 'Behavioral pending' : 'Technical pending'}</span>`
                   : '<span style="padding:3px 10px;background:rgba(251,191,36,.1);color:#fbbf24;border-radius:10px;font-size:9px;font-weight:800"><i class="ti ti-hourglass"></i> Both pending</span>';
@@ -13189,7 +13381,7 @@
                   <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${peGetEmpLevel(emp)} assessment</div>
                 </div>
                 ${techDone
-                  ? '<span style="padding:5px 10px;background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.3);border-radius:8px;font-size:10px;font-weight:800;white-space:nowrap">✓ Done</span>'
+                  ? '<span style="padding:5px 10px;background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.3);border-radius:8px;font-size:10px;font-weight:800;white-space:nowrap"><i class="ti ti-check ti-green"></i> Done</span>'
                   : `<span style="padding:6px 12px;background:linear-gradient(135deg,#216AB1,#1EAFD9);color:#fff;border-radius:8px;font-size:10px;font-weight:800;white-space:nowrap">Take →</span>`
                 }
               </div>
@@ -13205,7 +13397,7 @@
                   <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Universal · all employees</div>
                 </div>
                 ${behavDone
-                  ? '<span style="padding:5px 10px;background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.3);border-radius:8px;font-size:10px;font-weight:800;white-space:nowrap">✓ Done</span>'
+                  ? '<span style="padding:5px 10px;background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.3);border-radius:8px;font-size:10px;font-weight:800;white-space:nowrap"><i class="ti ti-check ti-green"></i> Done</span>'
                   : `<span style="padding:6px 12px;background:linear-gradient(135deg,#3BB691,#9B81BC);color:#fff;border-radius:8px;font-size:10px;font-weight:800;white-space:nowrap">Take →</span>`
                 }
               </div>
@@ -13333,9 +13525,9 @@
         </div>
 
         <div style="display:flex;gap:14px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.04);font-size:10px;flex-wrap:wrap">
-          <span style="color:#4ade80">✓ Approved: <strong>${totalApproved}</strong></span>
+          <span style="color:#4ade80"><i class="ti ti-check ti-green"></i> Approved: <strong>${totalApproved}</strong></span>
           <span style="color:#fbbf24"><i class="ti ti-hourglass"></i> Pending: <strong>${myInits.filter(i => i.status === 'pending_manager' || i.status === 'pending_hc').length}</strong></span>
-          <span style="color:#f87171">✗ Rejected: <strong>${myInits.filter(i => i.status === 'rejected').length}</strong></span>
+          <span style="color:#f87171"><i class="ti ti-x ti-rose"></i> Rejected: <strong>${myInits.filter(i => i.status === 'rejected').length}</strong></span>
         </div>
       </div>
 
@@ -13520,7 +13712,7 @@
         return;
       }
       if (status) {
-        status.textContent = '✓ ' + file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
+        status.innerHTML = '<i class="ti ti-check ti-green"></i> ' + String(file.name).replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'})[c]) + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
         status.style.color = '#4ade80';
       }
     }
@@ -13880,11 +14072,46 @@
           sels[x] = sels[lk];
         });
       }
+      // v67.23: Level selector bar — extracted into a helper so BOTH render
+      // branches (submitted read-only + fresh selectable) show it. Before this
+      // fix, submitting one level erased the tabs, making the other authorised
+      // levels unreachable — visible symptom: "one submit covers all levels."
+      var _renderLevelBar = function() {
+        if (!isMgr) return;
+        var _allowedLevels = (typeof _getKpiLevelAccess === 'function' && typeof me !== 'undefined')
+          ? _getKpiLevelAccess(me.email, primary) : ['Staff Level', 'Management', 'Top Management'];
+        if (!window._kpiSelectedLevel) window._kpiSelectedLevel = {};
+        if (!window._kpiSelectedLevel[primary]) window._kpiSelectedLevel[primary] = _allowedLevels[0];
+        if (_allowedLevels.length <= 1) return; // no need for a switcher if only one level is granted
+        var _curLvl = window._kpiSelectedLevel[primary];
+        var lvlBar = document.createElement('div');
+        lvlBar.style.cssText = 'display:flex;gap:8px;margin-bottom:16px;padding:12px 16px;background:linear-gradient(135deg,rgba(155,129,188,.08),rgba(103,94,170,.04));border:1px solid rgba(155,129,188,.2);border-radius:12px;align-items:center;flex-wrap:wrap';
+        var lvlHtml = '<span style="font-size:11px;font-weight:800;color:#9B81BC;margin-right:8px;display:flex;align-items:center;gap:5px"><i class="ti ti-users" style="font-size:14px"></i> Assign KPIs for:</span>';
+        _allowedLevels.forEach(function(lvl) {
+          // v67.23: mark levels that already have a submission (per-level scope)
+          var lvlSub = subs.filter(function(s){return !s.superseded;}).find(function(s){
+            return s.fnKey === primary && (s.level || 'Staff Level') === lvl && (isCEOOwner ? s.ceoOwned : s.email === (me && me.email));
+          });
+          var isAct = _curLvl === lvl;
+          var lvlColors = { 'Staff Level': { bg: 'rgba(59,182,145,.15)', border: 'rgba(59,182,145,.4)', color: '#3BB691' },
+                            'Management': { bg: 'rgba(155,129,188,.15)', border: 'rgba(155,129,188,.4)', color: '#9B81BC' },
+                            'Top Management': { bg: 'rgba(245,158,11,.15)', border: 'rgba(245,158,11,.4)', color: '#F59E0B' } };
+          var lc = lvlColors[lvl] || lvlColors['Staff Level'];
+          var subMarker = lvlSub && lvlSub.status !== 'rejected'
+            ? '<span style="margin-left:6px;font-size:9px;font-weight:800;opacity:.75">(SUBMITTED)</span>'
+            : '';
+          lvlHtml += '<button onclick="window._kpiSelectedLevel[\'' + primary + '\']=\'' + lvl + '\';openFn(\'' + primary + '\')" style="padding:7px 16px;border-radius:8px;font-size:11px;font-weight:' + (isAct ? '800' : '600') + ';cursor:pointer;border:1px solid ' + (isAct ? lc.border : 'rgba(255,255,255,.1)') + ';background:' + (isAct ? lc.bg : 'transparent') + ';color:' + (isAct ? lc.color : 'var(--text-dim)') + ';font-family:inherit;transition:all .2s">' + lvl + subMarker + '</button>';
+        });
+        lvlBar.innerHTML = lvlHtml;
+        cont.appendChild(lvlBar);
+      };
+
       // v67.9: REJECTED submissions re-open the form — manager can submit new KPIs.
       // Only APPROVED or PENDING submissions lock the form.
       if (isMgr && sub && sub.status !== 'rejected') {
         document.getElementById('sub-ok').style.display = 'block';
         cont.classList.add('submitted');
+        _renderLevelBar(); // v67.23: keep level switching available after submit
         pairKeys.forEach(function (x) {
           FNS[x].sections.forEach(function (sec, si) {
             cont.appendChild(buildSec(sec, x, si, false, sub));
@@ -13895,7 +14122,7 @@
         if (sub && sub.status === 'rejected') {
           var rejNotice = document.createElement('div');
           rejNotice.style.cssText = 'background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:14px 16px;margin:0 0 16px;font-family:inherit';
-          rejNotice.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:16px">✗</span><strong style="color:#f87171;font-size:13px">Previous submission was rejected by Human Capital</strong></div>'
+          rejNotice.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:16px"><i class="ti ti-x ti-rose"></i></span><strong style="color:#f87171;font-size:13px">Previous submission was rejected by Human Capital</strong></div>'
             + (sub.reason ? '<div style="font-size:12px;color:rgba(255,255,255,.75);line-height:1.55;margin-top:4px"><span style="color:#f87171;font-weight:700">Reason: </span>'+sub.reason+'</div>' : '')
             + '<div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:8px;font-style:italic">Please review the feedback above and submit revised KPIs below. Your new submission will replace the rejected one.</div>';
           cont.appendChild(rejNotice);
@@ -13904,28 +14131,10 @@
         document.getElementById('act-row').style.display = 'flex';
         updSelUI(primary);
 
-        // v67.21: Level selector tabs
-        var _allowedLevels = (typeof _getKpiLevelAccess === 'function' && typeof me !== 'undefined')
-          ? _getKpiLevelAccess(me.email, primary) : ['Staff Level', 'Management', 'Top Management'];
-        if (!window._kpiSelectedLevel) window._kpiSelectedLevel = {};
-        if (!window._kpiSelectedLevel[primary]) window._kpiSelectedLevel[primary] = _allowedLevels[0];
-        var _curLvl = window._kpiSelectedLevel[primary];
-
-        if (_allowedLevels.length > 0) {
-          var lvlBar = document.createElement('div');
-          lvlBar.style.cssText = 'display:flex;gap:8px;margin-bottom:16px;padding:12px 16px;background:linear-gradient(135deg,rgba(155,129,188,.08),rgba(103,94,170,.04));border:1px solid rgba(155,129,188,.2);border-radius:12px;align-items:center;flex-wrap:wrap';
-          var lvlHtml = '<span style="font-size:11px;font-weight:800;color:#9B81BC;margin-right:8px;display:flex;align-items:center;gap:5px"><i class="ti ti-users" style="font-size:14px"></i> Assign KPIs for:</span>';
-          _allowedLevels.forEach(function(lvl) {
-            var isAct = _curLvl === lvl;
-            var lvlColors = { 'Staff Level': { bg: 'rgba(59,182,145,.15)', border: 'rgba(59,182,145,.4)', color: '#3BB691' },
-                              'Management': { bg: 'rgba(155,129,188,.15)', border: 'rgba(155,129,188,.4)', color: '#9B81BC' },
-                              'Top Management': { bg: 'rgba(245,158,11,.15)', border: 'rgba(245,158,11,.4)', color: '#F59E0B' } };
-            var lc = lvlColors[lvl] || lvlColors['Staff Level'];
-            lvlHtml += '<button onclick="window._kpiSelectedLevel[\'' + primary + '\']=\'' + lvl + '\';openFn(\'' + primary + '\')" style="padding:7px 16px;border-radius:8px;font-size:11px;font-weight:' + (isAct ? '800' : '600') + ';cursor:pointer;border:1px solid ' + (isAct ? lc.border : 'rgba(255,255,255,.1)') + ';background:' + (isAct ? lc.bg : 'transparent') + ';color:' + (isAct ? lc.color : 'var(--text-dim)') + ';font-family:inherit;transition:all .2s">' + lvl + '</button>';
-          });
-          lvlBar.innerHTML = lvlHtml;
-          cont.appendChild(lvlBar);
-        }
+        // v67.23: Level selector tabs — now rendered via the shared _renderLevelBar()
+        // helper defined above so the submitted branch shows them too. This block
+        // previously duplicated the logic here only, hiding tabs after submit.
+        _renderLevelBar();
 
         pairKeys.forEach(function (x) {
           FNS[x].sections.forEach(function (sec, si) {
@@ -14521,7 +14730,7 @@
       if (btn) {
         btn.disabled = !allFilled;
         if (allFilled) {
-          hint.textContent = `Ready to submit ✓ (${total} KPIs total)`;
+          hint.innerHTML = `Ready to submit <i class="ti ti-check ti-green"></i> (${total} KPIs total)`;
           if (hint.style) hint.style.color = '';
         } else if (!allSelected) {
           const remaining = 4 - totalSelected;
@@ -14579,7 +14788,10 @@
         });
       });
 
-      var proceed = function () { _finalizeSubmit(k, f); };
+      // v67.24: proceed accepts the AI issues array (empty if no review, or
+      // the ignored warnings when the manager clicked Submit anyway). We
+      // persist these on the submission for Super Admin visibility.
+      var proceed = function (aiIssues) { _finalizeSubmit(k, f, aiIssues || []); };
 
       if (window.KABi && KABi.UI && KABi.UI.kpiPreSubmitReview
           && typeof KABi.UI.kpiPreSubmitReview.run === 'function') {
@@ -14587,13 +14799,16 @@
       } else {
         // Fallback: no review module → proceed directly (preserves old behavior)
         console.warn('[submitKPIs] kpiPreSubmitReview not loaded — submitting without coherence check');
-        proceed();
+        proceed([]);
       }
     }
 
     /* v63: Actual submission logic (called after coherence check passes/overrides) */
     /* v66.6: Paired-aware — produces ONE submission with per-KPI scope + pairedFnKey */
-    function _finalizeSubmit(k, f) {
+    /* v67.24: 3rd arg aiIssues[] carries the AI Review issues that the manager either
+       had zero of, or explicitly overrode via "Submit anyway" — attached to the
+       submission for Super Admin audit visibility. */
+    function _finalizeSubmit(k, f, aiIssues) {
       const ts = new Date().toLocaleString('en-SA', { timeZone: 'Asia/Riyadh' });
       const isPaired = fnIsPaired(k);
       const primary = isPaired ? fnGetPrimary(k) : k;
@@ -14644,6 +14859,31 @@
         submission.isPaired = true;
         submission.pairKeys = pairKeys;
       }
+
+      // v67.24: AI Overrides audit trail.
+      // When the manager clicked "Submit anyway" the pre-submit review, the
+      // ignored issues are forwarded here as aiIssues[]. We store them on the
+      // submission so Super Admin sees a subtle amber marker next to each
+      // affected KPI in the All Submissions view. Storage is deliberately
+      // minimal (no LLM reasoning, no scores) — this is accountability, not
+      // second-guessing. Info-severity items are dropped: only warnings and
+      // criticals were "overridden" in any meaningful sense.
+      if (Array.isArray(aiIssues) && aiIssues.length) {
+        var _normalized = aiIssues
+          .filter(function (x) { return x && (x.severity === 'warning' || x.severity === 'critical'); })
+          .map(function (x) {
+            var idx = Array.isArray(x.kpisInvolved) && x.kpisInvolved.length ? Number(x.kpisInvolved[0]) : -1;
+            return {
+              kpiIndex: (idx >= 0 && idx < selKPIs.length) ? idx : -1,
+              severity: x.severity,
+              title: String(x.title || '').slice(0, 120),
+              description: String(x.description || '').slice(0, 400),
+              suggestion: String(x.suggestion || '').slice(0, 300)
+            };
+          });
+        if (_normalized.length) submission.aiOverrides = _normalized;
+      }
+
       // v67.9: If re-submitting after rejection, mark the old rejected sub as superseded
       // so the manager view shows the NEW submission as the active one.
       var _subLevel = submission.level || 'Staff Level';
@@ -14661,19 +14901,12 @@
       document.getElementById('sub-ok').style.display = 'block';
       document.getElementById('act-row').style.display = 'none';
       document.getElementById('sel-bar').style.display = 'none';
-      // v63: re-render the KPI container in read-only mode (with the submission)
-      var kpiContainer = document.getElementById('kpi-container');
-      if (kpiContainer) {
-        kpiContainer.innerHTML = '';
-        kpiContainer.classList.add('submitted');
-        var newSub = subs[subs.length - 1];
-        // v66.6: Render BOTH sides of the pair
-        pairKeys.forEach(function (pk) {
-          FNS[pk].sections.forEach(function (sec, si) {
-            kpiContainer.appendChild(buildSec(sec, pk, si, false, newSub));
-          });
-        });
-      }
+      // v67.23: Re-render the function via openFn instead of hand-building only
+      // the sections. openFn's submitted branch now renders the level bar too,
+      // so the manager can immediately switch to any other level they have
+      // access to. Before this change, submitting Level A silently erased the
+      // tabs and made Levels B/C unreachable ("one submit covers all levels").
+      openFn(primary);
       sendEmail({ fnKey: primary, fnName: submission.fnName, email: me.email, name: me.name, dept: f.dept, ts, selKPIs });
       var _submittedLvl = submission.level || '';
       toast('<i class="ti ti-circle-check ti-green"></i> Submitted to HC — ' + (submission.fnName || '') + (_submittedLvl ? ' (' + _submittedLvl + ')' : ''), 'ok');
@@ -14865,7 +15098,7 @@
 
       // ── Recent activity ───────────────────────────────────────
       const recentActivity = subs.slice(-5).reverse().map(s => {
-        const icon = s.status === 'approved' ? '<i class=\"ti ti-circle-check ti-green\"></i>' : s.status === 'rejected' ? '✗' : '<i class="ti ti-hourglass"></i>';
+        const icon = s.status === 'approved' ? '<i class=\"ti ti-circle-check ti-green\"></i>' : s.status === 'rejected' ? '<i class="ti ti-x ti-rose"></i>' : '<i class="ti ti-hourglass"></i>';
         const color = s.status === 'approved' ? '#4ade80' : s.status === 'rejected' ? '#f87171' : '#fbbf24';
         return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.04);">
       <div style="width:32px;height:32px;border-radius:8px;background:${color}18;border:1px solid ${color}30;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${icon}</div>
@@ -14947,7 +15180,7 @@
             </div>
             <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
               ${approved.length ? `<span style="font-size:9px;color:#4ade80;background:rgba(34,197,94,.08);padding:2px 7px;border-radius:10px;border:1px solid rgba(74,222,128,.15)"><i class=\"ti ti-circle-check ti-green\"></i> ${approved.length} approved</span>` : ''}
-              ${({ length: rl } = fns.filter(k => subs.find(s => s.fnKey === k && s.status === 'rejected'))) && rl ? `<span style="font-size:9px;color:#f87171;background:rgba(239,68,68,.08);padding:2px 7px;border-radius:10px;border:1px solid rgba(248,113,113,.15)">✗ ${rl} rejected</span>` : ''}
+              ${({ length: rl } = fns.filter(k => subs.find(s => s.fnKey === k && s.status === 'rejected'))) && rl ? `<span style="font-size:9px;color:#f87171;background:rgba(239,68,68,.08);padding:2px 7px;border-radius:10px;border:1px solid rgba(248,113,113,.15)"><i class="ti ti-x ti-rose"></i> ${rl} rejected</span>` : ''}
               ${({ length: pl } = fns.filter(k => subs.find(s => s.fnKey === k && s.status === 'pending'))) && pl ? `<span style="font-size:9px;color:#fbbf24;background:rgba(251,191,36,.08);padding:2px 7px;border-radius:10px;border:1px solid rgba(251,191,36,.15)"><i class="ti ti-hourglass"></i> ${pl} pending</span>` : ''}
             </div>
           </div>`).join('')}
@@ -14995,7 +15228,7 @@
             const totalK = f.sections.reduce((a, s) => a + s.kpis.length, 0);
             const statusColor = !sub ? 'rgba(232,237,248,.2)' : sub.status === 'approved' ? '#4ade80' : sub.status === 'rejected' ? '#f87171' : '#fbbf24';
             const statusBg = !sub ? 'rgba(255,255,255,.03)' : sub.status === 'approved' ? 'rgba(34,197,94,.08)' : sub.status === 'rejected' ? 'rgba(239,68,68,.08)' : 'rgba(251,191,36,.08)';
-            const statusLabel = !sub ? 'Not submitted' : sub.status === 'approved' ? '<i class=\"ti ti-circle-check ti-green\"></i> Approved' : sub.status === 'rejected' ? '✗ Rejected' : '<i class="ti ti-hourglass"></i> Pending';
+            const statusLabel = !sub ? 'Not submitted' : sub.status === 'approved' ? '<i class=\"ti ti-circle-check ti-green\"></i> Approved' : sub.status === 'rejected' ? '<i class="ti ti-x ti-rose"></i> Rejected' : '<i class="ti ti-hourglass"></i> Pending';
             const ownerEntry = Object.entries(USERS).find(([em, u]) => u.permissions && u.permissions.includes(k));
             // For CEO-owned functions (RevOps, Finance, Accounting, Legal), the submitter/owner is Khalid Aloraij (CEO)
             const isCEOOwned = (typeof CEO_OWNED_FNS !== 'undefined') && CEO_OWNED_FNS.includes(k);
@@ -15293,7 +15526,7 @@
           </span>`;
             } else if (sub.status === 'rejected') {
               statusBadge = `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;background:rgba(239,68,68,.1);border:1px solid rgba(248,113,113,.25);border-radius:20px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#f87171">
-            ✗ Rejected
+            <i class="ti ti-x ti-rose"></i> Rejected
           </span>`;
             } else {
               statusBadge = `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);border-radius:20px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#fbbf24">
@@ -15665,13 +15898,67 @@
     function renderSub(el) {
       const cards = subs.length
         ? subs.slice().reverse().map(s => {
-          const chgs = s.selKPIs.map((k, i) => `
-          <div class="chg-row">
-            <span class="chg-lbl">KPI ${i + 1}</span>
-            ${k.edited
-              ? `<span class="chg-orig">${k.orig}</span><span class="chg-arr">→</span><span class="chg-new">${k.edited}</span>`
-              : `<span class="chg-only">${k.orig}</span>`}
-          </div>`).join('');
+          // v67.24: pre-index the AI overrides by KPI position so each row can
+          // show a subtle amber marker next to "KPI N" when the manager chose
+          // to submit despite an AI warning.
+          const _overridesByKpi = {};
+          if (Array.isArray(s.aiOverrides)) {
+            s.aiOverrides.forEach(function (o) {
+              if (!o || o.kpiIndex < 0) return;
+              (_overridesByKpi[o.kpiIndex] = _overridesByKpi[o.kpiIndex] || []).push(o);
+            });
+          }
+          const _overrideCount = Array.isArray(s.aiOverrides) ? s.aiOverrides.length : 0;
+
+          const chgs = s.selKPIs.map((k, i) => {
+            // v67.23: When the manager wrote the KPI fresh (no original from the
+            // library), we were rendering an empty <span class="chg-orig"> that
+            // still consumed flex:1 space, pushing the arrow and the actual KPI
+            // text far to the right. Render only what has content, so the text
+            // sits immediately beside "KPI N".
+            const hasOrig = k.orig && String(k.orig).trim();
+            const hasEdit = k.edited && String(k.edited).trim();
+            let body;
+            if (hasOrig && hasEdit && k.orig !== k.edited) {
+              body = `<span class="chg-orig">${k.orig}</span><span class="chg-arr">→</span><span class="chg-new">${k.edited}</span>`;
+            } else {
+              body = `<span class="chg-only">${(hasEdit ? k.edited : k.orig) || '—'}</span>`;
+            }
+            // v67.24: AI override marker. Small amber alert icon next to the
+            // KPI label + a one-line note below the text with the AI's concern.
+            // Uses native title attribute for hover — no extra JS, no clutter.
+            const _ovs = _overridesByKpi[i] || [];
+            let _marker = '';
+            let _noteLine = '';
+            if (_ovs.length) {
+              const _isCritical = _ovs.some(function (o) { return o.severity === 'critical'; });
+              const _color = _isCritical ? '#EF4444' : '#F59E0B';
+              const _tooltip = _ovs.map(function (o) { return (o.title ? o.title + ' — ' : '') + (o.description || ''); }).join(' | ').replace(/"/g, '&quot;');
+              _marker = `<span title="${_tooltip}" style="display:inline-flex;align-items:center;margin-left:6px;color:${_color};font-size:11px;vertical-align:middle" aria-label="AI flagged this KPI"><i class="ti ti-alert-triangle"></i></span>`;
+              const _first = _ovs[0];
+              _noteLine = `<div style="margin:4px 0 0 60px;font-size:10px;color:${_color};line-height:1.5;font-style:italic;opacity:.9">
+                <i class="ti ti-robot" style="font-size:10px"></i> AI review: ${(_first.title || '').replace(/</g,'&lt;')}${_first.description ? ' — ' + _first.description.replace(/</g,'&lt;') : ''}${_ovs.length > 1 ? ` <span style="opacity:.7">(+${_ovs.length - 1} more)</span>` : ''}
+              </div>`;
+            }
+            return `
+          <div class="chg-row" style="flex-wrap:wrap">
+            <div style="display:flex;align-items:center;flex-basis:100%;gap:0">
+              <span class="chg-lbl">KPI ${i + 1}${_marker}</span>
+              ${body}
+            </div>
+            ${_noteLine}
+          </div>`;
+          }).join('');
+
+          // v67.24: header-level override summary — visible at a glance so
+          // Super Admin knows before scrolling that this submission carries
+          // manager-overridden warnings.
+          const _overrideHeader = _overrideCount > 0
+            ? `<div style="margin:10px 0 6px;padding:8px 12px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.28);border-radius:8px;font-size:11px;color:#F59E0B;font-weight:600;display:flex;align-items:center;gap:8px">
+                <i class="ti ti-alert-triangle"></i>
+                <span>Manager submitted despite ${_overrideCount} AI warning${_overrideCount > 1 ? 's' : ''} — details below</span>
+              </div>`
+            : '';
           const isSuperAdmin = !!(me && me.role === 'pm_super_admin');
           const superAdminActions = isSuperAdmin ? `
               <div style="display:flex;gap:6px;margin-top:8px">
@@ -15683,12 +15970,13 @@
             <div><div class="sub-user">${s.name}</div><div class="sub-dept">${s.fnName} · ${s.dept}${s.level ? ' · <span style="padding:2px 8px;border-radius:8px;background:rgba(155,129,188,.12);color:#9B81BC;border:1px solid rgba(155,129,188,.2);font-size:9px;font-weight:800">' + s.level + '</span>' : ''}</div></div>
             <div style="text-align:right"><div class="sub-time">${s.ts}</div><span class="status s${s.status[0]}">${s.status}</span></div>
           </div>
+          ${_overrideHeader}
           ${chgs}
           <div id="sub-actions-${s.id}" style="margin-top:12px;">
             ${s.status === 'pending' ? `
               <div style="display:flex;gap:8px;">
-                <button class="btn-primary" style="padding:8px 16px;font-size:12px" onclick="confirmSub(${s.id},'approved')">✓ Approve</button>
-                <button class="btn-ghost" style="padding:8px 14px;font-size:12px;border-color:rgba(248,113,113,.3);color:#f87171" onclick="confirmSub(${s.id},'rejected')">✗ Reject</button>
+                <button class="btn-primary" style="padding:8px 16px;font-size:12px" onclick="confirmSub(${s.id},'approved')"><i class="ti ti-check ti-green"></i> Approve</button>
+                <button class="btn-ghost" style="padding:8px 14px;font-size:12px;border-color:rgba(248,113,113,.3);color:#f87171" onclick="confirmSub(${s.id},'rejected')"><i class="ti ti-x ti-rose"></i> Reject</button>
               </div>`
               : s.status === 'approved' ? `
               <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(34,197,94,.08);border:1px solid rgba(74,222,128,.25);border-radius:8px;font-size:13px;font-weight:700;color:#4ade80">
@@ -15696,7 +15984,7 @@
               </div>${superAdminActions}`
                 : `
               <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(239,68,68,.08);border:1px solid rgba(248,113,113,.25);border-radius:8px;font-size:13px;font-weight:700;color:#f87171">
-                ✗ Rejected — Decision is final
+                <i class="ti ti-x ti-rose"></i> Rejected — Decision is final
               </div>${superAdminActions}`}
           </div>
         </div>`;
@@ -15762,7 +16050,7 @@
       <textarea id="reject-reason" placeholder="Explain why these KPIs were rejected and what needs to be revised..." style="width:100%;padding:12px;min-height:100px;resize:vertical;background:rgba(255,255,255,.05);border:1px solid rgba(248,113,113,.3);border-radius:8px;font-family:inherit;font-size:14px;color:white;outline:none;line-height:1.5;" oninput="document.getElementById('reject-btn').disabled=!this.value.trim()"></textarea>
       <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
         <button onclick="document.getElementById('reject-dialog').remove()" style="padding:10px 20px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(232,237,248,.5);border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
-        <button id="reject-btn" disabled onclick="submitRejection(${id})" style="padding:10px 20px;background:rgba(220,38,38,.15);border:1px solid rgba(248,113,113,.4);color:#f87171;border-radius:8px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">✗ Confirm Rejection</button>
+        <button id="reject-btn" disabled onclick="submitRejection(${id})" style="padding:10px 20px;background:rgba(220,38,38,.15);border:1px solid rgba(248,113,113,.4);color:#f87171;border-radius:8px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;"><i class="ti ti-x ti-rose"></i> Confirm Rejection</button>
       </div>
     </div>`;
       document.body.appendChild(overlay);
@@ -15786,7 +16074,7 @@
         actEl.innerHTML = isApprove
           ? `<div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(34,197,94,.08);border:1px solid rgba(74,222,128,.25);border-radius:8px;font-size:13px;font-weight:700;color:#4ade80"><i class=\"ti ti-circle-check ti-green\"></i> Approved — Decision is final</div>`
           : `<div style="background:rgba(239,68,68,.06);border:1px solid rgba(248,113,113,.2);border-radius:8px;padding:12px 16px;">
-          <div style="font-size:13px;font-weight:700;color:#f87171;margin-bottom:5px;">✗ Rejected — Decision is final</div>
+          <div style="font-size:13px;font-weight:700;color:#f87171;margin-bottom:5px;"><i class="ti ti-x ti-rose"></i> Rejected — Decision is final</div>
           <div style="font-size:12px;color:rgba(248,113,113,.65);"><span style="font-weight:700">Reason:</span> ${reason}</div>
         </div>`;
       }
@@ -15794,7 +16082,7 @@
       if (card) { const badge = card.querySelector('.status'); if (badge) { badge.textContent = action; badge.className = `status s${action[0]}`; } }
       sendDecisionEmail(s, action, reason);
       renderHC();
-      toast(isApprove ? '<i class=\"ti ti-circle-check ti-green\"></i> Approved — decision locked' : '✗ Rejected — manager notified', isApprove ? 'ok' : 'err');
+      toast(isApprove ? '<i class=\"ti ti-circle-check ti-green\"></i> Approved — decision locked' : '<i class="ti ti-x ti-rose"></i> Rejected — manager notified', isApprove ? 'ok' : 'err');
     }
 
     function sendDecisionEmail(s, action, reason) {
@@ -15812,7 +16100,7 @@
 
       const decisionBlock = isApprove
         ? `STATUS: APPROVED <i class="ti ti-circle-check ti-green"></i>\n\nYour KPI selections for "${s.fnName}" have been approved by Human Capital.`
-        : `STATUS: REJECTED ✗\n\nYour KPI selections for "${s.fnName}" have been rejected by Human Capital.\n\nRejection Reason:\n${reason}\n\nPlease review the feedback and resubmit.`;
+        : `STATUS: REJECTED <i class="ti ti-x ti-rose"></i>\n\nYour KPI selections for "${s.fnName}" have been rejected by Human Capital.\n\nRejection Reason:\n${reason}\n\nPlease review the feedback and resubmit.`;
 
       const msg = `${decisionBlock}\n\n───────────────────────\nFunction: ${s.fnName}\nDepartment: ${s.dept}\nOriginal submission: ${s.ts}\n\nYour Selected KPIs:\n\n${kpisFormatted}\n\n───────────────────────\nKABi Performance Appraisal Portal`;
 
@@ -18699,7 +18987,7 @@
               </div>
               <div style="margin-top:8px;display:flex;gap:6px">
                 <button onclick="empProposeNewTime('${n.id}')" style="flex:1;padding:8px 12px;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.25);border-radius:7px;color:#60a5fa;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit"><i class=\"ti ti-bulb ti-amber\"></i> Propose New Time</button>
-                <button onclick="empDeclineMeeting('${n.id}')" style="flex:1;padding:8px 12px;background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.22);border-radius:7px;color:#f87171;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit">✗ Can't Meet</button>
+                <button onclick="empDeclineMeeting('${n.id}')" style="flex:1;padding:8px 12px;background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.22);border-radius:7px;color:#f87171;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-x ti-rose"></i> Can't Meet</button>
               </div>
             </div>`;
         } else if (status === 'accepted') {
@@ -18712,7 +19000,7 @@
         } else if (status === 'declined') {
           actionBar = `
             <div style="margin-top:10px;padding:10px 12px;background:rgba(248,113,113,.06);border-radius:7px;border-left:3px solid #f87171">
-              <div style="font-size:10px;color:#f87171;font-weight:800;text-transform:uppercase;letter-spacing:.5px">✗ Declined</div>
+              <div style="font-size:10px;color:#f87171;font-weight:800;text-transform:uppercase;letter-spacing:.5px"><i class="ti ti-x ti-rose"></i> Declined</div>
             </div>`;
         } else if (status === 'proposed_new') {
           actionBar = `
@@ -18841,7 +19129,7 @@
           type: 'note',
           fromEmail: me.email,
           fromName: me.name,
-          title: `✗ Meeting Declined by ${me.name}`,
+          title: `<i class="ti ti-x ti-rose"></i> Meeting Declined by ${me.name}`,
           body: `${me.name} can't meet at the proposed times for "${notif.meta.purpose}".${reason ? '\n\nReason: ' + reason : ''}`,
         });
       }
@@ -19423,16 +19711,16 @@
             </tr>
           </thead>
           <tbody style="color:var(--text-primary)">
-            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">SMART Validation (Per KPI)</td><td style="text-align:center;color:#3BB691">✓ Rule-based</td><td style="text-align:center;color:#3BB691">✓ Rule-based</td></tr>
-            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">Duplicate Detection</td><td style="text-align:center;color:#3BB691">✓ Jaccard</td><td style="text-align:center;color:#3BB691">✓ Jaccard</td></tr>
-            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">Function Fit Check</td><td style="text-align:center;color:#3BB691">✓ Keyword</td><td style="text-align:center;color:#3BB691">✓ Keyword</td></tr>
-            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">KPI Library Matching</td><td style="text-align:center;color:var(--text-dim)">—</td><td style="text-align:center;color:#3BB691">✓ Semantic</td></tr>
-            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">Portfolio Governance (Level 2)</td><td style="text-align:center;color:var(--text-dim)">Basic patterns</td><td style="text-align:center;color:#3BB691">✓ Full analysis</td></tr>
-            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">AI Generate KPIs</td><td style="text-align:center;color:#F59E0B">Library rotation</td><td style="text-align:center;color:#3BB691">✓ Context-aware</td></tr>
-            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">Gaming Risk Detection</td><td style="text-align:center;color:var(--text-dim)">—</td><td style="text-align:center;color:#3BB691">✓</td></tr>
-            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">Workload Feasibility</td><td style="text-align:center;color:var(--text-dim)">—</td><td style="text-align:center;color:#3BB691">✓</td></tr>
-            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">Missing KPI Suggestions</td><td style="text-align:center;color:var(--text-dim)">—</td><td style="text-align:center;color:#3BB691">✓</td></tr>
-            <tr><td style="padding:8px">Portfolio Score (5 dimensions)</td><td style="text-align:center;color:var(--text-dim)">—</td><td style="text-align:center;color:#3BB691">✓ SMART + Gov + Align + Feasibility</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">SMART Validation (Per KPI)</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i> Rule-based</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i> Rule-based</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">Duplicate Detection</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i> Jaccard</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i> Jaccard</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">Function Fit Check</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i> Keyword</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i> Keyword</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">KPI Library Matching</td><td style="text-align:center;color:var(--text-dim)">—</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i> Semantic</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">Portfolio Governance (Level 2)</td><td style="text-align:center;color:var(--text-dim)">Basic patterns</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i> Full analysis</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">AI Generate KPIs</td><td style="text-align:center;color:#F59E0B">Library rotation</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i> Context-aware</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">Gaming Risk Detection</td><td style="text-align:center;color:var(--text-dim)">—</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i></td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">Workload Feasibility</td><td style="text-align:center;color:var(--text-dim)">—</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i></td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid rgba(255,255,255,.04)">Missing KPI Suggestions</td><td style="text-align:center;color:var(--text-dim)">—</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i></td></tr>
+            <tr><td style="padding:8px">Portfolio Score (5 dimensions)</td><td style="text-align:center;color:var(--text-dim)">—</td><td style="text-align:center;color:#3BB691"><i class="ti ti-check ti-green"></i> SMART + Gov + Align + Feasibility</td></tr>
           </tbody>
         </table>
       </div>
@@ -19695,7 +19983,7 @@
     const _CONN_SYSTEMS = [
       { id:'pipedrive', name:'Pipedrive', icon:'<i class="ti ti-chart-bar"></i>', type:'CRM · Deals · Pipeline', guide:'Settings → Personal Preferences → API → Personal API Token' },
       { id:'slack', name:'Slack', icon:'<i class="ti ti-message-circle"></i>', type:'Communication · Metadata', guide:'api.slack.com → Your Apps → OAuth → Bot User OAuth Token' },
-      { id:'jira', name:'Jira', icon:'<i class="ti ti-ticket"></i>', type:'Project Management', guide:'Format: yourdomain.atlassian.net|your@email.com|API_TOKEN\nGet token: id.atlassian.com → Security → API Tokens' },
+      { id:'jira', name:'Jira', icon:'<i class="ti ti-ticket"></i>', type:'Project Management', guide:'Upload issues.json exported from Jira Cloud.\nJira → Filters → your saved filter → Export → JSON.' },
       { id:'asana', name:'Asana', icon:'<i class="ti ti-clipboard-list"></i>', type:'Task Tracking', guide:'app.asana.com → My Settings → Apps → Personal Access Token' },
       { id:'hris', name:'HR System', icon:'<i class="ti ti-users"></i>', type:'HRIS · Employee Data', guide:'Your HR platform → API Settings → Generate Access Token (BambooHR / Workday / SAP)' },
       { id:'other', name:'Other', icon:'<i class="ti ti-link"></i>', type:'Custom System', guide:'Enter your API endpoint URL and authentication token.' }
@@ -20061,55 +20349,24 @@
       if(parts.length>=3){domain=parts[0].trim();email=parts[1].trim();apiToken=parts[2].trim();}
       else if(parts.length===2){domain=parts[0].trim();apiToken=parts[1].trim();email='admin@kabi.ai';}
       else{
-        conn.isConnected=true;conn.open=true;_svConn();
-        toast('Format: domain.atlassian.net|email|token', 'err');
+        // v67.23: honest failure — do NOT mark as connected when the token
+        // format is unusable (previously flipped isConnected=true here).
+        conn.isConnected=false;conn.open=true;_svConn();
+        toast('<i class=\"ti ti-circle-x ti-rose\"></i> Jira: token format must be domain.atlassian.net|email|token', 'err');
         var el=document.getElementById('pe-admin-body');if(el)renderPEConnectors(el);return;
       }
       if(domain.indexOf('https://')===0)domain=domain.replace('https://','');
       if(domain.indexOf('http://')===0)domain=domain.replace('http://','');
       if(domain.indexOf('.atlassian.net')<0&&domain.indexOf('.')<0)domain=domain+'.atlassian.net';
 
-      toast('<i class="ti ti-hourglass"></i> Connecting to Jira...','ok');
-
-      function onSuccess(data){
-        var issues=data.issues||[];
-        conn.isConnected=true;conn.open=true;
-        conn._jiraData={issues:issues,total:data.total||issues.length,fetchedAt:new Date().toISOString()};
-        conn._lastSyncAt = new Date().toISOString();
-        _svConn();_processJiraData(conn);
-        var matched=conn._jiraMetrics&&conn._jiraMetrics.byEmployee?Object.keys(conn._jiraMetrics.byEmployee).length:0;
-        toast('<i class=\"ti ti-circle-check ti-green\"></i> Jira: '+issues.length+' issues · '+matched+' employees matched','ok');
-        // v67 Sprint 7: kick off universal auto-sync (every 5 min)
-        _syncStart();
-        var el=document.getElementById('pe-admin-body');if(el)renderPEConnectors(el);
-      }
-
-      // Use /api/proxy (works on Vercel deployment)
-      var isDeployed = window.location.protocol==='https:'||window.location.hostname==='localhost';
-      if(isDeployed){
-        /* v67.21: Jira API proxy — requires /api/proxy.js serverless function for CORS */
-        fetch('/api/proxy',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({system:'jira',domain:domain,email:email,token:apiToken})
-        })
-        .then(function(r){
-          if(!r.ok) return r.json().then(function(e){throw new Error(e.error||e.detail||'Proxy '+r.status);});
-          return r.json();
-        })
-        .then(onSuccess)
-        .catch(function(err){
-          console.warn('[Jira] Proxy error:',err.message);
-          conn.isConnected=true;conn.open=true;_svConn();
-          toast('<i class=\"ti ti-alert-triangle ti-amber\"></i> Jira: '+err.message,'err');
-          var el=document.getElementById('pe-admin-body');if(el)renderPEConnectors(el);
-        });
-      } else {
-        // Running from file:// — show guidance
-        conn.isConnected=true;conn.open=true;_svConn();
-        toast('Use JSON file upload for Jira data import.', 'err');
-        var el=document.getElementById('pe-admin-body');if(el)renderPEConnectors(el);
-      }
+      toast('<i class="ti ti-info-circle ti-cyan"></i> Jira live-connect is not available. Please upload your Jira issues.json file instead (Jira → Filters → Export as JSON).','ok');
+      // v67.29 (JSON-only): Live proxy-based connect was removed. KABi is a pure
+      // static app — there is no /api/proxy endpoint. Users export their Jira
+      // filter as JSON and upload the file through the connector's file input.
+      // The token/apiKey field is preserved on stored connectors for backward
+      // compatibility, but it is no longer used for any network call.
+      conn.isConnected=false;conn.open=true;_svConn();
+      var el2=document.getElementById('pe-admin-body');if(el2)renderPEConnectors(el2);
     }
 
     // ═══ v67.18 FIX: Reusable Jira metrics calculator ═══
@@ -20497,41 +20754,11 @@
     }
 
     function _syncRefreshJira(){
-      var jiraConns = _conns.filter(function(c){return c.isConnected&&!c.manualDisconnect&&c.systems.some(function(s){return s.sysId==='jira'&&s.apiKey;});});
-      if(!jiraConns.length)return;
-      if(_syncInflight['jira'])return;
-      _syncInflight['jira'] = true;
-      var pending = jiraConns.length;
-      function done(){ pending--; if(pending<=0) _syncInflight['jira'] = false; }
-      var isDeployed = window.location.protocol==='https:'||window.location.hostname==='localhost';
-      if(!isDeployed){ _syncInflight['jira']=false; return; }
-      jiraConns.forEach(function(conn){
-        var jiraSys = conn.systems.find(function(s){return s.sysId==='jira'&&s.apiKey;});
-        if(!jiraSys){done();return;}
-        var parts=jiraSys.apiKey.split('|');
-        var domain='',email='',apiToken='';
-        if(parts.length>=3){domain=parts[0].trim();email=parts[1].trim();apiToken=parts[2].trim();}
-        else if(parts.length===2){domain=parts[0].trim();apiToken=parts[1].trim();email='admin@kabi.ai';}
-        else{done();return;}
-        if(domain.indexOf('https://')===0)domain=domain.replace('https://','');
-        if(domain.indexOf('http://')===0)domain=domain.replace('http://','');
-        if(domain.indexOf('.atlassian.net')<0&&domain.indexOf('.')<0)domain=domain+'.atlassian.net';
-        /* v67.21: Removed /api/proxy dependency — KABi is 100% static, no serverless functions needed */
-        Promise.reject(new Error('Direct Jira API not available in static mode. Use JSON file upload instead.'))
-        .then(function(r){return r.json();})
-        .then(function(data){
-          var issues=data.issues||[];
-          conn._jiraData={issues:issues,total:data.total||issues.length,fetchedAt:new Date().toISOString()};
-          try{_processJiraData(conn);}catch(e){}
-          conn._lastSyncAt = new Date().toISOString();
-          _svConn();
-          console.info('[AutoSync] Jira ('+(conn.dept||'#'+conn.id)+'): '+issues.length+' issues (silent)');
-          done();
-        }).catch(function(err){
-          console.warn('[AutoSync] Jira:',err.message);
-          done();
-        });
-      });
+      // v67.29 (JSON-only): Auto-sync via /api/proxy was removed. KABi is a
+      // pure static app. Jira data comes exclusively from user-uploaded JSON
+      // exports. There is nothing to refresh in the background — the JSON file
+      // remains valid until the user uploads a new one.
+      return;
     }
 
     function _syncRefreshSlack(){ /* placeholder — Slack metadata aggregator not yet wired */ }
@@ -20672,7 +20899,7 @@
                           h += '<option value="'+pj.replace(/"/g,'&quot;')+'" '+(assigned===pj?'selected':'')+'>'+pj+' ('+c._jiraMetrics.byProject[pj]+' issues)</option>';
                         });
                         h += '</select>';
-                        h += assigned ? '<span style="font-size:9px;color:var(--green)" title="Scoped to '+assigned+'">✓</span>' : '<span style="font-size:9px;color:var(--amber)" title="Not scoped — will show combined data from all projects"><i class=\"ti ti-alert-triangle ti-amber\"></i></span>';
+                        h += assigned ? '<span style="font-size:9px;color:var(--green)" title="Scoped to '+assigned+'"><i class="ti ti-check ti-green"></i></span>' : '<span style="font-size:9px;color:var(--amber)" title="Not scoped — will show combined data from all projects"><i class=\"ti ti-alert-triangle ti-amber\"></i></span>';
                         h += '</div>';
                       });
                     }
@@ -20704,7 +20931,7 @@
                     var ti = typeMap[f.fileType];
                     if (ti) typeBadge = '<span title="Auto-detected content type — used for smart KPI generation" style="padding:1px 5px;background:'+ti[1]+'22;color:'+ti[1]+';border:1px solid '+ti[1]+'55;border-radius:7px;font-size:7.5px;font-weight:800;letter-spacing:.3px;margin-right:4px">'+ti[0]+' '+ti[2]+'</span>';
                   }
-                  statusBadge = typeBadge + '<span title="Extracted text ready for AI agents" style="color:var(--green);font-size:8px;font-weight:700">✓ '+f.wordCount.toLocaleString()+' words</span>';
+                  statusBadge = typeBadge + '<span title="Extracted text ready for AI agents" style="color:var(--green);font-size:8px;font-weight:700"><i class="ti ti-check ti-green"></i> '+f.wordCount.toLocaleString()+' words</span>';
                 }
                 else if(f.status==='error'){ statusBadge='<span title="'+(f.extractedText||'extraction failed').replace(/"/g,'&quot;')+'" style="color:#F59E0B;font-size:8px;font-weight:700"><i class=\"ti ti-alert-triangle ti-amber\"></i> extraction failed</span>'; cardBg='rgba(245,158,11,.05)'; cardBorder='rgba(245,158,11,.2)'; statusColor='#F59E0B'; }
                 h+='<div style="display:flex;align-items:center;gap:6px;padding:5px 9px;background:'+cardBg+';border:1px solid '+cardBorder+';border-radius:5px;font-size:9px">';
@@ -21041,7 +21268,7 @@
       modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
 
       const intColor = a.integrity.ok ? '#4ade80' : '#EF4444';
-      const intIcon = a.integrity.ok ? '✓' : '✗';
+      const intIcon = a.integrity.ok ? '<i class="ti ti-check ti-green"></i>' : '<i class="ti ti-x ti-rose"></i>';
 
       function row(label, value, color) {
         return '<tr><td style="padding:5px 10px;color:var(--text-dim);font-size:10.5px">' + label
@@ -21132,7 +21359,7 @@
         // Integrity issues
         + (a.integrity.errors.length > 0
           ? '<div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:12px;margin-bottom:12px">'
-          +   '<div style="font-size:10px;color:#EF4444;text-transform:uppercase;letter-spacing:.5px;font-weight:800;margin-bottom:6px">✗ Integrity Errors</div>'
+          +   '<div style="font-size:10px;color:#EF4444;text-transform:uppercase;letter-spacing:.5px;font-weight:800;margin-bottom:6px"><i class="ti ti-x ti-rose"></i> Integrity Errors</div>'
           +   '<div style="font-size:10px;color:#fca5a5;line-height:1.6">' + a.integrity.errors.map(function (e) { return '• ' + e; }).join('<br>') + '</div>'
           + '</div>'
           : '')
@@ -21918,7 +22145,7 @@
     // ─── Per-field diff row with toggle ───
     function _reconBuildFieldDiff(conflictIdx, d, currentDecision) {
       const isReplace = currentDecision === 'replace';
-      const sensIcon = d.sensitivity === 'safe' ? '✓' : '<i class=\"ti ti-alert-triangle ti-amber\"></i>';
+      const sensIcon = d.sensitivity === 'safe' ? '<i class="ti ti-check ti-green"></i>' : '<i class=\"ti ti-alert-triangle ti-amber\"></i>';
       const sensColor = d.sensitivity === 'safe' ? '#4ade80' : '#fbbf24';
       return `
         <div style="display:grid;grid-template-columns:120px 1fr 1fr auto;gap:8px;align-items:center;padding:7px 9px;background:rgba(255,255,255,.02);border-radius:6px;font-size:10px">
@@ -22517,11 +22744,11 @@
       { type: 'kpi_submission', name: '<i class=\"ti ti-chart-bar\"></i> KPI Submission', desc: 'Manager submits KPIs → HC receives for review', to: 'HC Super Admin', trigger: 'Manager submits KPIs' },
       { type: 'ceo_comment', name: '<i class=\"ti ti-message-circle\"></i> CEO Comment', desc: 'CEO comments on a KPI → HC receives notification', to: 'HC Super Admin', trigger: 'CEO comments on KPI' },
       { type: 'kpi_approved', name: '<i class=\"ti ti-circle-check ti-green\"></i> KPIs Approved', desc: 'HC approves KPI selections → Manager receives confirmation', to: 'Submitting Manager', trigger: 'HC approves KPIs' },
-      { type: 'kpi_rejected', name: '✗ KPIs Rejected', desc: 'HC rejects KPI selections → Manager receives feedback', to: 'Submitting Manager', trigger: 'HC rejects KPIs' },
+      { type: 'kpi_rejected', name: '<i class="ti ti-x ti-rose"></i> KPIs Rejected', desc: 'HC rejects KPI selections → Manager receives feedback', to: 'Submitting Manager', trigger: 'HC rejects KPIs' },
       { type: 'eval_submitted', name: '<i class=\"ti ti-clipboard-list\"></i> Evaluation Submitted', desc: 'Manager submits evaluation → HC reviews and approves', to: 'HC Super Admin', trigger: 'Manager submits evaluation' },
       { type: 'edit_request', name: '<i class=\"ti ti-pencil\"></i> Score Edit Request', desc: 'Manager requests score edit with full details', to: 'HC Super Admin', trigger: 'Manager requests edit' },
       { type: 'edit_approved', name: '<i class=\"ti ti-circle-check ti-green\"></i> Edit Approved', desc: 'HC approves edit → Manager sees old/new scores', to: 'Requesting Manager', trigger: 'HC approves edit' },
-      { type: 'edit_rejected', name: '✗ Edit Rejected', desc: 'HC rejects edit request → Manager notified', to: 'Requesting Manager', trigger: 'HC rejects edit' },
+      { type: 'edit_rejected', name: '<i class="ti ti-x ti-rose"></i> Edit Rejected', desc: 'HC rejects edit request → Manager notified', to: 'Requesting Manager', trigger: 'HC rejects edit' },
       { type: 'reminder', name: '<i class="ti ti-alarm"></i> Evaluation Reminder', desc: 'HC reminds manager of pending evaluations', to: 'Specific Manager', trigger: 'HC clicks Send Reminder' },
       { type: 'kpi_reminder', name: '<i class=\"ti ti-target\"></i> KPI Assignment Reminder', desc: 'HC reminds manager to assign KPIs', to: 'Specific Manager', trigger: 'HC clicks Remind KPIs' },
       { type: 'eval_cycle_open', name: '<i class=\"ti ti-calendar\"></i> Evaluation Cycle Open', desc: 'Notify selected recipients that cycle is open', to: 'Selected', trigger: 'HC opens evaluation cycle' },
@@ -22714,8 +22941,8 @@
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
               <span style="font-size:10px;color:var(--text-muted);font-weight:700">${done}/${total} tested</span>
               <div style="display:flex;gap:10px;font-size:10px;font-weight:700">
-                ${okCount > 0 ? `<span style="color:#4ade80">✓ ${okCount} OK</span>` : ''}
-                ${failCount > 0 ? `<span style="color:#f87171">✗ ${failCount} Failed</span>` : ''}
+                ${okCount > 0 ? `<span style="color:#4ade80"><i class="ti ti-check ti-green"></i> ${okCount} OK</span>` : ''}
+                ${failCount > 0 ? `<span style="color:#f87171"><i class="ti ti-x ti-rose"></i> ${failCount} Failed</span>` : ''}
               </div>
             </div>
             <div style="height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden">
@@ -22916,7 +23143,7 @@
                 <strong style="font-size:13px;color:${PE_FREQUENCY === f.id ? 'var(--cyan)' : 'var(--white)'};display:block">${f.label}</strong>
                 <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px">${f.subtitle}</div>
               </div>
-              ${PE_FREQUENCY === f.id ? '<span style="font-size:18px;color:var(--cyan)">✓</span>' : ''}
+              ${PE_FREQUENCY === f.id ? '<span style="font-size:18px;color:var(--cyan)"><i class="ti ti-check ti-green"></i></span>' : ''}
             </div>
             <div style="font-size:10px;color:var(--text-muted);padding-top:10px;border-top:1px solid rgba(255,255,255,.05);margin-top:4px">${f.desc}</div>
           </div>`).join('')}
@@ -23203,7 +23430,7 @@
                     <strong style="font-size:11px;color:${sel ? '#22c55e' : 'var(--white)'};display:block">${f.label}</strong>
                     <div style="font-size:9px;color:var(--text-muted)">${f.desc}</div>
                   </div>
-                  ${sel ? '<span style="font-size:14px;color:#22c55e">✓</span>' : ''}
+                  ${sel ? '<span style="font-size:14px;color:#22c55e"><i class="ti ti-check ti-green"></i></span>' : ''}
                 </div>
               </div>`;
             }).join('')}
@@ -23325,7 +23552,7 @@
             <div style="color:var(--text-muted);font-size:10px">${emp.dept}</div>
             <div style="color:var(--text-muted);font-size:10px">${emp.mgrName}</div>
             <div style="text-align:right">
-              <span style="padding:3px 9px;border-radius:12px;font-size:9px;font-weight:800;background:${emp.inviewsDone ? 'rgba(34,197,94,.12)' : 'rgba(251,191,36,.12)'};color:${emp.inviewsDone ? '#22c55e' : '#fbbf24'};border:1px solid ${emp.inviewsDone ? 'rgba(34,197,94,.3)' : 'rgba(251,191,36,.3)'}">${emp.inviewsDone ? '✓ Completed' : '<i class="ti ti-hourglass"></i> Pending'}</span>
+              <span style="padding:3px 9px;border-radius:12px;font-size:9px;font-weight:800;background:${emp.inviewsDone ? 'rgba(34,197,94,.12)' : 'rgba(251,191,36,.12)'};color:${emp.inviewsDone ? '#22c55e' : '#fbbf24'};border:1px solid ${emp.inviewsDone ? 'rgba(34,197,94,.3)' : 'rgba(251,191,36,.3)'}">${emp.inviewsDone ? '<i class="ti ti-check ti-green"></i> Completed' : '<i class="ti ti-hourglass"></i> Pending'}</span>
             </div>
           </div>`).join('')}
         ${PE_EMPLOYEES.length > 15 ? `<div style="padding:12px 16px;text-align:center;font-size:10px;color:var(--text-muted);background:rgba(255,255,255,.01)">Showing 15 of ${PE_EMPLOYEES.length} employees · Full list in Employees tab</div>` : ''}
@@ -23671,7 +23898,7 @@
                     <input type="number" min="0" max="100" value="${split.behavioral}" onchange="PE_WEIGHTS['${gk}'].inviewsSplit=PE_WEIGHTS['${gk}'].inviewsSplit||{};PE_WEIGHTS['${gk}'].inviewsSplit.behavioral=parseInt(this.value)||0;PE_WEIGHTS['${gk}'].inviewsSplit.technical=100-(parseInt(this.value)||0);_persistPeWeights();renderPEWeights(document.getElementById('pe-admin-body'))" style="width:50px;padding:3px 6px;background:rgba(59,182,145,.06);border:1px solid rgba(59,182,145,.25);border-radius:5px;color:#3BB691;font-size:11px;font-weight:700;font-family:inherit;outline:none;text-align:center">
                     <span style="font-size:9px;color:var(--text-muted)">%</span>
                   </div>
-                  <div style="font-size:9px;color:${splitValid ? '#4ade80' : '#f87171'};text-align:right;margin-top:4px;font-weight:700">${split.technical}/${split.behavioral} ${splitValid ? '✓' : '<i class=\"ti ti-alert-triangle ti-amber\"></i>'}</div>
+                  <div style="font-size:9px;color:${splitValid ? '#4ade80' : '#f87171'};text-align:right;margin-top:4px;font-weight:700">${split.technical}/${split.behavioral} ${splitValid ? '<i class="ti ti-check ti-green"></i>' : '<i class=\"ti ti-alert-triangle ti-amber\"></i>'}</div>
                 </div>
               ` : ''}
               `).join('')}
@@ -23875,7 +24102,7 @@
                   </div>
                   <div style="display:flex;gap:8px;justify-content:flex-end">
                     <button onclick="peRejectDelegation('${em}')" style="padding:7px 14px;border-radius:6px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.1);color:#f87171;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-x"></i> Reject</button>
-                    <button onclick="peApproveDelegation('${em}')" style="padding:7px 14px;border-radius:6px;border:none;background:linear-gradient(135deg,#4ade80,#22c55e);color:#fff;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit">✓ Approve & Apply</button>
+                    <button onclick="peApproveDelegation('${em}')" style="padding:7px 14px;border-radius:6px;border:none;background:linear-gradient(135deg,#4ade80,#22c55e);color:#fff;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit"><i class="ti ti-check ti-green"></i> Approve & Apply</button>
                   </div>
                 </div>`;
             }).join('')}
@@ -25440,16 +25667,31 @@
       const managers = [...new Set(PE_EMPLOYEES.map(e => e.mgr))];
       const mgrMap = {};
 
+      // v67.23: exclude PM Super Admin from the manager progress list — they
+      // are the operator of this page, not a manager whose team is evaluated.
+      const _PM_SUPER_EMAILS = new Set(['hc.pm@kabi.ai']);
+
       managers.forEach(mEmail => {
-        const mgrData = PE_EMPLOYEES.find(e => e.email === mEmail) || USERS[mEmail];
+        if (!mEmail) return;
+        if (_PM_SUPER_EMAILS.has(mEmail)) return; // v67.23: PM Super Admin exclusion
+        const _mUser = USERS[mEmail];
+        if (_mUser && _mUser.role === 'pm_super_admin') return; // belt-and-braces
+        const mgrData = PE_EMPLOYEES.find(e => e.email === mEmail) || _mUser;
         if (!mgrData) return;
         mgrMap[mEmail] = { name: mgrData.name, email: mEmail, total: 0, done: 0 };
         PE_EMPLOYEES.forEach(emp => {
-          if (emp.mgr === mEmail && !emp.isFormer) {
+          // v67.23: Non-FTE reports are excluded from evaluation cycles
+          // (Rule 9.4) — they must not inflate a manager's total, and a
+          // manager whose ONLY reports are Non-FTE must not appear at all.
+          if (emp.mgr === mEmail && !emp.isFormer && emp.employmentType !== 'non-fte') {
             mgrMap[mEmail].total++;
             if (PE_EVALS[`${emp.id}_${openQ}`]) mgrMap[mEmail].done++;
           }
         });
+        // v67.23: drop managers with zero evaluable reports (no team, or team
+        // is entirely Non-FTE / X-KABian). Nothing to evaluate → nothing to
+        // show in the progress board.
+        if (mgrMap[mEmail].total === 0) delete mgrMap[mEmail];
       });
 
       el.innerHTML = `<h3 style="font-size:14px;font-weight:700;color:var(--white);margin-bottom:6px">Manager Evaluation Progress (${openQ})</h3>
@@ -25537,7 +25779,7 @@
           const comp = parseInt(compInp.value, 10) || 0;
           const sum = obj + comp;
           const ok = sum === 100;
-          sumEl.innerHTML = 'Sum: ' + sum + ' / 100 ' + (ok ? '✓' : '<i class=\"ti ti-alert-triangle ti-amber\"></i> must equal 100');
+          sumEl.innerHTML = 'Sum: ' + sum + ' / 100 ' + (ok ? '<i class="ti ti-check ti-green"></i>' : '<i class=\"ti ti-alert-triangle ti-amber\"></i> must equal 100');
           sumEl.style.color = ok ? '#4ade80' : '#EF4444';
         }
       }
@@ -25592,8 +25834,8 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <span style="padding:5px 10px;background:rgba(156,163,175,.08);color:#9ca3af;border:1px solid rgba(156,163,175,.2);border-radius:12px;font-size:9px;font-weight:700">At Manager: ${pendingMgr.length}</span>
             <span style="padding:5px 10px;background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.25);border-radius:12px;font-size:10px;font-weight:800"><i class="ti ti-hourglass"></i> Your Review: ${pending.length}</span>
-            <span style="padding:5px 10px;background:rgba(74,222,128,.08);color:#4ade80;border:1px solid rgba(74,222,128,.2);border-radius:12px;font-size:9px;font-weight:700">✓ Approved: ${approved.length}</span>
-            <span style="padding:5px 10px;background:rgba(248,113,113,.08);color:#f87171;border:1px solid rgba(248,113,113,.2);border-radius:12px;font-size:9px;font-weight:700">✗ Rejected: ${rejected.length}</span>
+            <span style="padding:5px 10px;background:rgba(74,222,128,.08);color:#4ade80;border:1px solid rgba(74,222,128,.2);border-radius:12px;font-size:9px;font-weight:700"><i class="ti ti-check ti-green"></i> Approved: ${approved.length}</span>
+            <span style="padding:5px 10px;background:rgba(248,113,113,.08);color:#f87171;border:1px solid rgba(248,113,113,.2);border-radius:12px;font-size:9px;font-weight:700"><i class="ti ti-x ti-rose"></i> Rejected: ${rejected.length}</span>
           </div>
         </div>
       </div>
@@ -25735,8 +25977,8 @@
                 </div>
               ` : ''}
               <div style="display:flex;gap:8px;padding-left:52px;flex-wrap:wrap">
-                <button onclick="hcDecideInitiative('${init.id}','approve')" style="padding:8px 16px;background:linear-gradient(135deg,#4ade80,#22c55e);color:#fff;border:none;border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit">✓ Final Approve</button>
-                <button onclick="hcDecideInitiative('${init.id}','reject')" style="padding:8px 16px;background:rgba(248,113,113,.1);color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:8px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">✗ Reject</button>
+                <button onclick="hcDecideInitiative('${init.id}','approve')" style="padding:8px 16px;background:linear-gradient(135deg,#4ade80,#22c55e);color:#fff;border:none;border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit"><i class="ti ti-check ti-green"></i> Final Approve</button>
+                <button onclick="hcDecideInitiative('${init.id}','reject')" style="padding:8px 16px;background:rgba(248,113,113,.1);color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:8px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-x ti-rose"></i> Reject</button>
               </div>
             </div>`;
           }).join('')}
@@ -25761,8 +26003,8 @@
             { key: 'all',              label: 'All',          count: INITIATIVES.length, color: '#a78bfa' },
             { key: 'pending_manager',  label: 'At Manager',   count: pendingMgr.length, color: '#9ca3af' },
             { key: 'pending_hc',       label: 'At HC',        count: pending.length, color: '#fbbf24' },
-            { key: 'approved',         label: '✓ Approved',   count: approved.length, color: '#4ade80' },
-            { key: 'rejected',         label: '✗ Rejected',   count: rejected.length, color: '#f87171' }
+            { key: 'approved',         label: '<i class="ti ti-check ti-green"></i> Approved',   count: approved.length, color: '#4ade80' },
+            { key: 'rejected',         label: '<i class="ti ti-x ti-rose"></i> Rejected',   count: rejected.length, color: '#f87171' }
           ].map(f => `
             <button onclick="hcFilterAllInitiatives('${f.key}')" data-init-filter="${f.key}" class="hc-init-filter-chip ${f.key === 'all' ? 'active' : ''}" style="padding:5px 11px;border-radius:14px;border:1px solid ${f.color}33;background:${f.key === 'all' ? f.color + '22' : 'transparent'};color:${f.color};font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px">
               ${f.label} <span style="font-size:9px;opacity:.7">(${f.count})</span>
@@ -25777,8 +26019,8 @@
             const statusMap = {
               pending_manager: { label: '<i class=\"ti ti-eye\"></i> At Manager',  color: '#9ca3af', bg: 'rgba(156,163,175,.08)', border: 'rgba(156,163,175,.25)' },
               pending_hc:      { label: '<i class="ti ti-hourglass"></i> At HC',        color: '#fbbf24', bg: 'rgba(251,191,36,.08)',  border: 'rgba(251,191,36,.3)' },
-              approved:        { label: '✓ Approved',     color: '#4ade80', bg: 'rgba(74,222,128,.08)',  border: 'rgba(74,222,128,.3)' },
-              rejected:        { label: '✗ Rejected',     color: '#f87171', bg: 'rgba(248,113,113,.08)', border: 'rgba(248,113,113,.3)' }
+              approved:        { label: '<i class="ti ti-check ti-green"></i> Approved',     color: '#4ade80', bg: 'rgba(74,222,128,.08)',  border: 'rgba(74,222,128,.3)' },
+              rejected:        { label: '<i class="ti ti-x ti-rose"></i> Rejected',     color: '#f87171', bg: 'rgba(248,113,113,.08)', border: 'rgba(248,113,113,.3)' }
             };
             const st = statusMap[init.status] || statusMap.pending_manager;
             const submittedAt = init.submittedAt ? new Date(init.submittedAt).toLocaleDateString() : '—';
@@ -25895,7 +26137,7 @@
             EJ_TPL);
         }
       } catch (e) { console.warn(e); }
-      toast(decision === 'approve' ? '<i class=\"ti ti-circle-check ti-green\"></i> Initiative finally approved' : '✗ Rejected', decision === 'approve' ? 'ok' : 'err');
+      toast(decision === 'approve' ? '<i class=\"ti ti-circle-check ti-green\"></i> Initiative finally approved' : '<i class="ti ti-x ti-rose"></i> Rejected', decision === 'approve' ? 'ok' : 'err');
       renderPEAdmin(document.getElementById('hc-body'));
     }
 
@@ -26284,7 +26526,7 @@
       if (w.competencies > 0) {
         const invInfo = peGetInviewsScore(emp);
         const invColor = invInfo.done ? peRating(invInfo.score).color : '#fbbf24';
-        html += `<div style="margin-bottom:14px"><h4 style="font-size:11px;color:var(--cyan);margin-bottom:6px;display:flex;align-items:center;gap:8px"><i class=\"ti ti-brain\"></i> INVIEWS — ${w.competencies}% <span style="font-size:8px;padding:2px 6px;border-radius:8px;background:${invInfo.done ? 'rgba(74,222,128,.1)' : 'rgba(251,191,36,.1)'};color:${invColor};font-weight:700">${invInfo.done ? invInfo.score.toFixed(1) + '/5 ✓' : '<i class="ti ti-hourglass"></i> Pending'}</span></h4>`;
+        html += `<div style="margin-bottom:14px"><h4 style="font-size:11px;color:var(--cyan);margin-bottom:6px;display:flex;align-items:center;gap:8px"><i class=\"ti ti-brain\"></i> INVIEWS — ${w.competencies}% <span style="font-size:8px;padding:2px 6px;border-radius:8px;background:${invInfo.done ? 'rgba(74,222,128,.1)' : 'rgba(251,191,36,.1)'};color:${invColor};font-weight:700">${invInfo.done ? invInfo.score.toFixed(1) + '/5 <i class="ti ti-check ti-green"></i>' : '<i class="ti ti-hourglass"></i> Pending'}</span></h4>`;
         if (invInfo.done) {
           html += `<div style="font-size:9px;color:var(--text-muted);padding:6px 10px;background:rgba(255,255,255,.02);border-radius:4px">Technical: ${invInfo.tech.score?.toFixed(1) || '—'}/5 (${invInfo.split.technical}%) · Behavioral: ${invInfo.behav.score?.toFixed(1) || '—'}/5 (${invInfo.split.behavioral}%)</div>`;
         }
@@ -26447,7 +26689,7 @@
         if (checked.length === 0) status.textContent = 'Select at least one item';
         else if (missingScore > 0) status.textContent = `${missingScore} item(s) need a new score`;
         else if (!reason) status.textContent = 'Reason is required';
-        else status.textContent = `✓ ${checked.length} item(s) ready`;
+        else status.innerHTML = `<i class="ti ti-check ti-green"></i> ${checked.length} item(s) ready`;
         status.style.color = valid ? '#4ade80' : '#fbbf24';
       }
     }
@@ -26643,7 +26885,7 @@
                           </div>
                           <div style="font-size:10px;color:var(--text-muted);margin-top:3px;line-height:1.5">${init.desc}</div>
                         </div>
-                        <span style="padding:2px 8px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:10px;font-size:9px;font-weight:700;white-space:nowrap">✓ Approved</span>
+                        <span style="padding:2px 8px;background:rgba(74,222,128,.12);color:#4ade80;border-radius:10px;font-size:9px;font-weight:700;white-space:nowrap"><i class="ti ti-check ti-green"></i> Approved</span>
                       </div>
                     </div>
                   `).join('')}
@@ -26757,7 +26999,7 @@
               <span style="font-size:11px;color:var(--text-muted)">/ 5</span>
               <span style="margin-left:auto;font-size:9px;color:${rc.color};font-weight:700">${rc.name}</span>
             </div>
-            <div style="font-size:9px;color:var(--text-dim)">✓ Submitted ${submittedDate}</div>
+            <div style="font-size:9px;color:var(--text-dim)"><i class="ti ti-check ti-green"></i> Submitted ${submittedDate}</div>
             ${data.reportUrl ? `<button onclick="window.open('${data.reportUrl.replace(/'/g, "\\'")}','_blank')" style="margin-top:8px;width:100%;padding:6px 10px;background:${accentBg};border:1px solid ${accentColor}40;border-radius:6px;color:${accentColor};font-size:9px;font-weight:700;cursor:pointer;font-family:inherit"><i class=\"ti ti-file-text\"></i> View Report →</button>` : ''}
           </div>`;
         }
@@ -26818,7 +27060,7 @@
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:3px">
               <h3 style="font-size:14px;font-weight:800;color:var(--white);margin:0">INVIEWS — ${weightPct}%</h3>
-              <span style="padding:2px 8px;border-radius:12px;background:rgba(74,222,128,.15);color:#4ade80;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">✓ Both Submitted</span>
+              <span style="padding:2px 8px;border-radius:12px;background:rgba(74,222,128,.15);color:#4ade80;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px"><i class="ti ti-check ti-green"></i> Both Submitted</span>
             </div>
             <p style="font-size:10px;color:var(--text-muted);margin:0">Combined: <strong style="color:var(--white)">${info.score.toFixed(1)}/5</strong> · Tech ${techShare}% + Behav ${behavShare}% (per level config)</p>
           </div>
@@ -27330,10 +27572,10 @@
                   </div>
                   <div style="display:flex;gap:6px;margin-bottom:8px">
                     <span style="flex:1;padding:4px 6px;background:${inviewsDone ? 'rgba(74,222,128,.1)' : 'rgba(251,191,36,.08)'};color:${inviewsDone ? '#4ade80' : '#fbbf24'};border:1px solid ${inviewsDone ? 'rgba(74,222,128,.25)' : 'rgba(251,191,36,.2)'};border-radius:5px;font-size:9px;font-weight:700;text-align:center" title="INVIEWS Assessment">
-                      <i class=\"ti ti-brain\"></i> ${inviewsDone ? '✓ INVIEWS' : '<i class="ti ti-hourglass"></i> INVIEWS'}
+                      <i class=\"ti ti-brain\"></i> ${inviewsDone ? '<i class="ti ti-check ti-green"></i> INVIEWS' : '<i class="ti ti-hourglass"></i> INVIEWS'}
                     </span>
                     <span style="flex:1;padding:4px 6px;background:${evalDone ? 'rgba(0,194,224,.1)' : 'rgba(255,255,255,.04)'};color:${evalDone ? 'var(--cyan)' : 'var(--text-muted)'};border:1px solid ${evalDone ? 'rgba(0,194,224,.25)' : 'rgba(255,255,255,.08)'};border-radius:5px;font-size:9px;font-weight:700;text-align:center" title="Performance Evaluation">
-                      <i class=\"ti ti-clipboard-list\"></i> ${evalDone ? '✓ Evaluated' : evalDraft ? '<i class="ti ti-notes"></i> Draft' : 'Not yet'}
+                      <i class=\"ti ti-clipboard-list\"></i> ${evalDone ? '<i class="ti ti-check ti-green"></i> Evaluated' : evalDraft ? '<i class="ti ti-notes"></i> Draft' : 'Not yet'}
                     </span>
                     <span style="flex:1;padding:4px 6px;background:rgba(167,139,250,.08);color:#a78bfa;border:1px solid rgba(167,139,250,.2);border-radius:5px;font-size:9px;font-weight:700;text-align:center" title="Initiatives (Approved · Pending)">
                       <i class=\"ti ti-bulb ti-amber\"></i> ${empApprovedInits}${empPendingInits ? ` <span style="color:#fbbf24">·${empPendingInits}</span>` : ''}
@@ -27382,7 +27624,7 @@
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <span style="padding:4px 10px;background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.25);border-radius:20px;font-size:9px;font-weight:800"><i class="ti ti-hourglass"></i> Pending: ${pending.length}</span>
             <span style="padding:4px 10px;background:rgba(96,165,250,.08);color:#60a5fa;border:1px solid rgba(96,165,250,.2);border-radius:20px;font-size:9px;font-weight:700">At HC: ${inHC.length}</span>
-            <span style="padding:4px 10px;background:rgba(74,222,128,.08);color:#4ade80;border:1px solid rgba(74,222,128,.2);border-radius:20px;font-size:9px;font-weight:700">✓ Approved: ${approved.length}</span>
+            <span style="padding:4px 10px;background:rgba(74,222,128,.08);color:#4ade80;border:1px solid rgba(74,222,128,.2);border-radius:20px;font-size:9px;font-weight:700"><i class="ti ti-check ti-green"></i> Approved: ${approved.length}</span>
           </div>
         </div>
 
@@ -27417,8 +27659,8 @@
                   </div>
                 ` : ''}
                 <div style="display:flex;gap:8px;padding-left:42px;flex-wrap:wrap">
-                  <button onclick="mgrDecideInitiative('${init.id}','approve')" style="padding:7px 14px;background:linear-gradient(135deg,#4ade80,#22c55e);color:#fff;border:none;border-radius:7px;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit">✓ Approve → Send to HC</button>
-                  <button onclick="mgrDecideInitiative('${init.id}','reject')" style="padding:7px 14px;background:rgba(248,113,113,.1);color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">✗ Reject</button>
+                  <button onclick="mgrDecideInitiative('${init.id}','approve')" style="padding:7px 14px;background:linear-gradient(135deg,#4ade80,#22c55e);color:#fff;border:none;border-radius:7px;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit"><i class="ti ti-check ti-green"></i> Approve → Send to HC</button>
+                  <button onclick="mgrDecideInitiative('${init.id}','reject')" style="padding:7px 14px;background:rgba(248,113,113,.1);color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-x ti-rose"></i> Reject</button>
                 </div>
               </div>`;
             }).join('')}
@@ -27484,7 +27726,7 @@
             EJ_TPL);
         }
       } catch (e) { console.warn(e); }
-      toast(decision === 'approve' ? '<i class=\"ti ti-circle-check ti-green\"></i> Approved & sent to HC' : '✗ Rejected', decision === 'approve' ? 'ok' : 'err');
+      toast(decision === 'approve' ? '<i class=\"ti ti-circle-check ti-green\"></i> Approved & sent to HC' : '<i class="ti ti-x ti-rose"></i> Rejected', decision === 'approve' ? 'ok' : 'err');
       renderHome();
     }
 
@@ -31996,49 +32238,97 @@
     }
 
     /* Parse LLM JSON response — handles common LLM quirks like markdown fencing */
+    // v67.23: State-aware JSON repair. The v67.21 version had two structural bugs
+    // (Section 10.7 — Incomplete Fixes That Look Complete):
+    //   1) It appended ALL missing "]" then ALL missing "}", ignoring nesting order.
+    //      A truncation inside a nested { in an [ produced invalid output like
+    //      "...])}"  instead of the correct "...\"}]}".
+    //   2) It scanned braces without a string/escape state machine, so quoted
+    //      characters (e.g. a description containing "}") corrupted the counts.
+    // The new algorithm scans character by character with a mode stack, then
+    // truncates back to the last structurally-valid position and closes the
+    // stack in the correct order. Also handles unterminated strings.
     function parseLLMJsonResponse(text) {
       var raw = String(text || '').trim();
       if (!raw) throw new Error('Empty response');
 
-      // Strip markdown code fences if present (```json ... ```)
+      // Strip markdown code fences (```json ... ``` or ``` ... ```)
       raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
 
-      // Find first { and last } to extract JSON object
+      // Isolate the outermost JSON object
       var first = raw.indexOf('{');
       var last = raw.lastIndexOf('}');
-      if (first === -1 || last === -1 || last < first) {
-        throw new Error('No JSON object found in response');
-      }
-      var jsonStr = raw.substring(first, last + 1);
+      if (first === -1) throw new Error('No JSON object found in response');
+      var jsonStr = raw.substring(first, last === -1 ? raw.length : last + 1);
 
+      // Fast path — clean JSON
+      try { return JSON.parse(jsonStr); } catch (_) { /* fall through to repair */ }
+
+      // Repair path — walk the string with a mode stack tracking open containers
+      // and string/escape state; find the last position where the document was
+      // structurally complete OR could be safely truncated and closed.
+      var stack = [];         // stack of '{' or '[' openers, in nesting order
+      var inString = false;   // are we currently inside a "..." string
+      var escape = false;     // is the previous char a backslash inside a string
+      var lastSafeIdx = -1;   // char index of last position we could truncate at
+      var lastSafeStack = null;
+      // We consider a position "safe" after a value ends (comma, close bracket
+      // outside a string): repair by truncating to the previous safe point +
+      // closing the remaining stack.
+
+      for (var i = 0; i < jsonStr.length; i++) {
+        var c = jsonStr[i];
+        if (inString) {
+          if (escape) { escape = false; continue; }
+          if (c === '\\') { escape = true; continue; }
+          if (c === '"') { inString = false; lastSafeIdx = i; lastSafeStack = stack.slice(); }
+          continue;
+        }
+        if (c === '"') { inString = true; continue; }
+        if (c === '{' || c === '[') { stack.push(c); continue; }
+        if (c === '}' || c === ']') {
+          stack.pop();
+          lastSafeIdx = i; lastSafeStack = stack.slice();
+          continue;
+        }
+        if (c === ',' || (c >= '0' && c <= '9') || c === 'e' || c === 'E' || c === '.' || c === '-' ||
+            c === 't' || c === 'r' || c === 'u' || c === 'f' || c === 'a' || c === 'l' || c === 's' || c === 'n') {
+          // possible end-of-primitive; only mark safe on comma or whitespace-after-value below
+        }
+        if (c === ',' && !inString) { lastSafeIdx = i - 1; lastSafeStack = stack.slice(); }
+      }
+
+      // Attempt 1: cheap surface repairs (trailing comma, stray text after last })
       try {
-        return JSON.parse(jsonStr);
-      } catch (e) {
-        // v67.21: Attempt JSON repair for truncated LLM responses.
-        // Common issue: maxTokens truncates mid-array → "Expected ',' or ']'"
-        try {
-          var repaired = jsonStr;
-          // Remove trailing comma before close brackets
-          repaired = repaired.replace(/,\s*([}\]])/g, '$1');
-          // Remove incomplete last array/object entry (text after last comma in an array)
-          repaired = repaired.replace(/,\s*"[^"]*"?\s*$/g, '');
-          repaired = repaired.replace(/,\s*{[^}]*$/g, '');
-          // Balance braces/brackets
-          var opens = 0, closesN = 0, openB = 0, closeB = 0;
-          for (var ci = 0; ci < repaired.length; ci++) {
-            if (repaired[ci] === '{') opens++;
-            else if (repaired[ci] === '}') closesN++;
-            else if (repaired[ci] === '[') openB++;
-            else if (repaired[ci] === ']') closeB++;
-          }
-          // Close any unclosed brackets/braces
-          while (closeB < openB) { repaired += ']'; closeB++; }
-          while (closesN < opens) { repaired += '}'; closesN++; }
-          return JSON.parse(repaired);
-        } catch (e2) {
-          throw new Error('JSON.parse failed: ' + e.message);
+        var quick = jsonStr.replace(/,\s*([}\]])/g, '$1');
+        return JSON.parse(quick);
+      } catch (_) { /* try structural repair */ }
+
+      // Attempt 2: truncate to last safe point + close containers in reverse
+      // order (this is the critical fix over v67.21's buggy logic).
+      if (lastSafeIdx > first && lastSafeStack) {
+        var repaired = jsonStr.substring(0, lastSafeIdx + 1);
+        // Drop any dangling partial key/value (e.g. "key": <truncated>)
+        repaired = repaired.replace(/,\s*"[^"]*$/, '');
+        repaired = repaired.replace(/,\s*"[^"]*":\s*[^,\{\[\]\}]*$/, '');
+        // Close any unterminated string (last-ditch)
+        var openQuotes = 0, esc = false;
+        for (var j = 0; j < repaired.length; j++) {
+          if (esc) { esc = false; continue; }
+          if (repaired[j] === '\\') { esc = true; continue; }
+          if (repaired[j] === '"') openQuotes++;
+        }
+        if (openQuotes % 2 === 1) repaired += '"';
+        // Close containers in the exact reverse of opening order
+        for (var s = lastSafeStack.length - 1; s >= 0; s--) {
+          repaired += (lastSafeStack[s] === '{') ? '}' : ']';
+        }
+        try { return JSON.parse(repaired); } catch (e2) {
+          throw new Error('JSON.parse failed after repair: ' + e2.message + ' (raw len ' + jsonStr.length + ')');
         }
       }
+
+      throw new Error('JSON.parse failed: response too malformed to repair (len ' + jsonStr.length + ')');
     }
 
     /* ─── v63: Prompt builders for generateOne (single-KPI inline) ───── */
@@ -32231,8 +32521,14 @@
           '  "missingKPIs": ["مؤشرات من المكتبة كان يجب تضمينها"]',
           '}',
           'إذا الحزمة متوازنة ومتنوعة وذكية وواقعية → decision: "approved"، overall: 8-10.',
-          'كن صارماً مع unrealistic — أي رقم مستحيل رياضياً = critical فوراً.'
-        ].join('\\n');
+          'كن صارماً مع unrealistic — أي رقم مستحيل رياضياً = critical فوراً.',
+          '',
+          'ميزانية المخرج (إلزامية — v67.23):',
+          '- JSON مضغوط في سطر واحد. لا markdown، لا أسوار كود، لا نص قبل أو بعد.',
+          '- بحد أقصى 6 عناصر في issues — اذكر الأهم فقط.',
+          '- description بحد أقصى 25 كلمة، suggestion بحد أقصى 20 كلمة.',
+          '- recommendations بحد أقصى 3 عناصر، missingKPIs بحد أقصى 3 عناصر.'
+        ].join('\n');
       }
       return [
         'You are KABi Performance Governance AI.',
@@ -32333,8 +32629,14 @@
         '- Always explain WHY each issue was flagged.',
         '- Never hallucinate organizational information.',
         '- Be strict with unrealistic — impossible numbers = critical immediately.',
-        '- Behave like a senior Performance Consultant during a calibration session.'
-      ].join('\\n');
+        '- Behave like a senior Performance Consultant during a calibration session.',
+        '',
+        'OUTPUT BUDGET (MANDATORY — v67.23):',
+        '- Minified single-line JSON. No markdown, no code fences, no text before or after.',
+        '- At most 6 items in issues — report only the most important.',
+        '- description max 25 words; suggestion max 20 words.',
+        '- recommendations max 3 items; missingKPIs max 3 items.'
+      ].join('\n');
     }
 
         function buildCoherencePrompt_User(ctx) {
@@ -32906,13 +33208,15 @@
         var llmResult, parsed;
         var attempts = 0;
         var maxAttempts = 2;
+        var currentMaxTokens = 4000;
+        var currentUserPrompt = userPrompt;
 
         while (attempts < maxAttempts) {
           attempts++;
           try {
             llmResult = await KABi.LLM.call(
-              [{ role: 'user', content: userPrompt }],
-              { systemPrompt: systemPrompt, maxTokens: 4000, temperature: 0.2 }
+              [{ role: 'user', content: currentUserPrompt }],
+              { systemPrompt: systemPrompt, maxTokens: currentMaxTokens, temperature: 0.2 }
               // Lower temperature for consistent issue detection
             );
           } catch (e) {
@@ -32922,13 +33226,27 @@
               try { if (typeof toast === 'function') toast('Coherence check using KABi Library mode.',  'ok'); } catch(_){}
               try {
                 llmResult = await KABi.LLM.call(
-                  [{ role: 'user', content: userPrompt }],
-                  { systemPrompt: systemPrompt, maxTokens: 4000, temperature: 0.2 }
+                  [{ role: 'user', content: currentUserPrompt }],
+                  { systemPrompt: systemPrompt, maxTokens: currentMaxTokens, temperature: 0.2 }
                 );
               } catch (e2){ throw new Error('checkCoherence: Both providers failed — ' + (e2.message||e2)); }
             } else {
               throw new Error('checkCoherence: LLM call failed — ' + e.message);
             }
+          }
+
+          // v67.23: If the response was truncated by the token ceiling, retry
+          // ONCE with (a) a larger ceiling and (b) an explicit brevity directive.
+          // Simply retrying at the same size with temperature 0.2 would produce
+          // the same output → same truncation (Section 10.7). This addresses
+          // the root cause instead of hoping the repair path always succeeds.
+          if (llmResult && llmResult.stopReason === 'max_tokens' && attempts < maxAttempts) {
+            currentMaxTokens = 8000;
+            var brevityDirective = (language === 'ar')
+              ? '\n\n[تعليمة إلزامية: أعد JSON مضغوطاً بحد أقصى 4 عناصر في issues، description ≤ 20 كلمة، suggestion ≤ 15 كلمة.]'
+              : '\n\n[MANDATORY DIRECTIVE: Return compact JSON. Max 4 items in issues. description ≤ 20 words. suggestion ≤ 15 words.]';
+            currentUserPrompt = userPrompt + brevityDirective;
+            continue; // retry with the enlarged ceiling and brevity ask
           }
 
           try {
@@ -32938,6 +33256,11 @@
             if (attempts >= maxAttempts) {
               throw new Error('checkCoherence: malformed JSON: ' + e.message);
             }
+            // Malformed on first attempt → retry with brevity directive too
+            var brevity2 = (language === 'ar')
+              ? '\n\n[تعليمة إلزامية: JSON صحيح فقط، بحد أقصى 4 عناصر في issues، description ≤ 20 كلمة.]'
+              : '\n\n[MANDATORY DIRECTIVE: Valid JSON only. Max 4 items in issues. description ≤ 20 words.]';
+            currentUserPrompt = userPrompt + brevity2;
           }
         }
 
@@ -35308,11 +35631,19 @@
       var critRows = ['S','M','A','R','T'].map(function (k) {
         var passed = result.smart[k];
         var color  = passed ? '#3BB691' : '#EF4444';
-        var icon   = passed ? '✓' : '✗';
+        // v67.26: ADR 1.6 compliance — Tabler icons instead of raw glyphs.
+        // Rendered via KABi.Icon so the SVG is embedded, not dependent on
+        // MutationObserver hydration (this modal builds its own subtree).
+        var iconName = passed ? 'check' : 'x';
+        var iconSvg = (window.KABi && KABi.Icon && KABi.Icon.render)
+          ? KABi.Icon.render(iconName, { size: 13, color: color, stroke: 3 })
+          : (passed ? 'PASS' : 'FAIL');
         var ev     = (result.smart.evidence && result.smart.evidence[k]) || '';
+        // v67.26: passed rows get muted styling — failed rows stand out first
+        var rowCls = passed ? 'kpiv-crit-row kpiv-crit-passed' : 'kpiv-crit-row kpiv-crit-failed';
         return (
-          '<div class="kpiv-crit-row">' +
-            '<div class="kpiv-crit-icon" style="background:' + color + '22;border:1.5px solid ' + color + ';color:' + color + '">' + icon + '</div>' +
+          '<div class="' + rowCls + '">' +
+            '<div class="kpiv-crit-icon" style="background:' + color + '22;border:1.5px solid ' + color + ';color:' + color + '">' + iconSvg + '</div>' +
             '<div style="flex:1;min-width:0">' +
               '<div class="kpiv-crit-name">' + critMeta[k].label + '</div>' +
               '<div class="kpiv-crit-evidence">' + ev + '</div>' +
@@ -35372,19 +35703,26 @@
         }
       }
 
-      // ─── Suggestions block (English-only chrome; user-typed AR text passes through if KPI was AR) ────
+      // ─── Suggestions block — v67.26: cards instead of bullet list.
+      //     Each suggestion is a compact card with a bulb-arrow icon and a
+      //     subtle amber left border. Reads as "curated advice", not a dump.
       var suggBlock = '';
       if (result.suggestions && result.suggestions.length) {
         var suggItems = result.suggestions.map(function (s) {
-          return '<li>' + s.text + '</li>';
+          var txt = String(s.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          return '<div class="kpiv-sugg-card">'
+               +   '<span class="kpiv-sugg-icon"><i class="ti ti-arrow-right"></i></span>'
+               +   '<span class="kpiv-sugg-text">' + txt + '</span>'
+               + '</div>';
         }).join('');
         suggBlock =
           '<div class="kpiv-suggestions">' +
-            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
-              '<span style="font-size:14px"><i class=\"ti ti-bulb ti-amber\"></i></span>' +
-              '<strong>Suggestions</strong>' +
+            '<div class="kpiv-sugg-hd">' +
+              '<span class="kpiv-sugg-hd-icon"><i class="ti ti-bulb"></i></span>' +
+              '<strong>How to improve</strong>' +
+              '<span class="kpiv-sugg-hd-count">' + result.suggestions.length + '</span>' +
             '</div>' +
-            '<ul>' + suggItems + '</ul>' +
+            '<div class="kpiv-sugg-list">' + suggItems + '</div>' +
           '</div>';
       }
 
@@ -35469,8 +35807,35 @@
         '#kabi-kpi-validate-modal .kpiv-btn-done{background:#216AB1!important;color:#fff!important;border:none!important;padding:9px 24px!important;border-radius:8px!important;font-weight:700!important;font-size:12px!important;cursor:pointer!important;box-shadow:0 4px 12px rgba(33,106,177,.3)}' +
         '#kabi-kpi-validate-modal .kpiv-btn-done:hover{background:#1EAFD9!important;transform:translateY(-1px);box-shadow:0 6px 16px rgba(30,175,217,.4)}' +
         '#kabi-kpi-validate-modal .kpiv-footer{padding:16px 22px;margin-top:18px;display:flex;justify-content:space-between;align-items:center;gap:12px}' +
-        '#kabi-kpi-validate-modal .kpiv-footer-text{font-size:10px;font-weight:600}' +
+        '#kabi-kpi-validate-modal .kpiv-footer-text{font-size:10px;font-weight:600;display:inline-flex;align-items:center;gap:6px}' +
         '#kabi-kpi-validate-modal .kpiv-kpi-box-rtl{direction:rtl;text-align:right;font-family:\'FS Albert Arabic Web\',\'FS Albert Arabic\',Poppins,Arial,sans-serif!important}' +
+
+        // v67.26: Hero status pill inside the header — verdict at a glance
+        '#kabi-kpi-validate-modal .kpiv-hero-pill{display:inline-flex;align-items:center;gap:7px;margin-top:10px;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.3px;line-height:1;backdrop-filter:blur(4px)}' +
+        '#kabi-kpi-validate-modal .kpiv-hero-pill-icon{display:inline-flex;align-items:center;font-size:14px}' +
+        '#kabi-kpi-validate-modal .kpiv-hero-pill-label{text-transform:uppercase}' +
+        '#kabi-kpi-validate-modal .kpiv-hero-pill-sep{opacity:.6;font-weight:400}' +
+        '#kabi-kpi-validate-modal .kpiv-hero-pill-score{font-weight:700;opacity:.9}' +
+
+        // v67.26: Refined score band — tighter gap + light divider below
+        '#kabi-kpi-validate-modal .kpiv-score-band{padding-top:18px;padding-bottom:18px;display:flex;align-items:center;gap:16px}' +
+
+        // v67.26: Passed vs. failed criterion visual treatment — failed rows
+        // get a left accent border and slightly darker background, so the eye
+        // lands on them first. Passed rows recede.
+        '#kabi-kpi-validate-modal .kpiv-crit-passed{opacity:.85}' +
+        '#kabi-kpi-validate-modal .kpiv-crit-failed{position:relative}' +
+        '#kabi-kpi-validate-modal .kpiv-crit-failed::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#EF4444;border-radius:0 2px 2px 0}' +
+
+        // v67.26: Suggestion cards
+        '#kabi-kpi-validate-modal .kpiv-sugg-hd{display:flex;align-items:center;gap:8px;margin-bottom:10px}' +
+        '#kabi-kpi-validate-modal .kpiv-sugg-hd strong{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;flex:1}' +
+        '#kabi-kpi-validate-modal .kpiv-sugg-hd-icon{display:inline-flex;align-items:center;font-size:14px;color:#F59E0B}' +
+        '#kabi-kpi-validate-modal .kpiv-sugg-hd-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;font-size:10px;font-weight:800;background:rgba(245,158,11,.15);color:#F59E0B}' +
+        '#kabi-kpi-validate-modal .kpiv-sugg-list{display:flex;flex-direction:column;gap:8px}' +
+        '#kabi-kpi-validate-modal .kpiv-sugg-card{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.55;border-left:2.5px solid #F59E0B}' +
+        '#kabi-kpi-validate-modal .kpiv-sugg-icon{flex-shrink:0;display:inline-flex;align-items:center;color:#F59E0B;font-size:14px;padding-top:1px}' +
+        '#kabi-kpi-validate-modal .kpiv-sugg-text{flex:1;min-width:0}' +
 
         // ═══════════════════════════════════════════════════════════════
         // LIGHT MODE — clean, readable on light surface
@@ -35495,6 +35860,10 @@
         'body.light-mode #kabi-kpi-validate-modal .kpiv-suggestions{background:rgba(245,158,11,.08)!important;border:1px solid rgba(245,158,11,.30)!important}' +
         'body.light-mode #kabi-kpi-validate-modal .kpiv-suggestions strong{color:#b45309!important}' +
         'body.light-mode #kabi-kpi-validate-modal .kpiv-suggestions ul,body.light-mode #kabi-kpi-validate-modal .kpiv-suggestions li{color:#07112c!important}' +
+        // v67.26 light-mode: suggestion cards + failed criterion row background
+        'body.light-mode #kabi-kpi-validate-modal .kpiv-sugg-card{background:rgba(255,255,255,.7)!important;color:#07112c!important;border-left-color:#F59E0B!important}' +
+        'body.light-mode #kabi-kpi-validate-modal .kpiv-crit-failed{background:rgba(239,68,68,.04)!important}' +
+        'body.light-mode #kabi-kpi-validate-modal .kpiv-footer-text{color:rgba(7,17,44,.5)!important}' +
         // Mismatch (purple accent on light)
         'body.light-mode #kabi-kpi-validate-modal .kpiv-mismatch{background:rgba(155,129,188,.08)!important;border:1px solid rgba(155,129,188,.35)!important}' +
         'body.light-mode #kabi-kpi-validate-modal .kpiv-mismatch-title{color:#7c3aed!important}' +
@@ -35529,6 +35898,9 @@
         'body:not(.light-mode) #kabi-kpi-validate-modal .kpiv-suggestions{background:rgba(245,158,11,.10)!important;border:1px solid rgba(245,158,11,.32)!important}' +
         'body:not(.light-mode) #kabi-kpi-validate-modal .kpiv-suggestions strong{color:#F59E0B!important}' +
         'body:not(.light-mode) #kabi-kpi-validate-modal .kpiv-suggestions ul,body:not(.light-mode) #kabi-kpi-validate-modal .kpiv-suggestions li{color:#e2e8f0!important}' +
+        // v67.26 dark-mode: suggestion cards + failed criterion row background
+        'body:not(.light-mode) #kabi-kpi-validate-modal .kpiv-sugg-card{background:rgba(8,15,32,.4)!important;color:#e2e8f0!important;border-left-color:#F59E0B!important}' +
+        'body:not(.light-mode) #kabi-kpi-validate-modal .kpiv-crit-failed{background:rgba(239,68,68,.06)!important}' +
         'body:not(.light-mode) #kabi-kpi-validate-modal .kpiv-mismatch{background:linear-gradient(135deg,rgba(155,129,188,.14),rgba(103,94,170,.08))!important;border:1px solid rgba(155,129,188,.4)!important}' +
         'body:not(.light-mode) #kabi-kpi-validate-modal .kpiv-mismatch-title{color:#9B81BC!important}' +
         'body:not(.light-mode) #kabi-kpi-validate-modal .kpiv-mismatch-body{color:#e2e8f0!important}' +
@@ -35546,7 +35918,8 @@
       modal.innerHTML =
         '<style>' + scopedCSS + '</style>' +
         '<div class="kpiv-card">' +
-          // Header
+          // Header — v67.26: adds an at-a-glance status pill so the outcome is
+          // visible immediately on open, before any scroll.
           '<div class="kpiv-header">' +
             '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">' +
               '<div style="flex:1;min-width:0">' +
@@ -35556,6 +35929,13 @@
                   '<span class="kpiv-subtle" style="font-size:10px;font-weight:600">· Validate Mode</span>' +
                 '</div>' +
                 '<div class="kpiv-subtle" style="font-size:11px;line-height:1.4">' + (fn.icon || '') + ' ' + fn.name + (fn.dept ? ' · ' + fn.dept : '') + '</div>' +
+                // v67.26: status pill — shows verdict at a glance in the hero
+                '<div class="kpiv-hero-pill" style="background:' + bandColor + '2E;border:1px solid ' + bandColor + '80;color:#fff">' +
+                  '<span class="kpiv-hero-pill-icon"><i class="ti ti-' + (score >= 4 ? 'circle-check' : (score >= 2 ? 'alert-triangle' : 'circle-x')) + '"></i></span>' +
+                  '<span class="kpiv-hero-pill-label">' + bandLabel + '</span>' +
+                  '<span class="kpiv-hero-pill-sep">·</span>' +
+                  '<span class="kpiv-hero-pill-score">' + score + '/5 SMART</span>' +
+                '</div>' +
               '</div>' +
               '<button id="kabi-kpiv-close" class="kpiv-btn-close" title="Close">×</button>' +
             '</div>' +
@@ -35570,8 +35950,8 @@
           // v63: Issues block — surfaced at TOP so duplicates etc. catch the eye immediately
           issuesBlock +
 
-          // SMART score band
-          '<div class="kpiv-section" style="padding-top:18px;display:flex;align-items:center;gap:16px">' +
+          // SMART score band — v67.26: refined layout, better rhythm
+          '<div class="kpiv-section kpiv-score-band">' +
             '<div class="kpiv-score-circle" style="background:linear-gradient(135deg,' + bandColor + '33,' + bandColor + '15);border:2.5px solid ' + bandColor + '">' +
               '<div class="kpiv-score-num" style="color:' + bandColor + '">' + score + '<span class="kpiv-score-suffix">/5</span></div>' +
               '<div class="kpiv-score-tag" style="color:' + bandColor + '">SMART</div>' +
@@ -35584,7 +35964,10 @@
 
           fitWarning +
 
-          // 5 criterion rows
+          // 5 criterion rows — v67.26: header line above so the block reads as a section
+          '<div class="kpiv-section" style="padding-top:14px">' +
+            '<div class="kpiv-label">SMART breakdown</div>' +
+          '</div>' +
           '<div class="kpiv-crits">' +
             critRows +
           '</div>' +
@@ -35592,9 +35975,9 @@
           suggBlock +
           rewriteBlock +
 
-          // Footer
+          // Footer — v67.26: cleaner, no dev-facing text
           '<div class="kpiv-footer">' +
-            '<div class="kpiv-footer-text">Powered by KPI Architect · Validate mode</div>' +
+            '<div class="kpiv-footer-text"><i class="ti ti-lock"></i> Advisory only — does not block submission</div>' +
             '<button id="kabi-kpiv-done" class="kpiv-btn-done">Done</button>' +
           '</div>' +
         '</div>';
@@ -36091,7 +36474,7 @@
       // Fill in defaults
       return Object.assign({
         model: 'claude-sonnet-4-6',
-        maxTokensPerCall: 1500,
+        maxTokensPerCall: 8192, // v67.23: was 1500 — silently clamped checkCoherence's 4000 request (Section 10.7 incomplete-fix); callers asking <=1500 are unaffected by Math.min
         maxCallsPerSession: 50,
         maxCostPerSessionUSD: 1.00,
         enableUsageTracking: true,
@@ -36125,7 +36508,7 @@
       var opts = options || {};
       var requestBody = {
         model: cfg.model || 'claude-sonnet-4-6',
-        max_tokens: Math.min(opts.maxTokens || 1500, cfg.maxTokensPerCall || 1500),
+        max_tokens: Math.min(opts.maxTokens || 1500, cfg.maxTokensPerCall || 8192), // v67.23: fallback aligned with raised clamp
         messages: messages
       };
       if (opts.systemPrompt) {
@@ -37249,7 +37632,7 @@
         if (action === 'use') {
           insertKpiIntoTextarea(fnKey, si, result.kpis[idx]);
           // Visual feedback
-          btn.textContent = rtl ? '✓ تم الإدراج' : '✓ Inserted';
+          btn.innerHTML = rtl ? '<i class="ti ti-check ti-green"></i> تم الإدراج' : '<i class="ti ti-check ti-green"></i> Inserted';
           btn.style.background = '#3BB691';
         } else if (action === 'dismiss') {
           btn.closest('div[style*="border-radius:10px"]').style.opacity = '0.4';
@@ -37595,7 +37978,7 @@
           '<button data-action="use" style="',
             'padding:5px 14px;border-radius:5px;cursor:pointer;font-size:10px;font-weight:800;',
             'border:none;background:' + t.accent + ';color:#fff;',
-          '">✓ ' + (rtl ? 'استخدم هذا' : 'Use this') + '</button>',
+          '"><i class="ti ti-check ti-green"></i> ' + (rtl ? 'استخدم هذا' : 'Use this') + '</button>',
         '</div>',
       '</div>'
     ].join('');
@@ -38091,7 +38474,7 @@
               '"><i class=\"ti ti-clipboard-list\"></i> KPI ' + (k + 1) + '</span>',
               (hasIssue || hasRef
                 ? ''
-                : '<span style="font-size:10px;color:' + t.success + ';font-weight:700">✓ ' + (rtl ? 'لا توجد ملاحظات' : 'No issues') + '</span>'
+                : '<span style="font-size:10px;color:' + t.success + ';font-weight:700"><i class="ti ti-check ti-green"></i> ' + (rtl ? 'لا توجد ملاحظات' : 'No issues') + '</span>'
               ),
             '</div>',
             '<div style="font-size:12px;line-height:1.5;color:' + t.text + ';margin-bottom:' + (hasIssue || hasRef ? '10px' : '0') + ';opacity:' + (hasIssue || hasRef ? '1' : '.7') + '">',
@@ -38204,7 +38587,7 @@
       html += '<button id="kabi-presubmit-confirm" style="' +
         'padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;' +
         'border:none;background:' + t.success + ';color:#fff' +
-        '">' + (rtl ? '✓ سلّم الآن' : '✓ Submit now') + '</button>';
+        '">' + (rtl ? '<i class="ti ti-check ti-green"></i> سلّم الآن' : '<i class="ti ti-check ti-green"></i> Submit now') + '</button>';
     }
 
     html += '</div></div></div>';
@@ -38221,13 +38604,18 @@
     var anywayBtn = document.getElementById('kabi-presubmit-anyway');
     if (anywayBtn) anywayBtn.onclick = function () {
       closeModal();
-      if (typeof onProceed === 'function') onProceed();
+      // v67.24: forward the overridden warnings so the submission can carry
+      // an audit trail — Super Admin needs to see that this manager saw an
+      // AI concern and chose to submit anyway (accountability, not blocking).
+      if (typeof onProceed === 'function') onProceed(result.issues || []);
     };
 
     var confirmBtn = document.getElementById('kabi-presubmit-confirm');
     if (confirmBtn) confirmBtn.onclick = function () {
       closeModal();
-      if (typeof onProceed === 'function') onProceed();
+      // v67.24: confirmBtn is the "everything OK" path — still pass issues[]
+      // (usually empty or info-only) so downstream can treat both paths uniformly.
+      if (typeof onProceed === 'function') onProceed(result.issues || []);
     };
   }
 
