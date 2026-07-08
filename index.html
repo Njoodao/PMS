@@ -2281,6 +2281,17 @@
       font-weight: 400;
     }
 
+    /* v67.31 FIX: Kill the duplicate KPI text render. When a KPI is selected
+       AND the card is in editable mode, hide the library-text header — the
+       textarea below IS the single source of truth. Without this rule, AI
+       Generate (or any user edit) causes the same text to render twice: once
+       in .kpi-txt and again inside .kpi-edit-ta. Read-only submitted view
+       (which lacks .sel-able) still shows .kpi-txt normally, as does the
+       unselected preview state. */
+    .kpi-item.on.sel-able .kpi-txt {
+      display: none;
+    }
+
     .kpi-edit-wrap {
       margin-top: 9px;
       display: none;
@@ -2344,6 +2355,16 @@
       pointer-events: none;
       transition: opacity 0.4s, filter 0.4s;
       position: relative;
+    }
+    /* v67.30 FIX: Level-switcher bar must remain clickable even when its host
+       container is in the .submitted (read-only) state. Each level's submission
+       is INDEPENDENT — submitting Staff Level must never lock out Management or
+       Top Management. This override overrides the parent's pointer-events: none.
+       See Section 10 anti-patch: CSS cascading killed sibling interactivity. */
+    #kpi-container.submitted .kpi-level-bar,
+    #kpi-container.submitted .kpi-level-bar * {
+      pointer-events: auto !important;
+      opacity: 1 !important;
     }
     #kpi-container.submitted .kpi-sec-hd h3,
     #kpi-container.submitted .kpi-tag,
@@ -7052,7 +7073,10 @@
       if (!openQ) { toast('<i class="ti ti-player-pause"></i> No active evaluation cycle', 'err'); return; }
       // Check employee has KPIs for their function
       if (typeof peGetApprovedKPIs === 'function') {
-        const kpis = peGetApprovedKPIs(target.fn);
+        // v67.37: Pass target.email so peGetApprovedKPIs derives target's own
+        // level from PE_EMPLOYEES, not the caller's (me) level. Otherwise a
+        // manager evaluating a Staff report would check Management KPIs.
+        const kpis = peGetApprovedKPIs(target.fn, target.email);
         if (!kpis || kpis.length === 0) {
           toast(`<i class="ti ti-alert-triangle ti-amber"></i> ${target.name} has no approved KPIs yet. KPI owner must submit first.`, 'err');
           return;
@@ -7847,6 +7871,41 @@
       return null;
     }
 
+    // v67.34: Global helper — replays the celebration confetti + bounces the
+    // icon. Wired to the icon's onclick in the banner template. Placed on
+    // window because the inline onclick in the HTML string runs in global
+    // scope (the enclosing IIFE that owns _renderCelebrationBanner is not
+    // reachable from a stringified attribute).
+    //
+    // Replay technique:
+    //   1. innerHTML self-reassignment on the .kabi-confetti-layer forces the
+    //      browser to tear down every .kabi-confetti-piece and rebuild them
+    //      from source. Fresh DOM nodes = CSS animations restart at frame 0.
+    //      (This is more reliable than toggling animation-name because it
+    //      also resets `animation-delay` on the staggered pieces.)
+    //   2. Icon bounce: cancel + reflow + reapply pattern — the classic way
+    //      to restart a CSS keyframe on an element without recreating it.
+    window.kabiReplayConfetti = function (iconEl) {
+      if (!iconEl) return;
+      var banner = iconEl.closest('.kabi-celebrate-banner');
+      if (!banner) return;
+      var layer = banner.querySelector('.kabi-confetti-layer');
+      if (layer) {
+        // Self-assignment recreates children; guard against edge case where
+        // innerHTML property triggers a mutation observer that empties it.
+        var freshHTML = layer.innerHTML;
+        layer.innerHTML = '';
+        // Force reflow so the browser commits the empty state before we
+        // repopulate — this guarantees fresh animation timelines.
+        void layer.offsetWidth;
+        layer.innerHTML = freshHTML;
+      }
+      // Bounce the icon for tactile feedback
+      iconEl.style.animation = 'none';
+      void iconEl.offsetWidth;
+      iconEl.style.animation = 'kabi-celebrate-icon-bounce .6s ease-out';
+    };
+
     // v67.28: Render the celebration banner HTML for the employee dashboard.
     // Returns empty string if nothing to show (no celebration or user dismissed).
     // Design: tasteful bilingual card + Tabler icon + light CSS confetti.
@@ -7867,8 +7926,15 @@
         icon = 'ti-cake';
         color = '#9B81BC';           // KABi brand purple
         colorRgb = '155,129,188';
-        msgEn = 'Wishing you a wonderful day, ' + firstName + '. May the year ahead bring you good health, joy, and success.';
-        msgAr = 'أطيب التمنيات لك في يومك يا ' + (firstNameAr || firstName) + '. أعاده الله عليك بالصحة والسعادة والتوفيق.';
+        // v67.33: Warmer, more personal message. Consolidates the tone that
+        // used to live in the (now-suppressed) "Message from KABi Family"
+        // card so the banner is the sole celebration surface for the
+        // employee's own birthday. Arabic is gender-aware (وأنتِ / وأنت).
+        msgEn = 'Happy birthday, ' + firstName + '! Wishing you a year filled with health, joy, and meaningful moments. The KABi team is grateful to have you with us.';
+        var gender = ((emp && emp.gender) || '').toLowerCase();
+        var youAr = gender === 'female' ? 'وأنتِ' : 'وأنت';
+        var byYouAr = gender === 'female' ? 'بوجودكِ' : 'بوجودك';
+        msgAr = 'كل عام ' + youAr + ' بخير يا ' + (firstNameAr || firstName) + '! نتمنى لك عاماً مليئاً بالصحة والسعادة والإنجاز. فريق KABi محظوظ ' + byYouAr + ' معنا.';
       } else {
         icon = 'ti-trophy';
         color = '#F59E0B';           // amber
@@ -7905,6 +7971,13 @@
           85%  { opacity: 1; }
           100% { transform: translateY(140px) rotate(540deg); opacity: 0; }
         }
+        /* v67.34: Icon bounce keyframe — fires on each click for tactile feedback */
+        @keyframes kabi-celebrate-icon-bounce {
+          0%   { transform: scale(1) rotate(0deg); }
+          30%  { transform: scale(1.18) rotate(-10deg); }
+          60%  { transform: scale(0.94) rotate(6deg); }
+          100% { transform: scale(1) rotate(0deg); }
+        }
         .kabi-celebrate-banner {
           position: relative;
           overflow: hidden;
@@ -7922,6 +7995,32 @@
           animation: kabi-confetti-fall 5s ease-out forwards;
           pointer-events: none;
           z-index: 1;
+        }
+        /* v67.34: The confetti layer wraps all pieces. Replay is done by
+           re-assigning its innerHTML to itself — the browser rebuilds every
+           child, so each new .kabi-confetti-piece starts its CSS animation
+           from frame zero. Layer stays behind content (z-index:1 pieces,
+           z-index:2 content). */
+        .kabi-confetti-layer {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 1;
+        }
+        /* v67.34: Icon is now a clickable trigger for the confetti replay.
+           Hover: subtle scale + brighter glow so users discover the interaction.
+           Active bounce keyframe is applied via inline style on click. */
+        .kabi-celebrate-icon {
+          cursor: pointer;
+          transition: transform .2s ease, box-shadow .2s ease;
+          user-select: none;
+        }
+        .kabi-celebrate-icon:hover {
+          transform: scale(1.08);
+          box-shadow: 0 8px 26px rgba(${colorRgb},.65);
+        }
+        .kabi-celebrate-icon:active {
+          transform: scale(0.96);
         }
         .kabi-celebrate-close {
           background: transparent;
@@ -7942,9 +8041,9 @@
         }
       </style>
       <div class="kabi-celebrate-banner">
-        ${confettiHtml}
+        <div class="kabi-confetti-layer">${confettiHtml}</div>
         <div style="display:flex;align-items:center;gap:16px;position:relative;z-index:2">
-          <div style="width:52px;height:52px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 6px 20px rgba(${colorRgb},.45)">
+          <div class="kabi-celebrate-icon" onclick="kabiReplayConfetti(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();kabiReplayConfetti(this);}" role="button" tabindex="0" aria-label="Play celebration again" title="Click for more confetti — انقر لإعادة الزينة" style="width:52px;height:52px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 6px 20px rgba(${colorRgb},.45)">
             <i class="ti ${icon}" style="font-size:26px;color:#ffffff"></i>
           </div>
           <div style="flex:1;min-width:0">
@@ -8185,6 +8284,44 @@
       const openQ = peGetOpenQ();
       const nudge = getAINudge(me.email);
       let html = '';
+
+      // v67.37: Manager alert banner — if the user is a manager AND has team
+      // members with pending_manager initiatives, show a compact "action
+      // needed" banner at the top of the dashboard with a jump-to-My-Team
+      // button. The banner is invisible when nothing needs review, so it
+      // doesn't clutter the dashboard for staff or for managers with no
+      // pending items. This is the third surface (after Manager View home
+      // and My Team tab) where pending initiatives are visible — putting it
+      // on the manager's DEFAULT landing page ensures they can't miss the
+      // notification even without navigating anywhere.
+      try {
+        const _u = me && USERS[me.email];
+        const _isMgr = _u && _u.hasManagerPortal;
+        if (_isMgr && typeof PE_EMPLOYEES !== 'undefined' && typeof INITIATIVES !== 'undefined') {
+          const _myDirects = PE_EMPLOYEES.filter(function (e) {
+            return (e.mgr || '').toLowerCase() === (me.email || '').toLowerCase() && !e.isFormer;
+          });
+          const _myDirectEmails = _myDirects.map(function (e) { return e.email; });
+          const _pendingInits = INITIATIVES.filter(function (i) {
+            return i.status === 'pending_manager' && _myDirectEmails.indexOf(i.empEmail) !== -1;
+          });
+          if (_pendingInits.length > 0) {
+            html += `
+              <div style="margin-bottom:16px;background:linear-gradient(135deg,rgba(251,191,36,.12),rgba(251,146,60,.06));border:1px solid rgba(251,191,36,.35);border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 4px 14px rgba(251,191,36,.08)">
+                <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#fbbf24,#f59e0b);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;color:#050d1f;box-shadow:0 4px 12px rgba(251,191,36,.4)">
+                  <i class="ti ti-bulb"></i>
+                </div>
+                <div style="flex:1;min-width:180px">
+                  <div style="font-size:13px;font-weight:800;color:var(--white);margin-bottom:2px">${_pendingInits.length} Team Initiative${_pendingInits.length !== 1 ? 's' : ''} Awaiting Your Review</div>
+                  <div style="font-size:10.5px;color:var(--text-muted);line-height:1.4">${_pendingInits.slice(0, 2).map(function (i) { return i.empName + ' — <em>' + i.title + '</em>'; }).join(' · ')}${_pendingInits.length > 2 ? ' · +' + (_pendingInits.length - 2) + ' more' : ''}</div>
+                </div>
+                <button onclick="empSideTab='team';empRenderTabContent();" style="padding:9px 16px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#050d1f;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;box-shadow:0 4px 10px rgba(251,191,36,.3)">
+                  <i class="ti ti-eye"></i> Review Now
+                </button>
+              </div>`;
+          }
+        }
+      } catch (e) { console.warn('[Dashboard manager alert]', e); }
 
       // Profile card
       if (emp) {
@@ -8654,6 +8791,16 @@
           </div>
         </div>
 
+        <!-- v67.37 FIX: Team Initiatives panel injected at the TOP of My Team
+             tab. v67.36 restored the panel only in Manager View (pg-home)
+             but managers land on pg-employee by default and navigate to
+             this My Team tab rather than switching views. Without this,
+             pending team initiatives were still invisible in the manager's
+             natural navigation path. The panel self-hides when there are
+             no initiatives (empty team OR no submissions), so this adds
+             zero clutter when nothing needs attention. -->
+        ${(typeof genManagerInitiativesPanel === 'function' ? genManagerInitiativesPanel(direct) : '')}
+
         <!-- Evaluable Direct Reports — FTE, active, in evaluation cycle -->
         <div style="margin-bottom:20px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
@@ -8912,7 +9059,14 @@
               const evalDone = (typeof PE_EVALS !== 'undefined' && PE_EVALS[evalKey] && !PE_EVALS[evalKey].isDraft) ? true : false;
               const evalDraft = (typeof PE_EVALS !== 'undefined' && PE_EVALS[evalKey] && PE_EVALS[evalKey].isDraft) ? true : false;
               // Check KPI readiness for this employee
-              const empKpis = (typeof peGetApprovedKPIs === 'function') ? peGetApprovedKPIs(r.fn) : [];
+              // v67.37: Pass r.email so peGetApprovedKPIs derives r's own
+              // level from PE_EMPLOYEES. Without this, the function defaults
+              // to me.email (the manager) and checks for Management-level
+              // KPIs instead of the target employee's actual level, which
+              // is often Staff. Manager viewing Staff report would see
+              // false 'KPIs Ready' or false 'KPIs Pending' based on the
+              // manager's own submissions, not the employee's.
+              const empKpis = (typeof peGetApprovedKPIs === 'function') ? peGetApprovedKPIs(r.fn, r.email) : [];
               const hasApprovedKPIs = empKpis && empKpis.length > 0;
 
               let status, button;
@@ -9209,7 +9363,12 @@
         var kpis = [];
         try {
           if (typeof peGetApprovedKPIs === 'function') {
-            kpis = peGetApprovedKPIs(emp.fn, me.email) || [];
+            // v67.37: Pass emp.level explicitly so we find the submission
+            // matching THIS employee's level, not the caller's. Manager
+            // submits KPIs for both Staff and Management levels of the same
+            // function; without the level filter, we'd return whichever
+            // came first regardless of whether it matches emp's level.
+            kpis = peGetApprovedKPIs(emp.fn, me.email, emp.level) || [];
           }
         } catch(e){}
 
@@ -14085,6 +14244,12 @@
         if (_allowedLevels.length <= 1) return; // no need for a switcher if only one level is granted
         var _curLvl = window._kpiSelectedLevel[primary];
         var lvlBar = document.createElement('div');
+        // v67.30 FIX: Class name added so the CSS override at #kpi-container.submitted
+        // .kpi-level-bar can re-enable pointer-events on this bar. Without it, the
+        // parent .submitted class's `pointer-events: none` cascades to every child
+        // including these level-switch buttons — visible bug: after submitting one
+        // level, the other level tabs become unclickable.
+        lvlBar.className = 'kpi-level-bar';
         lvlBar.style.cssText = 'display:flex;gap:8px;margin-bottom:16px;padding:12px 16px;background:linear-gradient(135deg,rgba(155,129,188,.08),rgba(103,94,170,.04));border:1px solid rgba(155,129,188,.2);border-radius:12px;align-items:center;flex-wrap:wrap';
         var lvlHtml = '<span style="font-size:11px;font-weight:800;color:#9B81BC;margin-right:8px;display:flex;align-items:center;gap:5px"><i class="ti ti-users" style="font-size:14px"></i> Assign KPIs for:</span>';
         _allowedLevels.forEach(function(lvl) {
@@ -14492,7 +14657,7 @@
         <div class="kpi-txt">${ed}</div>
         ${editable ? `<div class="kpi-edit-wrap">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-            <div class="kpi-edit-lbl" style="margin-bottom:0"><i class=\"ti ti-pencil\"></i> Write your KPI</div>
+            <div class="kpi-edit-lbl" style="margin-bottom:0"><i class=\"ti ti-pencil\"></i> Your KPI Statement</div>
             <div style="display:flex;gap:5px">
               <button class="btn-ai-generate-one" onclick="event.stopPropagation();KABi.UI.kpiInlineSuggest.open('${fnKey}',${si},${li})" title="Generate an AI suggestion for this KPI (aware of others in this section)" style="background:linear-gradient(135deg,rgba(33,106,177,.15),rgba(61,49,133,.15));color:#216AB1;border:1px solid rgba(33,106,177,.3);padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;cursor:pointer"><i class=\"ti ti-sparkles ti-cyan\"></i> AI Generate</button>
               <button class="btn-ai-validate" onclick="event.stopPropagation();validateKPI('${fnKey}',${si},${li})" title="Check this KPI against SMART criteria (Specific, Measurable, Achievable, Relevant, Time-bound)" style="background:rgba(0,194,224,.1);color:var(--cyan);border:1px solid rgba(0,194,224,.2);padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;cursor:pointer"><i class=\"ti ti-circle-check ti-green\"></i> AI Validate</button>
@@ -15125,7 +15290,7 @@
         <div style="display:flex;gap:6px;align-items:center">
           ${edited.length ? `<span style="font-size:9px;padding:2px 8px;border-radius:10px;background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.2)">${edited.length} edited</span>` : ''}
           <span style="font-size:9px;padding:2px 8px;border-radius:10px;background:rgba(34,197,94,.1);color:#4ade80;border:1px solid rgba(74,222,128,.2)"><i class=\"ti ti-circle-check ti-green\"></i> ${s.selKPIs.length} approved</span>
-                ${s.level ? '<span style="font-size:8px;padding:2px 6px;border-radius:8px;background:rgba(155,129,188,.1);color:#9B81BC;border:1px solid rgba(155,129,188,.2);margin-left:4px">' + s.level + '</span>' : ''}
+                ${s.level ? (function(){ var _ls = getLevelStyle(s.level); return '<span style="font-size:8px;padding:2px 6px;border-radius:8px;background:' + _ls.bg + ';color:' + _ls.color + ';border:1px solid ' + _ls.border + ';margin-left:4px;font-weight:800;display:inline-flex;align-items:center;gap:3px"><i class="ti ' + _ls.icon + '" style="font-size:9px"></i> ' + s.level + '</span>'; })() : ''}
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;">
@@ -15885,7 +16050,7 @@
       const recent = subs.slice(-3).reverse().map(s => `
     <div class="sub-card">
       <div class="sub-hd">
-        <div><div class="sub-user">${s.name}</div><div class="sub-dept">${s.fnName}${s.level ? ' · <span style="color:#9B81BC;font-weight:700">' + s.level + '</span>' : ''}</div></div>
+        <div><div class="sub-user">${s.name}</div><div class="sub-dept">${s.fnName}${s.level ? (function(){ var _ls = getLevelStyle(s.level); return ' · <span style="color:' + _ls.color + ';font-weight:700">' + s.level + '</span>'; })() : ''}</div></div>
         <div style="text-align:right"><div class="sub-time">${s.ts}</div><span class="status s${s.status[0]}">${s.status}</span></div>
       </div>
       <div style="font-size:12px;color:var(--text-muted)">${s.selKPIs.length} KPIs · ${s.selKPIs.filter(k => k.edited).length} edited</div>
@@ -15895,103 +16060,371 @@
     ${subs.length ? `<div class="panel"><h2>Recent Activity</h2><div class="panel-sub">Latest submissions from managers</div>${recent}</div>` : ''}`;
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // v67.35: All Submissions — compact card layout with search + filter
+    // + Excel export. Previous version rendered ALL submissions with ALL
+    // their KPIs expanded inline; unusable at scale, no way to filter, no
+    // way to export. Now:
+    //   • Each submission is a compact card (name / fn·dept·level / time
+    //     / status badge / KPI count / chevron). Click to expand.
+    //   • Expand reveals the full KPI list + AI override warnings + the
+    //     Approve/Reject/Reset/Delete action buttons (unchanged logic).
+    //   • Search filters across name, function, department, level, status.
+    //   • Status chips (All / Pending / Approved / Rejected) with live
+    //     counts act as a coarse filter.
+    //   • Export to Excel produces a two-sheet workbook via the SheetJS
+    //     library that was already loaded (L4463) for XLSX uploads. Sheet
+    //     1 = Submissions Overview (one row per submission). Sheet 2 =
+    //     KPI Details (denormalized, one row per KPI).
+    //   • window.__subsState carries the filter/expanded state across
+    //     re-renders (Approve/Reject/Reset/Delete all trigger re-render).
+    // ═══════════════════════════════════════════════════════════════════
     function renderSub(el) {
-      const cards = subs.length
-        ? subs.slice().reverse().map(s => {
-          // v67.24: pre-index the AI overrides by KPI position so each row can
-          // show a subtle amber marker next to "KPI N" when the manager chose
-          // to submit despite an AI warning.
-          const _overridesByKpi = {};
-          if (Array.isArray(s.aiOverrides)) {
-            s.aiOverrides.forEach(function (o) {
-              if (!o || o.kpiIndex < 0) return;
-              (_overridesByKpi[o.kpiIndex] = _overridesByKpi[o.kpiIndex] || []).push(o);
-            });
+      // Initialize / migrate state
+      if (!window.__subsState) {
+        window.__subsState = { search: '', status: 'all', expanded: new Set() };
+      }
+      var state = window.__subsState;
+
+      // Compute per-status counts for chip badges
+      var counts = {
+        all:      subs.length,
+        pending:  subs.filter(function (s) { return s.status === 'pending'; }).length,
+        approved: subs.filter(function (s) { return s.status === 'approved'; }).length,
+        rejected: subs.filter(function (s) { return s.status === 'rejected'; }).length
+      };
+
+      // Apply search + status filter (search is case-insensitive across
+      // the most useful fields; status is single-select).
+      var q = (state.search || '').toLowerCase().trim();
+      var filtered = subs.filter(function (s) {
+        if (state.status !== 'all' && s.status !== state.status) return false;
+        if (q) {
+          var hay = [s.name, s.fnName, s.dept, s.level, s.status, s.email]
+            .filter(Boolean).join(' ').toLowerCase();
+          if (hay.indexOf(q) === -1) return false;
+        }
+        return true;
+      });
+
+      // ── Header: title + Export button + search + filter chips ─────────
+      var searchEsc = (state.search || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+      function chipCss(active, color) {
+        return 'padding:6px 14px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;'
+          + 'border:1px solid ' + (active ? color : 'rgba(255,255,255,.1)') + ';'
+          + 'background:' + (active ? color + '20' : 'transparent') + ';'
+          + 'color:' + (active ? color : 'var(--text-muted)') + ';'
+          + 'font-family:inherit;transition:all .15s;'
+          + 'display:inline-flex;align-items:center;gap:6px';
+      }
+      var headerHtml =
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px;flex-wrap:wrap">'
+        +   '<div style="flex:1;min-width:200px">'
+        +     '<h2 style="margin:0">All Submissions</h2>'
+        +     '<div class="panel-sub" style="margin-top:4px">Review and approve KPI selections. Each submission also triggers an email to ' + HC_MAIL + '.</div>'
+        +   '</div>'
+        +   '<button onclick="subsExportExcel()" title="Download filtered list as Excel (.xlsx) — 2 sheets: Overview + KPI Details" style="padding:9px 16px;border-radius:8px;border:1px solid rgba(74,222,128,.35);background:linear-gradient(135deg,rgba(74,222,128,.1),rgba(34,197,94,.05));color:#4ade80;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap">'
+        +     '<i class="ti ti-file-spreadsheet"></i> Export to Excel'
+        +   '</button>'
+        + '</div>'
+        + '<div style="display:flex;gap:10px;align-items:center;margin:14px 0 18px;flex-wrap:wrap">'
+        +   '<div style="position:relative;flex:1;min-width:220px;max-width:420px">'
+        +     '<i class="ti ti-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:14px;pointer-events:none"></i>'
+        +     '<input id="kabi-sub-search" type="text" value="' + searchEsc + '" placeholder="Search by name, function, department, or level..." oninput="subsSearch(this.value)" style="width:100%;padding:9px 12px 9px 34px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:var(--white);font-size:12px;font-family:inherit;outline:none;transition:border-color .15s" onfocus="this.style.borderColor=\'var(--cyan)\'" onblur="this.style.borderColor=\'rgba(255,255,255,.1)\'">'
+        +   '</div>'
+        +   '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        +     '<button onclick="subsSetStatus(\'all\')" style="' + chipCss(state.status === 'all', '#1EAFD9') + '">All <span style="opacity:.7">' + counts.all + '</span></button>'
+        +     '<button onclick="subsSetStatus(\'pending\')" style="' + chipCss(state.status === 'pending', '#F59E0B') + '">Pending <span style="opacity:.7">' + counts.pending + '</span></button>'
+        +     '<button onclick="subsSetStatus(\'approved\')" style="' + chipCss(state.status === 'approved', '#4ade80') + '">Approved <span style="opacity:.7">' + counts.approved + '</span></button>'
+        +     '<button onclick="subsSetStatus(\'rejected\')" style="' + chipCss(state.status === 'rejected', '#f87171') + '">Rejected <span style="opacity:.7">' + counts.rejected + '</span></button>'
+        +   '</div>'
+        +   ((q || state.status !== 'all') ? '<div style="font-size:10px;color:var(--text-muted);margin-left:auto">Showing ' + filtered.length + ' of ' + subs.length + '</div>' : '')
+        + '</div>';
+
+      // ── Empty state ───────────────────────────────────────────────────
+      if (!filtered.length) {
+        el.innerHTML = '<div class="panel">' + headerHtml
+          + '<div class="empty" style="margin-top:20px">'
+          + '<div class="empty-ico"><i class="ti ti-' + (subs.length === 0 ? 'mailbox' : 'search-off') + '"></i></div>'
+          + (subs.length === 0 ? 'No submissions yet' : 'No submissions match your filter — try clearing search or switching to All')
+          + '</div></div>';
+        return;
+      }
+
+      // ── Cards ─────────────────────────────────────────────────────────
+      var cards = filtered.slice().reverse().map(function (s) {
+        var isExpanded = state.expanded.has(s.id);
+        var kpiCount = (s.selKPIs || []).length;
+        var _overrideCount = Array.isArray(s.aiOverrides) ? s.aiOverrides.length : 0;
+        var statusColor = s.status === 'approved' ? '#4ade80' : s.status === 'rejected' ? '#f87171' : '#F59E0B';
+        var initial = (s.name || '?').charAt(0).toUpperCase();
+
+        // Compact header — always visible, clickable to toggle
+        var compactHeader =
+          '<div class="sub-card-header" onclick="subsToggleCard(' + s.id + ')" style="padding:14px 18px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:background .15s" onmouseover="this.style.background=\'rgba(255,255,255,.02)\'" onmouseout="this.style.background=\'transparent\'">'
+          +   '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,' + statusColor + '30,' + statusColor + '10);border:1px solid ' + statusColor + '55;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;font-weight:800;color:' + statusColor + '">' + initial + '</div>'
+          +   '<div style="flex:1;min-width:0">'
+          +     '<div style="font-size:13px;font-weight:800;color:var(--white);margin-bottom:2px">' + (s.name || '—') + '</div>'
+          +     '<div style="font-size:10.5px;color:var(--text-muted);margin-bottom:4px">' + (s.fnName || '') + ' · ' + (s.dept || '')
+          +       (s.level ? (function(){ var _ls = getLevelStyle(s.level); return ' · <span style="padding:1px 7px;border-radius:8px;background:' + _ls.bg + ';color:' + _ls.color + ';border:1px solid ' + _ls.border + ';font-size:9px;font-weight:800;display:inline-flex;align-items:center;gap:3px"><i class="ti ' + _ls.icon + '" style="font-size:10px"></i> ' + s.level + '</span>'; })() : '')
+          +     '</div>'
+          +     '<div style="font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+          +       '<span><i class="ti ti-calendar" style="font-size:10px"></i> ' + (s.ts || '') + '</span>'
+          +       '<span><i class="ti ti-list-check" style="font-size:10px"></i> ' + kpiCount + ' KPI' + (kpiCount !== 1 ? 's' : '') + '</span>'
+          +       (_overrideCount > 0 ? '<span style="color:#F59E0B" title="AI raised ' + _overrideCount + ' concern(s) the manager overrode"><i class="ti ti-alert-triangle" style="font-size:10px"></i> ' + _overrideCount + ' override' + (_overrideCount !== 1 ? 's' : '') + '</span>' : '')
+          +     '</div>'
+          +   '</div>'
+          +   '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">'
+          +     '<span class="status s' + s.status[0] + '">' + s.status + '</span>'
+          +     '<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;background:rgba(255,255,255,.04);color:var(--text-muted);font-size:10px;transition:transform .2s;transform:rotate(' + (isExpanded ? 180 : 0) + 'deg)">▼</span>'
+          +   '</div>'
+          + '</div>';
+
+        // If collapsed, don't build the expensive expanded body
+        if (!isExpanded) {
+          return '<div class="sub-card" data-sub-id="' + s.id + '" style="padding:0;margin-bottom:10px;overflow:hidden">' + compactHeader + '</div>';
+        }
+
+        // ── Expanded body: KPI list + AI overrides + actions ────────────
+        // v67.24 AI override pre-indexing (unchanged from previous version).
+        var _overridesByKpi = {};
+        if (Array.isArray(s.aiOverrides)) {
+          s.aiOverrides.forEach(function (o) {
+            if (!o || o.kpiIndex < 0) return;
+            (_overridesByKpi[o.kpiIndex] = _overridesByKpi[o.kpiIndex] || []).push(o);
+          });
+        }
+
+        var chgs = s.selKPIs.map(function (k, i) {
+          // v67.23 rendering — only show what has content, keep KPI text tight
+          var hasOrig = k.orig && String(k.orig).trim();
+          var hasEdit = k.edited && String(k.edited).trim();
+          var body;
+          if (hasOrig && hasEdit && k.orig !== k.edited) {
+            body = '<span class="chg-orig">' + k.orig + '</span><span class="chg-arr">→</span><span class="chg-new">' + k.edited + '</span>';
+          } else {
+            body = '<span class="chg-only">' + ((hasEdit ? k.edited : k.orig) || '—') + '</span>';
           }
-          const _overrideCount = Array.isArray(s.aiOverrides) ? s.aiOverrides.length : 0;
+          // v67.24 AI override marker + note line
+          var _ovs = _overridesByKpi[i] || [];
+          var _marker = '';
+          var _noteLine = '';
+          if (_ovs.length) {
+            var _isCritical = _ovs.some(function (o) { return o.severity === 'critical'; });
+            var _color = _isCritical ? '#EF4444' : '#F59E0B';
+            var _tooltip = _ovs.map(function (o) { return (o.title ? o.title + ' — ' : '') + (o.description || ''); }).join(' | ').replace(/"/g, '&quot;');
+            _marker = '<span title="' + _tooltip + '" style="display:inline-flex;align-items:center;margin-left:6px;color:' + _color + ';font-size:11px;vertical-align:middle" aria-label="AI flagged this KPI"><i class="ti ti-alert-triangle"></i></span>';
+            var _first = _ovs[0];
+            _noteLine = '<div style="margin:4px 0 0 60px;font-size:10px;color:' + _color + ';line-height:1.5;font-style:italic;opacity:.9">'
+              + '<i class="ti ti-robot" style="font-size:10px"></i> AI review: ' + (_first.title || '').replace(/</g, '&lt;')
+              + (_first.description ? ' — ' + _first.description.replace(/</g, '&lt;') : '')
+              + (_ovs.length > 1 ? ' <span style="opacity:.7">(+' + (_ovs.length - 1) + ' more)</span>' : '')
+              + '</div>';
+          }
+          return '<div class="chg-row" style="flex-wrap:wrap">'
+            +     '<div style="display:flex;align-items:center;flex-basis:100%;gap:0">'
+            +       '<span class="chg-lbl">KPI ' + (i + 1) + _marker + '</span>' + body
+            +     '</div>' + _noteLine
+            +   '</div>';
+        }).join('');
 
-          const chgs = s.selKPIs.map((k, i) => {
-            // v67.23: When the manager wrote the KPI fresh (no original from the
-            // library), we were rendering an empty <span class="chg-orig"> that
-            // still consumed flex:1 space, pushing the arrow and the actual KPI
-            // text far to the right. Render only what has content, so the text
-            // sits immediately beside "KPI N".
-            const hasOrig = k.orig && String(k.orig).trim();
-            const hasEdit = k.edited && String(k.edited).trim();
-            let body;
-            if (hasOrig && hasEdit && k.orig !== k.edited) {
-              body = `<span class="chg-orig">${k.orig}</span><span class="chg-arr">→</span><span class="chg-new">${k.edited}</span>`;
-            } else {
-              body = `<span class="chg-only">${(hasEdit ? k.edited : k.orig) || '—'}</span>`;
-            }
-            // v67.24: AI override marker. Small amber alert icon next to the
-            // KPI label + a one-line note below the text with the AI's concern.
-            // Uses native title attribute for hover — no extra JS, no clutter.
-            const _ovs = _overridesByKpi[i] || [];
-            let _marker = '';
-            let _noteLine = '';
-            if (_ovs.length) {
-              const _isCritical = _ovs.some(function (o) { return o.severity === 'critical'; });
-              const _color = _isCritical ? '#EF4444' : '#F59E0B';
-              const _tooltip = _ovs.map(function (o) { return (o.title ? o.title + ' — ' : '') + (o.description || ''); }).join(' | ').replace(/"/g, '&quot;');
-              _marker = `<span title="${_tooltip}" style="display:inline-flex;align-items:center;margin-left:6px;color:${_color};font-size:11px;vertical-align:middle" aria-label="AI flagged this KPI"><i class="ti ti-alert-triangle"></i></span>`;
-              const _first = _ovs[0];
-              _noteLine = `<div style="margin:4px 0 0 60px;font-size:10px;color:${_color};line-height:1.5;font-style:italic;opacity:.9">
-                <i class="ti ti-robot" style="font-size:10px"></i> AI review: ${(_first.title || '').replace(/</g,'&lt;')}${_first.description ? ' — ' + _first.description.replace(/</g,'&lt;') : ''}${_ovs.length > 1 ? ` <span style="opacity:.7">(+${_ovs.length - 1} more)</span>` : ''}
-              </div>`;
-            }
-            return `
-          <div class="chg-row" style="flex-wrap:wrap">
-            <div style="display:flex;align-items:center;flex-basis:100%;gap:0">
-              <span class="chg-lbl">KPI ${i + 1}${_marker}</span>
-              ${body}
-            </div>
-            ${_noteLine}
-          </div>`;
-          }).join('');
+        var _overrideHeader = _overrideCount > 0
+          ? '<div style="margin:10px 0 6px;padding:8px 12px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.28);border-radius:8px;font-size:11px;color:#F59E0B;font-weight:600;display:flex;align-items:center;gap:8px">'
+            + '<i class="ti ti-alert-triangle"></i>'
+            + '<span>Manager submitted despite ' + _overrideCount + ' AI warning' + (_overrideCount > 1 ? 's' : '') + ' — details below</span>'
+            + '</div>'
+          : '';
 
-          // v67.24: header-level override summary — visible at a glance so
-          // Super Admin knows before scrolling that this submission carries
-          // manager-overridden warnings.
-          const _overrideHeader = _overrideCount > 0
-            ? `<div style="margin:10px 0 6px;padding:8px 12px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.28);border-radius:8px;font-size:11px;color:#F59E0B;font-weight:600;display:flex;align-items:center;gap:8px">
-                <i class="ti ti-alert-triangle"></i>
-                <span>Manager submitted despite ${_overrideCount} AI warning${_overrideCount > 1 ? 's' : ''} — details below</span>
-              </div>`
-            : '';
-          const isSuperAdmin = !!(me && me.role === 'pm_super_admin');
-          const superAdminActions = isSuperAdmin ? `
-              <div style="display:flex;gap:6px;margin-top:8px">
-                <button onclick="peSuperAdminResetSub(${s.id})" title="Super Admin only — reopen for a fresh Approve/Reject decision" style="padding:5px 10px;border-radius:5px;border:1px solid rgba(30,175,217,.3);background:rgba(30,175,217,.06);color:#1EAFD9;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit"><i class=\"ti ti-refresh\"></i> Reset to Pending</button>
-                <button onclick="peSuperAdminDeleteSub(${s.id})" title="Super Admin only — permanently delete this submission" style="padding:5px 10px;border-radius:5px;border:1px solid rgba(248,113,113,.25);background:rgba(248,113,113,.05);color:#f87171;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit"><i class=\"ti ti-trash ti-rose\"></i> Delete</button>
-              </div>` : '';
-          return `<div class="sub-card">
-          <div class="sub-hd">
-            <div><div class="sub-user">${s.name}</div><div class="sub-dept">${s.fnName} · ${s.dept}${s.level ? ' · <span style="padding:2px 8px;border-radius:8px;background:rgba(155,129,188,.12);color:#9B81BC;border:1px solid rgba(155,129,188,.2);font-size:9px;font-weight:800">' + s.level + '</span>' : ''}</div></div>
-            <div style="text-align:right"><div class="sub-time">${s.ts}</div><span class="status s${s.status[0]}">${s.status}</span></div>
-          </div>
-          ${_overrideHeader}
-          ${chgs}
-          <div id="sub-actions-${s.id}" style="margin-top:12px;">
-            ${s.status === 'pending' ? `
-              <div style="display:flex;gap:8px;">
-                <button class="btn-primary" style="padding:8px 16px;font-size:12px" onclick="confirmSub(${s.id},'approved')"><i class="ti ti-check ti-green"></i> Approve</button>
-                <button class="btn-ghost" style="padding:8px 14px;font-size:12px;border-color:rgba(248,113,113,.3);color:#f87171" onclick="confirmSub(${s.id},'rejected')"><i class="ti ti-x ti-rose"></i> Reject</button>
-              </div>`
-              : s.status === 'approved' ? `
-              <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(34,197,94,.08);border:1px solid rgba(74,222,128,.25);border-radius:8px;font-size:13px;font-weight:700;color:#4ade80">
-                <i class=\"ti ti-circle-check ti-green\"></i> Approved — Decision is final
-              </div>${superAdminActions}`
-                : `
-              <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(239,68,68,.08);border:1px solid rgba(248,113,113,.25);border-radius:8px;font-size:13px;font-weight:700;color:#f87171">
-                <i class="ti ti-x ti-rose"></i> Rejected — Decision is final
-              </div>${superAdminActions}`}
-          </div>
-        </div>`;
-        }).join('')
-        : `<div class="empty"><div class="empty-ico"><i class=\"ti ti-mailbox\"></i></div>No submissions yet</div>`;
-      el.innerHTML = `<div class="panel"><h2>All Submissions</h2><div class="panel-sub">Review and approve KPI selections. Each submission also triggers an email to ${HC_MAIL}.</div>${cards}</div>`;
+        // Action buttons — unchanged logic from previous version
+        var isSuperAdmin = !!(me && me.role === 'pm_super_admin');
+        var superAdminActions = isSuperAdmin
+          ? '<div style="display:flex;gap:6px;margin-top:8px">'
+            + '<button onclick="event.stopPropagation();peSuperAdminResetSub(' + s.id + ')" title="Super Admin only — reopen for a fresh Approve/Reject decision" style="padding:5px 10px;border-radius:5px;border:1px solid rgba(30,175,217,.3);background:rgba(30,175,217,.06);color:#1EAFD9;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-refresh"></i> Reset to Pending</button>'
+            + '<button onclick="event.stopPropagation();peSuperAdminDeleteSub(' + s.id + ')" title="Super Admin only — permanently delete this submission" style="padding:5px 10px;border-radius:5px;border:1px solid rgba(248,113,113,.25);background:rgba(248,113,113,.05);color:#f87171;font-size:9px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-trash ti-rose"></i> Delete</button>'
+            + '</div>'
+          : '';
+
+        var actionsHtml;
+        if (s.status === 'pending') {
+          actionsHtml = '<div style="display:flex;gap:8px">'
+            + '<button class="btn-primary" style="padding:8px 16px;font-size:12px" onclick="event.stopPropagation();confirmSub(' + s.id + ',\'approved\')"><i class="ti ti-check ti-green"></i> Approve</button>'
+            + '<button class="btn-ghost" style="padding:8px 14px;font-size:12px;border-color:rgba(248,113,113,.3);color:#f87171" onclick="event.stopPropagation();confirmSub(' + s.id + ',\'rejected\')"><i class="ti ti-x ti-rose"></i> Reject</button>'
+            + '</div>';
+        } else if (s.status === 'approved') {
+          actionsHtml = '<div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(34,197,94,.08);border:1px solid rgba(74,222,128,.25);border-radius:8px;font-size:13px;font-weight:700;color:#4ade80">'
+            + '<i class="ti ti-circle-check ti-green"></i> Approved — Decision is final</div>' + superAdminActions;
+        } else {
+          actionsHtml = '<div style="background:rgba(239,68,68,.06);border:1px solid rgba(248,113,113,.2);border-radius:8px;padding:12px 16px">'
+            + '<div style="font-size:13px;font-weight:700;color:#f87171;margin-bottom:5px"><i class="ti ti-x ti-rose"></i> Rejected — Decision is final</div>'
+            + (s.reason ? '<div style="font-size:12px;color:rgba(248,113,113,.65)"><span style="font-weight:700">Reason:</span> ' + s.reason + '</div>' : '')
+            + '</div>' + superAdminActions;
+        }
+
+        var expandedBody =
+          '<div class="sub-card-body" onclick="event.stopPropagation()" style="padding:0 18px 16px;border-top:1px solid rgba(255,255,255,.05);cursor:default">'
+          + _overrideHeader
+          + '<div style="margin-top:12px">' + chgs + '</div>'
+          + '<div id="sub-actions-' + s.id + '" style="margin-top:14px">' + actionsHtml + '</div>'
+          + '</div>';
+
+        return '<div class="sub-card" data-sub-id="' + s.id + '" style="padding:0;margin-bottom:10px;overflow:hidden">' + compactHeader + expandedBody + '</div>';
+      }).join('');
+
+      el.innerHTML = '<div class="panel">' + headerHtml + cards + '</div>';
+
+      // v67.35: Restore focus to search input if user was typing.
+      // The debounce (subsSearch) means this refocus only fires ~200ms after
+      // the last keystroke, so it never fights the user.
+      if (state._searchWasFocused) {
+        var inp = document.getElementById('kabi-sub-search');
+        if (inp) {
+          inp.focus();
+          var pos = (state.search || '').length;
+          try { inp.setSelectionRange(pos, pos); } catch (e) { /* some browsers reject on hidden */ }
+        }
+        state._searchWasFocused = false;
+      }
     }
+
+    // v67.35: Expand/collapse toggle for a single submission card.
+    // Uses window.__subsState.expanded (Set) so state survives re-renders
+    // (filter changes, Approve/Reject, etc). Full re-render is cheap for
+    // realistic submission counts (rarely > 100 in KABi's context).
+    window.subsToggleCard = function (id) {
+      if (!window.__subsState) window.__subsState = { search: '', status: 'all', expanded: new Set() };
+      var set = window.__subsState.expanded;
+      if (set.has(id)) set.delete(id); else set.add(id);
+      var el = document.getElementById('kpi-sub-body');
+      if (el) renderSub(el);
+    };
+
+    // v67.35: Debounced search. Marks the input as focused so renderSub
+    // can restore focus after the re-render (users typing don't see their
+    // cursor jump).
+    window.subsSearch = function (val) {
+      if (!window.__subsState) window.__subsState = { search: '', status: 'all', expanded: new Set() };
+      window.__subsState.search = val || '';
+      window.__subsState._searchWasFocused = true;
+      clearTimeout(window.__subsSearchTimer);
+      window.__subsSearchTimer = setTimeout(function () {
+        var el = document.getElementById('kpi-sub-body');
+        if (el) renderSub(el);
+      }, 200);
+    };
+
+    // v67.35: Status filter chip handler.
+    window.subsSetStatus = function (status) {
+      if (!window.__subsState) window.__subsState = { search: '', status: 'all', expanded: new Set() };
+      window.__subsState.status = status || 'all';
+      var el = document.getElementById('kpi-sub-body');
+      if (el) renderSub(el);
+    };
+
+    // v67.35: Excel export — uses the SheetJS library already loaded at
+    // L4463 (for XLSX uploads). Two sheets:
+    //   1. Submissions Overview — one row per submission, aggregate metadata
+    //   2. KPI Details — denormalized, one row per KPI, includes parent's
+    //      metadata + AI flag columns for pivot/filter downstream.
+    // Column widths tuned for readability in Excel. Filename carries date
+    // so multiple exports don't collide. Respects the active filter — you
+    // export exactly what you see on screen.
+    window.subsExportExcel = function () {
+      if (!window.XLSX) {
+        if (typeof toast === 'function') toast('Excel library not loaded — reload the page and try again', 'err');
+        return;
+      }
+      var state = window.__subsState || { search: '', status: 'all' };
+      var q = (state.search || '').toLowerCase().trim();
+      var list = subs.filter(function (s) {
+        if (state.status !== 'all' && s.status !== state.status) return false;
+        if (q) {
+          var hay = [s.name, s.fnName, s.dept, s.level, s.status, s.email]
+            .filter(Boolean).join(' ').toLowerCase();
+          if (hay.indexOf(q) === -1) return false;
+        }
+        return true;
+      });
+      if (!list.length) {
+        if (typeof toast === 'function') toast('Nothing to export with current filter', 'err');
+        return;
+      }
+
+      // Sheet 1: Overview — one row per submission
+      var overview = list.map(function (s) {
+        return {
+          'Submission ID':      s.id,
+          'Employee Name':      s.name || '',
+          'Email':              s.email || '',
+          'Function':           s.fnName || '',
+          'Department':         s.dept || '',
+          'Level':              s.level || '',
+          'Submitted At':       s.ts || '',
+          'Status':             s.status || '',
+          'KPI Count':          (s.selKPIs || []).length,
+          'AI Overrides':       Array.isArray(s.aiOverrides) ? s.aiOverrides.length : 0,
+          'Rejection Reason':   s.reason || ''
+        };
+      });
+
+      // Sheet 2: KPI Details — one row per KPI, denormalized
+      var kpiRows = [];
+      list.forEach(function (s) {
+        var overridesByKpi = {};
+        if (Array.isArray(s.aiOverrides)) {
+          s.aiOverrides.forEach(function (o) {
+            if (!o || o.kpiIndex < 0) return;
+            (overridesByKpi[o.kpiIndex] = overridesByKpi[o.kpiIndex] || []).push(o);
+          });
+        }
+        (s.selKPIs || []).forEach(function (k, idx) {
+          var ovs = overridesByKpi[idx] || [];
+          kpiRows.push({
+            'Submission ID': s.id,
+            'Employee Name': s.name || '',
+            'Function':      s.fnName || '',
+            'Department':    s.dept || '',
+            'Level':         s.level || '',
+            'Status':        s.status || '',
+            'Submitted At':  s.ts || '',
+            'KPI #':         idx + 1,
+            'Section':       k.secTitle || '',
+            'Original':      k.orig || '',
+            'Edited':        k.edited || '',
+            'Final':         k.final || k.edited || k.orig || '',
+            'AI Flagged':    ovs.length > 0 ? 'Yes' : 'No',
+            'AI Warning':    ovs.map(function (o) {
+              return (o.title || '') + (o.description ? ' — ' + o.description : '');
+            }).join(' | ')
+          });
+        });
+      });
+
+      var wb = XLSX.utils.book_new();
+      var wsOverview = XLSX.utils.json_to_sheet(overview);
+      var wsKPIs     = XLSX.utils.json_to_sheet(kpiRows);
+      // Column widths (Excel `wch` = character width)
+      wsOverview['!cols'] = [
+        { wch: 12 }, { wch: 24 }, { wch: 30 }, { wch: 26 }, { wch: 20 },
+        { wch: 14 }, { wch: 22 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 42 }
+      ];
+      wsKPIs['!cols'] = [
+        { wch: 12 }, { wch: 24 }, { wch: 26 }, { wch: 20 }, { wch: 14 },
+        { wch: 12 }, { wch: 22 }, { wch: 6 },  { wch: 22 }, { wch: 60 },
+        { wch: 60 }, { wch: 60 }, { wch: 10 }, { wch: 50 }
+      ];
+      XLSX.utils.book_append_sheet(wb, wsOverview, 'Submissions Overview');
+      XLSX.utils.book_append_sheet(wb, wsKPIs,     'KPI Details');
+
+      var fname = 'KABi_KPI_Submissions_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+      try {
+        XLSX.writeFile(wb, fname);
+        if (typeof toast === 'function') toast('<i class="ti ti-circle-check ti-green"></i> Exported ' + list.length + ' submission' + (list.length !== 1 ? 's' : '') + ' · ' + kpiRows.length + ' KPI row' + (kpiRows.length !== 1 ? 's' : ''), 'ok');
+      } catch (e) {
+        console.error('[subsExportExcel]', e);
+        if (typeof toast === 'function') toast('Excel export failed — ' + (e.message || 'unknown error'), 'err');
+      }
+    };
+
     function confirmSub(id, action) {
       const s = subs.find(s => s.id === id);
       if (!s || s.status !== 'pending') return;
@@ -16081,7 +16514,16 @@
       const card = actEl?.closest('.sub-card');
       if (card) { const badge = card.querySelector('.status'); if (badge) { badge.textContent = action; badge.className = `status s${action[0]}`; } }
       sendDecisionEmail(s, action, reason);
-      renderHC();
+      // v67.33 FIX: Do NOT call renderHC() — it invokes hcGoHome() at its
+      // end (L15642) which navigates the reviewer back to the HC home
+      // dashboard cards, kicking them out of the submissions review flow.
+      // Refresh ONLY the submissions list (same pattern as the Super Admin
+      // Reset/Delete helpers already use at L16051 / L16063).
+      var subBodyEl = document.getElementById('kpi-sub-body');
+      if (subBodyEl) renderSub(subBodyEl);
+      if (typeof hcRenderStats === 'function') {
+        try { hcRenderStats('kpi'); } catch (e) { /* stats refresh optional */ }
+      }
       toast(isApprove ? '<i class=\"ti ti-circle-check ti-green\"></i> Approved — decision locked' : '<i class="ti ti-x ti-rose"></i> Rejected — manager notified', isApprove ? 'ok' : 'err');
     }
 
@@ -18620,7 +19062,26 @@
     // ══════════════════════════════════════════════════════════════════
     // MODAL: Send Note to Employee (supports different tones)
     // ══════════════════════════════════════════════════════════════════
-    function openSendNoteModal(targetName, targetEmail, suggestedType) {
+    // v67.38: Send Congratulations — thin wrapper around openSendNoteModal
+    // used from the Academic Recognition card's "Send Congratulations" button.
+    // Pre-fills an achievement-aware template + opens the modal with
+    // 'appreciation' pre-selected. Manager can review/edit before sending.
+    // On send, the message flows through the same addNotification pipeline
+    // as any other note — the employee sees it in their notifications inbox
+    // under the appreciation type (amber accent).
+    window.empSendCongratsFor = function (empName, empEmail, achievementTitle) {
+      if (!empEmail) { toast('No recipient', 'err'); return; }
+      var firstName = (empName || '').split(' ').filter(Boolean)[0] || 'there';
+      var senderName = (me && me.name) ? me.name : 'your manager';
+      var body =
+        'Hi ' + firstName + ',\n\n' +
+        'Congratulations on earning "' + (achievementTitle || 'your recent achievement') + '"! 🎉\n\n' +
+        'This is a meaningful accomplishment — your commitment to growth strengthens the whole team, and it\'s good to see it formally recognized.\n\n' +
+        'With appreciation,\n' + senderName;
+      openSendNoteModal(empName || firstName, empEmail, 'appreciation', body);
+    };
+
+    function openSendNoteModal(targetName, targetEmail, suggestedType, customBody) {
       if (!targetEmail) { toast('No employee selected', 'err'); return; }
 
       // Determine default type + template
@@ -18633,6 +19094,13 @@
 
       const defaultType = suggestedType || 'note';
       const defaultTypeObj = noteTypes.find(t => t.value === defaultType) || noteTypes[0];
+      // v67.38: If a customBody is provided (e.g., from empSendCongratsFor with
+      // an achievement-aware template), seed the textarea with it. Otherwise
+      // use the default template for the pre-selected type. Users can still
+      // switch types after — selectNoteType overrides the textarea then.
+      const initialBody = (typeof customBody === 'string' && customBody.length > 0)
+        ? customBody
+        : defaultTypeObj.defaultBody;
 
       const overlay = document.createElement('div');
       overlay.id = 'send-note-overlay';
@@ -18661,7 +19129,7 @@
             </div>
 
             <label style="display:block;font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Your Message</label>
-            <textarea id="send-note-body" style="width:100%;min-height:130px;padding:12px 14px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--text-primary);font-size:13px;font-family:inherit;line-height:1.6;resize:vertical;outline:none;transition:border-color .15s" onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='rgba(255,255,255,.12)'" placeholder="Write your message...">${defaultTypeObj.defaultBody}</textarea>
+            <textarea id="send-note-body" style="width:100%;min-height:130px;padding:12px 14px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--text-primary);font-size:13px;font-family:inherit;line-height:1.6;resize:vertical;outline:none;transition:border-color .15s" onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='rgba(255,255,255,.12)'" placeholder="Write your message...">${initialBody}</textarea>
 
             <div style="margin-top:10px;padding:10px 12px;background:rgba(0,194,224,.05);border:1px solid rgba(0,194,224,.15);border-radius:8px;display:flex;align-items:center;gap:8px">
               <span style="font-size:14px"><i class=\"ti ti-bulb ti-amber\"></i></span>
@@ -19075,9 +19543,55 @@
 
     // Toggle collapse/expand of the notifications panel (persists across re-renders via window state)
     function empToggleNotifs() {
+      // v67.33 FIX: Do NOT re-render the entire dashboard on toggle. Previous
+      // implementation called empRenderDashboardContent(body) which regenerates
+      // the whole dashboard via innerHTML replacement — this destroys the
+      // notifs-list element and rebuilds it, so the CSS transition never gets
+      // to animate (new element appears with its final state). It also caused
+      // the whole dashboard to flicker. Now: mutate the existing DOM in place.
       window.__notifsCollapsed = !window.__notifsCollapsed;
-      const body = document.getElementById('emp-side-body');
-      if (body) empRenderDashboardContent(body);
+      var collapsed = window.__notifsCollapsed;
+
+      var card = document.getElementById('emp-notifs-card');
+      if (!card) return;
+
+      // 1. Animate the list expand/collapse — the same element persists, so
+      //    the CSS transition:max-height .3s ease fires correctly.
+      var listEl = document.getElementById('emp-notifs-list');
+      if (listEl) {
+        listEl.style.maxHeight = collapsed ? '0' : '560px';
+        listEl.style.overflow  = collapsed ? 'hidden' : 'auto';
+      }
+
+      // 2. Header border-bottom: remove when collapsed (no visible list below)
+      var headerEl = card.querySelector('[onclick*="empToggleNotifs"]');
+      if (headerEl) {
+        headerEl.style.borderBottom = collapsed ? 'none' : '1px solid rgba(167,139,250,.2)';
+      }
+
+      // 3. Chevron rotation (▼ points down when collapsed, up when open)
+      var chevronEl = card.querySelector('span[style*="rotate"]');
+      if (chevronEl) {
+        chevronEl.style.transform = 'rotate(' + (collapsed ? 0 : 180) + 'deg)';
+      }
+
+      // 4. Show/Hide button label + tooltip
+      var toggleBtns = card.querySelectorAll('button[onclick*="empToggleNotifs"]');
+      if (toggleBtns.length > 0) {
+        var toggleBtn = toggleBtns[0];
+        toggleBtn.title = collapsed ? 'Expand notifications' : 'Collapse notifications';
+        var labelSpans = toggleBtn.querySelectorAll('span');
+        // The second span holds the "Show"/"Hide" text (the first is the chevron).
+        if (labelSpans.length >= 2) {
+          labelSpans[1].textContent = collapsed ? 'Show' : 'Hide';
+        }
+      }
+
+      // 5. Hide "Mark all read" when collapsed (matches original template logic)
+      var markAllBtn = card.querySelector('button[onclick*="empMarkAllRead"]');
+      if (markAllBtn) {
+        markAllBtn.style.display = collapsed ? 'none' : '';
+      }
     }
 
     function empMarkAllRead() {
@@ -19490,28 +20004,75 @@
     }
     // Returns ONLY KPIs that have been FULLY approved by HC (final approval).
     // Employees should see no KPIs until their manager submits AND HC approves them.
+    // v67.38: Per-level style helper. Returns color palette + icon for each
+    // of the three org levels. Previously all levels rendered as the same
+    // purple chip — visually confusing when a page listed multiple levels
+    // side by side. These colors are picked from the KABi brand palette
+    // and align with the icons already used at L8288 (crown/briefcase/user).
+    // Attached to window so template literals in any script block can call
+    // it without scope juggling.
+    window.getLevelStyle = function (level) {
+      var map = {
+        'Top Management': { color: '#F59E0B', bg: 'rgba(245,158,11,.14)', border: 'rgba(245,158,11,.35)', icon: 'ti-crown' },
+        'Management':     { color: '#216AB1', bg: 'rgba(33,106,177,.14)',  border: 'rgba(33,106,177,.35)',  icon: 'ti-briefcase' },
+        'Staff Level':    { color: '#3BB691', bg: 'rgba(59,182,145,.14)',  border: 'rgba(59,182,145,.35)',  icon: 'ti-user' }
+      };
+      return map[level] || { color: '#9CA3AF', bg: 'rgba(156,163,175,.10)', border: 'rgba(156,163,175,.25)', icon: 'ti-user' };
+    };
+
     function peGetApprovedKPIs(fnArr, forEmail, forLevel) {
       if (!fnArr) return [];
       if (!Array.isArray(fnArr)) fnArr = [fnArr];
       const email = forEmail || (typeof me !== 'undefined' ? me?.email : null);
+
+      // v67.37 FIX: Derive level from PE_EMPLOYEES via email when not passed.
+      // Root-cause fix for the bug where Manager Fahad's own dashboard showed
+      // Staff-level KPIs whenever he had submitted BOTH Staff KPIs (for his
+      // team) AND Management KPIs (for himself) for the same function.
+      // Without level filtering, subs.find() returned the first approved
+      // match — often the Staff one because it was submitted earlier.
+      // Case-insensitive email comparison matches peGetDirectReports at L6301.
+      let level = forLevel;
+      if (!level && email && typeof PE_EMPLOYEES !== 'undefined') {
+        const _empLookup = PE_EMPLOYEES.find(function (e) {
+          return (e.email || '').toLowerCase() === email.toLowerCase();
+        });
+        if (_empLookup && _empLookup.level) level = _empLookup.level;
+      }
+
       let allKPIs = [];
       fnArr.forEach(fnKey => {
         const isPaired = (typeof fnIsPaired === 'function') && fnIsPaired(fnKey);
         let sub;
-        // v67.21: If forLevel is specified, prefer submissions for that level
-        if (email) {
-          if (forLevel) {
-            sub = subs.find(s => s.fnKey === fnKey && s.status === 'approved' && s.email === email && s.level === forLevel);
+
+        if (level) {
+          // v67.37: STRICT level matching. If level is known (passed or
+          // derived), never fall back to a different level's submission —
+          // even if it means returning zero KPIs. Zero returns render as
+          // "Awaiting final approval" which is the correct empty state; the
+          // old behavior of leaking cross-level KPIs was the bug.
+
+          // Prefer submissions this user themselves owns (fn + email + level)
+          if (email) {
+            sub = isPaired
+              ? subs.find(s => (s.fnKey === fnKey || s.pairedFnKey === fnKey) && s.status === 'approved' && s.email === email && s.level === level)
+              : subs.find(s => s.fnKey === fnKey && s.status === 'approved' && s.email === email && s.level === level);
           }
+          // Fall back to any manager's submission for this fn + level — used
+          // when a Staff employee views KPIs their manager submitted for them
           if (!sub) {
+            sub = isPaired
+              ? subs.find(s => (s.fnKey === fnKey || s.pairedFnKey === fnKey) && s.status === 'approved' && s.level === level)
+              : subs.find(s => s.fnKey === fnKey && s.status === 'approved' && s.level === level);
+          }
+          // No level fallback beyond this — return empty rather than wrong level.
+        } else {
+          // No level context (rare — only when neither forLevel nor a
+          // resolvable email is available). Preserve original loose behavior.
+          if (email) {
             sub = isPaired
               ? subs.find(s => (s.fnKey === fnKey || s.pairedFnKey === fnKey) && s.status === 'approved' && s.email === email)
               : subs.find(s => s.fnKey === fnKey && s.status === 'approved' && s.email === email);
-          }
-        }
-        if (!sub) {
-          if (forLevel) {
-            sub = subs.find(s => s.fnKey === fnKey && s.status === 'approved' && s.level === forLevel);
           }
           if (!sub) {
             sub = isPaired
@@ -19519,6 +20080,7 @@
               : subs.find(s => s.fnKey === fnKey && s.status === 'approved');
           }
         }
+
         if (sub) {
           if (isPaired && Array.isArray(sub.selKPIs)) {
             const scoped = sub.selKPIs.filter(k => (k.scope || k.fnKey || sub.fnKey) === fnKey);
@@ -26184,6 +26746,16 @@
       const sub = audience === 'self'
         ? 'Your academic achievement has been formally recognized by HC.'
         : `${empName} completed an academic milestone — recognized organization-wide on ${reviewedDate}.`;
+      // v67.38: Manager-only celebration action. When manager views a team
+      // member's approved academic achievement, offer a "Send Congratulations"
+      // button that opens the note modal pre-filled with an achievement-aware
+      // appreciation message. Escaped name/email/title for onclick safety.
+      const _empEmailEsc  = (init.empEmail || '').replace(/'/g, "\\'");
+      const _empNameEsc   = (empName || '').replace(/'/g, "\\'");
+      const _titleEsc     = (init.title || '').replace(/'/g, "\\'");
+      const congratsBtn = (audience === 'manager' && init.empEmail)
+        ? `<button onclick="event.stopPropagation();empSendCongratsFor('${_empNameEsc}','${_empEmailEsc}','${_titleEsc}')" title="Send a congratulatory note to ${empName}" style="margin-top:12px;padding:8px 16px;background:linear-gradient(135deg,#3BB691,#22c55e);border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(59,182,145,.3);transition:transform .15s" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='translateY(0)'"><i class="ti ti-confetti"></i> Send Congratulations</button>`
+        : '';
       return `
         <div style="background:linear-gradient(135deg,rgba(33,106,177,.10),rgba(155,129,188,.06));border:1px solid rgba(33,106,177,.35);border-radius:14px;padding:16px 18px;position:relative;overflow:hidden">
           <div style="position:absolute;top:-12px;right:-12px;font-size:80px;opacity:.08;pointer-events:none"><i class=\"ti ti-school\"></i></div>
@@ -26201,6 +26773,7 @@
                 <span>·</span>
                 <span>Recognized ${reviewedDate}</span>
               </div>
+              ${congratsBtn}
             </div>
           </div>
         </div>`;
@@ -27597,7 +28170,17 @@
           `}
         </div>
 
-        <!-- v67.21 TRAINING: Initiatives panel hidden per request -->
+        <!-- v67.36 FIX: Team Initiatives review panel restored. Was hidden
+             in v67.21 with the comment "TRAINING: Initiatives panel hidden
+             per request" — but the request was training-scoped and never
+             un-hidden. Meanwhile employees continued to submit initiatives
+             which appeared in Super Admin's view (renderHCInitiatives) but
+             not in the direct manager's view. Result: managers had no way
+             to Approve/Reject, and Super Admin could not act either because
+             the workflow blocks HC on 'pending_manager' status. Pure
+             re-wiring — the function itself (genManagerInitiativesPanel)
+             was fully implemented at L28031, just never called. -->
+        ${genManagerInitiativesPanel(myEmps)}
         `;
       }
     };
@@ -27727,7 +28310,17 @@
         }
       } catch (e) { console.warn(e); }
       toast(decision === 'approve' ? '<i class=\"ti ti-circle-check ti-green\"></i> Approved & sent to HC' : '<i class="ti ti-x ti-rose"></i> Rejected', decision === 'approve' ? 'ok' : 'err');
-      renderHome();
+      // v67.37: Refresh whichever view the manager is currently on.
+      // renderHome() re-renders Manager View (pg-home) if visible.
+      // empRenderTabContent() re-renders the My Team / dashboard tabs on
+      // pg-employee. Calling both is safe — each is a no-op when its target
+      // page is hidden. Without this, approving from My Team tab left the
+      // panel stale showing the initiative as still pending until the user
+      // navigated away and back.
+      try { renderHome(); } catch (e) { /* renderHome optional */ }
+      try {
+        if (typeof empRenderTabContent === 'function') empRenderTabContent();
+      } catch (e) { /* tab refresh optional */ }
     }
 
     // ── HOOK: CEO Performance tab ──
@@ -35726,23 +36319,16 @@
           '</div>';
       }
 
-      // ─── Suggested rewrite block (only when present) ────────────────
+      // ─── Suggested rewrite block ────────────────────────────────────
+      // v67.33: Suggested rewrite section removed per user request.
+      // The rewrite was redundant with AI Generate (which produces full
+      // suggestions in the KPI card) and cluttered the Validate Modal.
+      // Managers now use AI Generate for wholesale rewrites and AI Validate
+      // strictly for SMART-scoring their own text — cleaner mental model.
+      // The upstream `result.rewrite` field is preserved (agent still returns
+      // it) so we don't break any external consumers, but it is no longer
+      // rendered in this modal.
       var rewriteBlock = '';
-      if (result.rewrite) {
-        var rewriteEsc = result.rewrite.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        rewriteBlock =
-          '<div class="kpiv-rewrite">' +
-            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
-              '<span style="font-size:14px"><i class=\"ti ti-sparkles ti-cyan\"></i></span>' +
-              '<strong class="kpiv-rewrite-title">Suggested rewrite</strong>' +
-            '</div>' +
-            '<div class="kpiv-rewrite-text">' + rewriteEsc + '</div>' +
-            '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-              '<button id="kabi-kpiv-use-rewrite" class="kpiv-btn kpiv-btn-primary" data-rewrite="' + rewriteEsc + '">Use this rewrite</button>' +
-              '<button id="kabi-kpiv-keep-mine" class="kpiv-btn kpiv-btn-secondary">Keep mine</button>' +
-            '</div>' +
-          '</div>';
-      }
 
       // ─── Build & inject the modal ───────────────────────────────────
       var existing = document.getElementById('kabi-kpi-validate-modal');
@@ -35764,8 +36350,12 @@
       var scopedCSS =
         '@keyframes kabi-fade-in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}' +
         // ─── Universal: layout, fonts, transitions ────────────────────
-        '#kabi-kpi-validate-modal *{box-sizing:border-box;font-family:Poppins,Arial,sans-serif!important}' +
-        '#kabi-kpi-validate-modal .kpiv-card{border-radius:16px!important;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.18);font-family:Poppins,Arial,sans-serif!important}' +
+        // v67.31: Font-family aligned with KABi system (FSAlbert as primary,
+        // Poppins/Arial as fallback). Previously used Poppins first, which
+        // broke visual consistency with the rest of the portal (declared
+        // @font-face 'FSAlbert' at file head; body uses it via L92).
+        '#kabi-kpi-validate-modal *{box-sizing:border-box;font-family:\'FSAlbert\',Poppins,Arial,sans-serif!important}' +
+        '#kabi-kpi-validate-modal .kpiv-card{border-radius:16px!important;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.18);font-family:\'FSAlbert\',Poppins,Arial,sans-serif!important}' +
         // Header is the SAME in both themes (KABi Mid Blue brand band)
         '#kabi-kpi-validate-modal .kpiv-header{padding:18px 22px 14px!important;background:linear-gradient(135deg,#216AB1,#1EAFD9)!important;border-radius:16px 16px 0 0!important}' +
         '#kabi-kpi-validate-modal .kpiv-header,#kabi-kpi-validate-modal .kpiv-header *{color:#fff!important}' +
@@ -35800,7 +36390,7 @@
         '#kabi-kpi-validate-modal .kpiv-rewrite{margin:14px 20px 0;padding:14px 16px;border-radius:10px!important}' +
         '#kabi-kpi-validate-modal .kpiv-rewrite-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px}' +
         '#kabi-kpi-validate-modal .kpiv-rewrite-text{font-size:13px;font-weight:600;line-height:1.55;padding:10px 12px;border-radius:8px;margin-bottom:10px}' +
-        '#kabi-kpi-validate-modal .kpiv-btn{padding:10px 18px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:Poppins,Arial,sans-serif!important;transition:all .15s;border:none}' +
+        '#kabi-kpi-validate-modal .kpiv-btn{padding:10px 18px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:\'FSAlbert\',Poppins,Arial,sans-serif!important;transition:all .15s;border:none}' +
         '#kabi-kpi-validate-modal .kpiv-btn-primary{background:linear-gradient(135deg,#216AB1,#1EAFD9)!important;color:#fff!important;box-shadow:0 4px 14px rgba(30,175,217,.3);flex:1;min-width:140px}' +
         '#kabi-kpi-validate-modal .kpiv-btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(30,175,217,.45)}' +
         '#kabi-kpi-validate-modal .kpiv-btn-secondary{flex:1;min-width:140px}' +
@@ -36242,6 +36832,14 @@
   };
 
   // Internal: inject employee's own celebration card into the dashboard body
+  // v67.33: The card injection is now a no-op for birthdays/anniversaries.
+  // The v67.28 top-of-dashboard banner (_renderCelebrationBanner) already
+  // handles the employee's own celebrations with a more polished visual
+  // (confetti animation, gradient border, dismissible). Rendering both was
+  // reported as duplicated messaging. If the future adds occasion types
+  // beyond birthday/anniversary (e.g. Eid, National Day) that the banner
+  // does NOT cover, they can still fall through the card path — but the
+  // two overlapping types are now suppressed here.
   KABi.UI._injectEmployeeCard = async function (body) {
     try {
       var meEmail = (typeof me !== 'undefined' && me) ? me.email : null;
@@ -36251,6 +36849,16 @@
       if (!emp) return;
       var detection = await KABi.AgentRegistry.invoke('culturalCompanion', 'detect', emp);
       if (!detection || !detection.hasAny) return;
+
+      // v67.33: Suppress birthday/anniversary duplication — banner owns them.
+      // Only render the card if there is a non-birthday, non-anniversary
+      // occasion detected (currently none, but the guard keeps the pathway
+      // open for future occasion types without changing this file again).
+      var hasOnlyBannerTypes =
+        (detection.birthday || detection.anniversary) &&
+        !detection.hasOccasion;   // hasOccasion is set for future occasion types
+      if (hasOnlyBannerTypes) return;
+
       var card = KABi.UI.buildCelebrationCard(detection);
       if (!card) return;
       var wrapper = document.createElement('div');
@@ -37843,6 +38451,20 @@
       textarea.parentNode.insertBefore(container, textarea.nextSibling);
     }
 
+    // v67.33 ROOT-CAUSE FIX: The container is a DOM descendant of .kpi-item,
+    // which has a click handler (L14532) calling toggleKPI on any non-textarea
+    // click. Without this stopPropagation, clicking Use this / Try another /
+    // × / anywhere in the suggest panel bubbles up to .kpi-item, triggers
+    // toggleKPI, which DESELECTS the KPI (removes .on class), which hides
+    // .kpi-edit-wrap (display:none per CSS), which visually "closes" the
+    // suggest panel. The v67.32 removal of setTimeout(closeInline) was
+    // correct but insufficient — the panel was still being torn down via
+    // the parent's toggle. Stopping propagation here protects buttons AND
+    // padding clicks in one place.
+    container.addEventListener('click', function (e) {
+      e.stopPropagation();
+    });
+
     // Inject one-time font-fix style for inline containers
     if (!document.getElementById('kabi-inline-fontfix')) {
       var fontFix = document.createElement('style');
@@ -37884,24 +38506,36 @@
   }
 
   // ─── Render states ──────────────────────────────────────────────────
-  function renderLoading(container, label) {
+  // v67.32: renderLoading accepts an isRegenerating flag so "Try another"
+  // shows a contextual message ("Generating a new suggestion...") instead of
+  // the initial-open message. More importantly, the loading box now has a
+  // min-height that roughly matches a rendered suggestion — previously the
+  // container would visibly shrink from ~120px down to ~40px while the API
+  // was in flight, which the user perceived as the panel "closing and
+  // reopening" on every Try another click.
+  function renderLoading(container, isRegenerating) {
     var t = getThemeColors();
     var rtl = isRtl();
+    var msg = isRegenerating
+      ? (rtl ? 'يولّد اقتراحاً جديداً...' : 'Generating a new suggestion...')
+      : (rtl ? 'يولّد الذكاء الاصطناعي اقتراحاً...' : 'AI is generating a suggestion...');
     container.innerHTML = [
       '<div style="',
-        'padding:10px 14px;border-radius:8px;',
+        'padding:20px 14px;border-radius:8px;',
         'background:' + t.panelBg + ';',
         'border:1px solid ' + t.panelBorder + ';',
-        'display:flex;align-items:center;gap:10px;color:' + t.text + ';',
+        'display:flex;flex-direction:column;align-items:center;justify-content:center;',
+        'gap:12px;color:' + t.text + ';',
+        'min-height:100px;',
       '">',
         '<div style="',
-          'width:14px;height:14px;flex-shrink:0;',
-          'border:2px solid rgba(33,106,177,.2);',
+          'width:22px;height:22px;flex-shrink:0;',
+          'border:2.5px solid rgba(33,106,177,.2);',
           'border-top-color:' + t.accent + ';',
           'border-radius:50%;animation:kabi-suggest-spin 0.7s linear infinite;',
         '"></div>',
-        '<span style="font-size:11px;opacity:.85">',
-          rtl ? 'يولّد الذكاء الاصطناعي اقتراحاً...' : 'AI is generating a suggestion...',
+        '<span style="font-size:11px;opacity:.85;font-weight:600">',
+          msg,
         '</span>',
       '</div>',
       '<style>@keyframes kabi-suggest-spin{to{transform:rotate(360deg)}}</style>'
@@ -37989,11 +38623,21 @@
         var action = btn.getAttribute('data-action');
         if (action === 'use') {
           insertSuggestionIntoSlot(fnKey, si, li, suggestion);
-          // v67.21: Brief delay before close so user sees confirmation
-          btn.textContent = '\u2713 Done';
+          // v67.32: Do NOT auto-close after Use this. The user's workflow is:
+          // (1) click Use this → text applies to textarea (2) may want to
+          // browse more via Try another (3) dismisses when done. Prior
+          // behavior (setTimeout closeInline @ 600ms) forced them to re-click
+          // AI Generate on every iteration — reported as unprofessional UX.
+          // Now: transform the button into a persistent "Applied" state and
+          // leave the panel fully interactive (Try another still works, ×
+          // dismisses on demand).
+          btn.innerHTML = '<i class="ti ti-check ti-green"></i> ' +
+            (rtl ? 'تم التطبيق' : 'Applied');
           btn.style.background = '#3BB691';
+          btn.style.color = '#fff';
           btn.disabled = true;
-          setTimeout(function() { closeInline(fnKey, si, li); }, 600);
+          btn.style.opacity = '0.9';
+          btn.style.cursor = 'default';
         } else if (action === 'another') {
           generateAndShow(fnKey, si, li, suggestion.text);
         } else if (action === 'dismiss') {
@@ -38066,7 +38710,10 @@
     var container = ensureContainer(fnKey, si, li);
     if (!container) return;
     container.style.display = 'block';
-    renderLoading(container);
+    // v67.32: Pass regeneration flag so loading state shows contextual copy
+    // ("Generating a new suggestion...") and maintains box height, preventing
+    // the visual "shrink and reopen" perceived as closing the panel.
+    renderLoading(container, !!previousSuggestionText);
 
     try {
       if (!KABi.Agents || !KABi.Agents.kpiArchitect
