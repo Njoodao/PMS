@@ -19948,6 +19948,28 @@
     const _PE_EVALS_LS_KEY = 'kabi_pe_evals_v679';
     const _PE_EDIT_REQS_LS_KEY = 'kabi_pe_edit_reqs_v679';
     const _PE_REMINDERS_LS_KEY = 'kabi_pe_reminders_v679';
+    // v67.39: Persist PE_CONFIG (justMode + resultsVisible + wellbeingVisible)
+    // so Super Admin settings survive page reload. Previously the visible
+    // Justification Mode radio buttons wrote to PE_CONFIG.justificationMode
+    // (never read anywhere) — the eval form reads PE_CONFIG.justMode. Even
+    // after the key-rename fix, the change is in-memory only unless persisted.
+    const _PE_CONFIG_LS_KEY = 'kabi_pe_config_v679';
+    function _savePEConfig(){
+      try { localStorage.setItem(_PE_CONFIG_LS_KEY, JSON.stringify(PE_CONFIG)); }
+      catch(e){ console.warn('[PE Config] save failed:', e); }
+    }
+    function _loadPEConfig(){
+      try {
+        var raw = localStorage.getItem(_PE_CONFIG_LS_KEY);
+        if (!raw) return;
+        var parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          // Merge — preserves future fields if the schema evolves
+          Object.assign(PE_CONFIG, parsed);
+          console.info('[PE Config] Loaded — justMode=' + PE_CONFIG.justMode + ', resultsVisible=' + PE_CONFIG.resultsVisible);
+        }
+      } catch(e){ console.warn('[PE Config] load failed:', e); }
+    }
     function _savePEEvals(){
       try {
         localStorage.setItem(_PE_EVALS_LS_KEY, JSON.stringify(PE_EVALS));
@@ -19966,6 +19988,7 @@
         console.info('[PE Evals] Loaded ' + Object.keys(PE_EVALS).length + ' eval(s), ' + PE_EDIT_REQUESTS.length + ' edit request(s) from localStorage');
       } catch(e){ console.warn('[PE Evals] load failed:', e); }
     }
+    _loadPEConfig();
     _loadPEEvals();
 
     // v66.11.0: Auto-save draft evaluation when navigating away
@@ -23768,12 +23791,12 @@
         <h4 style="font-size:13px;font-weight:800;color:var(--white);margin-bottom:4px"><i class=\"ti ti-notes\"></i> Justification Mode</h4>
         <p style="font-size:10px;color:var(--text-muted);margin-bottom:14px">Control how managers justify their evaluation scores.</p>
         <div style="display:flex;flex-direction:column;gap:8px">
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;background:${PE_CONFIG.justificationMode === 'per-item' ? 'rgba(0,194,224,.08)' : 'rgba(255,255,255,.03)'};border:1px solid ${PE_CONFIG.justificationMode === 'per-item' ? 'var(--cyan)' : 'rgba(255,255,255,.08)'};border-radius:8px">
-            <input type="radio" name="justMode" value="per-item" ${PE_CONFIG.justificationMode === 'per-item' || !PE_CONFIG.justificationMode ? 'checked' : ''} onchange="PE_CONFIG.justificationMode='per-item'" style="accent-color:var(--cyan)">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;background:${PE_CONFIG.justMode === 'per-item' ? 'rgba(0,194,224,.08)' : 'rgba(255,255,255,.03)'};border:1px solid ${PE_CONFIG.justMode === 'per-item' ? 'var(--cyan)' : 'rgba(255,255,255,.08)'};border-radius:8px">
+            <input type="radio" name="justMode" value="per-item" ${(PE_CONFIG.justMode === 'per-item' || !PE_CONFIG.justMode) ? 'checked' : ''} onchange="PE_CONFIG.justMode='per-item';_savePEConfig();renderPEAdmin(document.getElementById('pe-admin-body'))" style="accent-color:var(--cyan)">
             <span style="font-size:11px;color:var(--text-primary)">Required per each KPI / Competency item</span>
           </label>
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;background:${PE_CONFIG.justificationMode === 'per-section' ? 'rgba(0,194,224,.08)' : 'rgba(255,255,255,.03)'};border:1px solid ${PE_CONFIG.justificationMode === 'per-section' ? 'var(--cyan)' : 'rgba(255,255,255,.08)'};border-radius:8px">
-            <input type="radio" name="justMode" value="per-section" ${PE_CONFIG.justificationMode === 'per-section' ? 'checked' : ''} onchange="PE_CONFIG.justificationMode='per-section'" style="accent-color:var(--cyan)">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;background:${PE_CONFIG.justMode === 'per-section' ? 'rgba(0,194,224,.08)' : 'rgba(255,255,255,.03)'};border:1px solid ${PE_CONFIG.justMode === 'per-section' ? 'var(--cyan)' : 'rgba(255,255,255,.08)'};border-radius:8px">
+            <input type="radio" name="justMode" value="per-section" ${PE_CONFIG.justMode === 'per-section' ? 'checked' : ''} onchange="PE_CONFIG.justMode='per-section';_savePEConfig();renderPEAdmin(document.getElementById('pe-admin-body'))" style="accent-color:var(--cyan)">
             <span style="font-size:11px;color:var(--text-primary)">Required once per section (single comment box)</span>
           </label>
         </div>
@@ -24568,17 +24591,39 @@
       </div>`;
     }
 
+    // v67.39: Persist the extra weights matrix so Super Admin's percentage
+    // changes survive reload. Previously changes were in-memory only.
+    const _PE_MATRIX_LS_KEY = 'kabi_pe_extra_matrix_v679';
+    function _savePEMatrix(){
+      try { localStorage.setItem(_PE_MATRIX_LS_KEY, JSON.stringify(PE_EXTRA_WEIGHTS_MATRIX)); }
+      catch(e){ console.warn('[PE Matrix] save failed:', e); }
+    }
+    function _loadPEMatrix(){
+      try {
+        var raw = localStorage.getItem(_PE_MATRIX_LS_KEY);
+        if (!raw) return;
+        var parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          Object.keys(parsed).forEach(function(k){ PE_EXTRA_WEIGHTS_MATRIX[k] = parsed[k]; });
+          console.info('[PE Matrix] Loaded per-dept×level extras from localStorage');
+        }
+      } catch(e){ console.warn('[PE Matrix] load failed:', e); }
+    }
+    _loadPEMatrix();
+
     function peUpdateMatrixWeight(dept, level, key, val) {
       const v = Math.max(0, Math.min(20, parseInt(val) || 0));
       if (!PE_EXTRA_WEIGHTS_MATRIX[dept]) PE_EXTRA_WEIGHTS_MATRIX[dept] = {};
       if (!PE_EXTRA_WEIGHTS_MATRIX[dept][level]) PE_EXTRA_WEIGHTS_MATRIX[dept][level] = { digitalAdoption: 10, initiatives: 10 };
       PE_EXTRA_WEIGHTS_MATRIX[dept][level][key] = v;
+      _savePEMatrix();  // v67.39: persist to localStorage
       renderPEWeights(document.getElementById('pe-admin-body'));
     }
 
     function peResetExtraMatrix() {
       if (!confirm('Reset Extra Components matrix to default values? This will override any custom distributions for all departments.')) return;
       PE_EXTRA_WEIGHTS_MATRIX = _peBuildDefaultExtraMatrix();
+      _savePEMatrix();  // v67.39: persist the reset
       toast('Matrix reset to defaults',  'ok');
       renderPEWeights(document.getElementById('pe-admin-body'));
     }
@@ -27392,24 +27437,31 @@
       // 4) Initiatives (count-based, auto-computed from approvals vs targets)
       // v66.7.4: Now shows the actual computed score (out of 5) and the
       // contribution to the final total. Previously the score was implicit.
+      // v67.39: Skip entirely if target=0 for this employee's level. A weight>0
+      // combined with target=0 is a Super Admin misconfig — the score can never
+      // exceed 0 (nothing to approve). Rendering the section as-if evaluable is
+      // misleading; instead we hide it and treat weight as if 0 for this employee.
       if (initWeight > 0) {
         const approvedInits = (typeof INITIATIVES !== 'undefined' ? INITIATIVES : []).filter(i => i.empEmail === emp.email && i.status === 'approved');
         const target = getEmpInitiativeTarget(emp);   // v66.8: single number
+        if (target > 0) {
         const initScore = peCalculateInitiativesScore(emp);
         const approvedAcademic = approvedInits.filter(i => i.type === 'academic').length;
         const approvedGeneral  = approvedInits.length - approvedAcademic;
         const contributionPct = (initScore.score / 5 * initWeight).toFixed(1);
         const ratingColor = initScore.score >= 4 ? '#4ade80' : initScore.score >= 3 ? '#fbbf24' : initScore.score > 0 ? '#f87171' : 'var(--text-dim)';
+        // v67.39: stable id for the chevron so we can flip it on toggle
+        const _initSectionId = 'pe-init-sec-' + emp.id;
         html += `
-          <div class="pe-section" data-section="initiatives" style="margin-bottom:14px">
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;cursor:pointer" onclick="this.parentElement.querySelector('.pe-section-body').style.display = this.parentElement.querySelector('.pe-section-body').style.display === 'none' ? 'block' : 'none'">
+          <div class="pe-section" data-section="initiatives" id="${_initSectionId}" style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;cursor:pointer" onclick="(function(sec){var body=sec.querySelector('.pe-section-body');var chev=sec.querySelector('.pe-init-chev');var open=body.style.display!=='none';body.style.display=open?'none':'block';if(chev)chev.textContent=open?'\u25BC':'\u25B2';})(this.parentElement)">
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <span style="font-size:18px"><i class=\"ti ti-bulb ti-amber\"></i></span>
                 <strong style="font-size:13px;color:var(--white)">Initiatives — ${initWeight}%</strong>
                 <span style="padding:2px 8px;background:rgba(167,139,250,.1);color:#a78bfa;border-radius:12px;font-size:9px;font-weight:700">${approvedInits.length}/${target} approved</span>
                 <span style="padding:2px 10px;background:rgba(0,194,224,.08);color:${ratingColor};border:1px solid ${ratingColor}40;border-radius:12px;font-size:10px;font-weight:800">${initScore.score.toFixed(1)} / 5</span>
               </div>
-              <span style="font-size:11px;color:var(--text-muted)">▼</span>
+              <span class="pe-init-chev" style="font-size:11px;color:var(--text-muted)">\u25BC</span>
             </div>
             <div class="pe-section-body" style="padding:0 16px 14px 16px;display:none">
               <!-- v66.7.4: Score breakdown card — read-only, automatic -->
@@ -27466,10 +27518,39 @@
               `}
             </div>
           </div>`;
+        }  // v67.39: close `if (target > 0)` — hides the section when target=0
       }
 
-      html += `<div style="display:flex;align-items:center;gap:12px;margin-top:16px"><button id="pe-submit-btn" onclick="peSubmitEval()" disabled style="padding:10px 24px;border-radius:8px;border:none;background:rgba(0,194,224,.3);color:rgba(255,255,255,.5);font-size:12px;font-weight:700;cursor:not-allowed;font-family:inherit"><i class=\"ti ti-circle-check ti-green\"></i> Submit Evaluation</button><span id="pe-preview" style="font-size:11px;color:var(--text-muted)"></span></div>`;
+      // v67.39: Total Score badge next to Submit — larger, always visible.
+      // Previously the tiny `#pe-preview` span read "Preview: 3.5/5 — 70% — ..."
+      // which was easy to miss. Now the badge shows the running total prominently
+      // (out of 5 AND out of 120%) with a color-coded classification pill. When
+      // incomplete, shows the partial total plus a small "Missing: ..." hint below.
+      html += `
+        <div style="display:flex;align-items:center;gap:16px;margin-top:20px;padding:16px 18px;background:linear-gradient(135deg,rgba(0,194,224,.05),rgba(19,56,176,.03));border:1px solid rgba(0,194,224,.15);border-radius:14px;flex-wrap:wrap">
+          <button id="pe-submit-btn" onclick="peSubmitEval()" disabled style="padding:12px 26px;border-radius:10px;border:none;background:rgba(0,194,224,.25);color:rgba(255,255,255,.5);font-size:13px;font-weight:800;cursor:not-allowed;font-family:inherit;white-space:nowrap;transition:all .15s"><i class="ti ti-circle-check ti-green"></i> Submit Evaluation</button>
+          <div id="pe-total-badge" style="display:flex;align-items:center;gap:14px;flex:1;min-width:180px;padding:6px 14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px">
+            <div style="text-align:center;min-width:60px">
+              <div id="pe-total-num" style="font-size:22px;font-weight:900;color:var(--text-muted);line-height:1">—</div>
+              <div style="font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-top:2px">out of 5</div>
+            </div>
+            <div style="width:1px;height:36px;background:rgba(255,255,255,.08)"></div>
+            <div style="text-align:center;min-width:70px">
+              <div id="pe-total-pct" style="font-size:22px;font-weight:900;color:var(--text-muted);line-height:1">—%</div>
+              <div style="font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-top:2px">out of 120%</div>
+            </div>
+            <div style="flex:1;min-width:0">
+              <div id="pe-total-rating" style="font-size:11px;font-weight:800;color:var(--text-muted);line-height:1.3">Awaiting scores</div>
+              <div id="pe-preview" style="font-size:10px;color:var(--text-dim);margin-top:3px;line-height:1.4"></div>
+            </div>
+          </div>
+        </div>`;
       body.innerHTML = html;
+      // v67.39: Show initial preview state (missing items listed) as soon as the
+      // eval loads. Without this, the badge shows placeholder dashes and the
+      // Submit button is disabled with no explanation until the manager clicks
+      // their first star.
+      peUpdatePreview();
     }
 
     function peGetScore(type, idx, ev) {
@@ -27733,19 +27814,25 @@
       // This used to be missing from the total calculation — fixed in v66.7.4.
       const initInfo = peCalculateInitiativesScore(emp);
       const initiativesAvg = initInfo.score;
+      // v67.39 FIX: weight object uses `digitalAdoption` (see peGetWeights),
+      // but the state uses `digitalAdapt` (see peSetStar). Previously this
+      // multiplied by `w.digitalAdapt` (undefined) so Digital Adoption never
+      // contributed to the total — user reported this as "20% Digital Adoption
+      // doesn't reflect in the evaluation page". Now the two names are bridged
+      // correctly: state.digitalAdapt × w.digitalAdoption.
       // Total = Σ(Score × Weight%)
       const total = (kAvg * (w.objectives || 0) / 100)
                   + (compAvg * (w.competencies || 0) / 100)
                   + ((state.learning || 0) * (w.learning || 0) / 100)
                   + ((state.clientSat || 0) * (w.clientSat || 0) / 100)
-                  + ((state.digitalAdapt || 0) * (w.digitalAdapt || 0) / 100)
+                  + ((state.digitalAdapt || 0) * (w.digitalAdoption || 0) / 100)
                   + (initiativesAvg * (w.initiatives || 0) / 100);
       // Percentage = Σ(pct(Score) × Weight%) using piecewise mapping
       const totalPct = (pePctExact(kAvg) * (w.objectives || 0) / 100)
                      + (pePctExact(compAvg) * (w.competencies || 0) / 100)
                      + (pePctExact(state.learning || 0) * (w.learning || 0) / 100)
                      + (pePctExact(state.clientSat || 0) * (w.clientSat || 0) / 100)
-                     + (pePctExact(state.digitalAdapt || 0) * (w.digitalAdapt || 0) / 100)
+                     + (pePctExact(state.digitalAdapt || 0) * (w.digitalAdoption || 0) / 100)
                      + (pePctExact(initiativesAvg) * (w.initiatives || 0) / 100);
       return { total, totalPct: Math.round(totalPct * 10) / 10, kAvg, bAvg, lAvg, tAvg, compAvg, initiativesAvg, initInfo, inviewsDone: invInfo.done };
     }
@@ -27753,6 +27840,8 @@
     function peCheckComplete(emp) {
       const w = peGetWeights(emp);
       const kpis = peGetApprovedKPIs(emp.fn, null, emp.level);
+      // v67.39: Justification mode — 'per-item' is the strict mode. Anything
+      // else (per-section, once, or unset) uses the single-textarea mode.
       const isPerItem = PE_CONFIG.justMode === 'per-item';
       const missing = [];
 
@@ -27771,8 +27860,11 @@
         if (!invInfo.done) missing.push('INVIEWS (employee must complete)');
       }
 
-      // Digital Adoption
-      if (w.digitalAdapt > 0 && !peEvalState.digitalAdapt) missing.push('Digital Adoption score');
+      // v67.39 FIX: Digital Adoption weight key is `digitalAdoption` (from
+      // peGetWeights), NOT `digitalAdapt`. Previously this check was dead
+      // (w.digitalAdapt was always undefined), allowing submit without a
+      // digital score even when weight>0.
+      if (w.digitalAdoption > 0 && !peEvalState.digitalAdapt) missing.push('Digital Adoption score');
 
       // Learning
       if (w.learning > 0 && !peEvalState.learning) missing.push('Learning score');
@@ -27780,10 +27872,19 @@
       // Client Satisfaction
       if (w.clientSat > 0 && !peEvalState.clientSat) missing.push('Client Satisfaction score');
 
-      // Initiatives — at least approved initiatives or score > 0
+      // v67.39 FIX: Initiatives — if weight>0 AND target>0, expect at least one
+      // approved initiative. If target=0, submitting is impossible to unblock
+      // (employee can't submit initiatives when target=0), so the section is
+      // rendered as informational and NOT gated. This is a config-mismatch
+      // guard: setting weight>0 but target=0 is a Super Admin misconfig, and
+      // we don't want to lock managers out because of it.
       if (w.initiatives > 0) {
-        const initInfo = (typeof peCalculateInitiativesScore === 'function') ? peCalculateInitiativesScore(emp) : { score: 0, approved: 0 };
-        if (initInfo.score === 0 && initInfo.approvedCount === 0) missing.push('Initiatives (none approved)');
+        const _target = (typeof getEmpInitiativeTarget === 'function') ? getEmpInitiativeTarget(emp) : 0;
+        if (_target > 0) {
+          const initInfo = (typeof peCalculateInitiativesScore === 'function') ? peCalculateInitiativesScore(emp) : { score: 0, approvedCount: 0 };
+          if (initInfo.score === 0 && initInfo.approvedCount === 0) missing.push('Initiatives (none approved)');
+        }
+        // target=0 → treat as N/A, do not block submit
       }
 
       // Store missing items for UI display
@@ -27794,31 +27895,55 @@
     function peUpdatePreview() {
       const emp = PE_EMPLOYEES.find(e => e.id === peEvalState.empId); if (!emp) return;
       const r = peCalcTotal(peEvalState, emp); const rc = peRating(r.total);
-      const el = document.getElementById('pe-preview');
       const complete = peCheckComplete(emp);
       const missing = peCheckComplete._missing || [];
 
-      if (el) {
+      // v67.39: Update the prominent total badge (num + pct + rating pill).
+      // Shows running/partial total even when incomplete — the manager can
+      // see how their scoring is trending as they fill it in.
+      var numEl    = document.getElementById('pe-total-num');
+      var pctEl    = document.getElementById('pe-total-pct');
+      var ratingEl = document.getElementById('pe-total-rating');
+      var previewEl = document.getElementById('pe-preview');
+      var hasAnyScore = (r.total > 0) || (r.totalPct > 0);
+      if (numEl)    numEl.textContent   = hasAnyScore ? r.total.toFixed(2) : '—';
+      if (pctEl)    pctEl.textContent   = hasAnyScore ? (r.totalPct + '%') : '—%';
+      if (numEl)    numEl.style.color   = hasAnyScore ? rc.color : 'var(--text-muted)';
+      if (pctEl)    pctEl.style.color   = hasAnyScore ? rc.color : 'var(--text-muted)';
+      if (ratingEl) {
+        ratingEl.textContent = hasAnyScore ? rc.name : 'Awaiting scores';
+        ratingEl.style.color = hasAnyScore ? rc.color : 'var(--text-muted)';
+      }
+      if (previewEl) {
         if (complete) {
-          el.innerHTML = `Preview: <strong style="color:${rc.color}">${r.total.toFixed(2)} / 5 — ${r.totalPct}% — ${rc.name}</strong>`;
+          previewEl.innerHTML = '<span style="color:#4ade80"><i class="ti ti-circle-check ti-green"></i> Ready to submit</span>';
+        } else if (missing.length) {
+          previewEl.innerHTML = '<span style="color:#fbbf24"><i class="ti ti-alert-triangle ti-amber"></i> Missing: ' + missing.join(' · ') + '</span>';
         } else {
-          el.innerHTML = `<span style="color:#fbbf24"><i class=\"ti ti-alert-triangle ti-amber\"></i> Missing: ${missing.join(' · ')}</span>`;
+          previewEl.textContent = '';
         }
       }
 
       const btn = document.getElementById('pe-submit-btn');
       if (btn) {
         btn.disabled = !complete;
-        btn.style.background = complete ? 'linear-gradient(135deg,var(--cyan),#1338b0)' : 'rgba(0,194,224,.3)';
+        btn.style.background = complete ? 'linear-gradient(135deg,var(--cyan),#1338b0)' : 'rgba(0,194,224,.25)';
         btn.style.color = complete ? 'var(--white)' : 'rgba(255,255,255,.5)';
         btn.style.cursor = complete ? 'pointer' : 'not-allowed';
-        btn.title = complete ? 'Submit evaluation to HC' : 'Complete all required fields: ' + missing.join(', ');
+        btn.style.boxShadow = complete ? '0 4px 14px rgba(0,194,224,.3)' : 'none';
+        btn.title = complete ? 'Submit evaluation to HC' : 'Complete first: ' + missing.join(', ');
       }
     }
 
     function peSubmitEval() {
       const emp = PE_EMPLOYEES.find(e => e.id === peEvalState.empId); if (!emp) return;
-      if (!peCheckComplete(emp)) { toast('Complete all required fields', 'err'); return; }
+      if (!peCheckComplete(emp)) {
+        // v67.39 FIX: Show WHICH fields are missing, not just the generic
+        // "Complete all required fields". Manager needs to know what to do.
+        var _missing = peCheckComplete._missing || [];
+        toast('<i class="ti ti-alert-triangle ti-amber"></i> Cannot submit — missing: ' + (_missing.length ? _missing.join(' · ') : 'required fields'), 'err');
+        return;
+      }
       // Collect justifications
       document.querySelectorAll('.pe-textarea').forEach(ta => { if (ta.dataset.t) peEvalState.justs[ta.dataset.t + '_' + ta.dataset.i] = ta.value; });
       const kpis = peGetApprovedKPIs(emp.fn, null, emp.level);
