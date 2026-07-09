@@ -2,6 +2,30 @@
 <html lang="en">
 
 <head>
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- KABi Supabase Backend Integration v1.0 - feature-flagged OFF   -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./06_kabiDb.js"></script>
+<script>
+  // ═══ REPLACE THESE 2 VALUES WITH YOUR SUPABASE CREDENTIALS ═══
+  // Find them in: Supabase Dashboard - Settings - API
+  const SUPABASE_URL      = 'https://eglseqpywedwmdbhhkmh.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnbHNlcXB5d2Vkd21kYmhoa21oIiwicm9sZSI6ImFub24iLCJpYXQiOj';
+  // ═══════════════════════════════════════════════════════════════
+
+  // Feature flag - default OFF for safe deploy
+  // Users flip it via DevTools: localStorage.setItem('kabi_db_backend','1')
+  const USE_SUPABASE = localStorage.getItem('kabi_db_backend') === '1';
+  if (USE_SUPABASE && window.kabiDb) {
+    window.kabiDb.init({ url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY });
+    console.info('%c[KABi] Supabase backend enabled', 'color:#00c2e0;font-weight:bold');
+  } else {
+    console.info('[KABi] localStorage backend - default safe mode');
+  }
+</script>
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
   <meta charset="UTF-8">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23216AB1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 13a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z'/><path d='M15 9a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z'/><path d='M9 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z'/><path d='M4 20h14'/></svg>">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -19612,8 +19636,15 @@
       notif.read = true;
 
       // Send confirmation notification BACK to the manager
+      // v67.40: Use plain-text labels instead of embedded HTML icons.
+      // The notification renderer (empRenderNotifCard L19493) escapes
+      // n.body via escapeHtml() — a correct security default because
+      // notification bodies flow from user input in other paths (Note modal,
+      // decline reasons, etc.). Embedding <i class="ti ..."></i> here caused
+      // the icons to render as literal text. Keeping the body plain-text
+      // preserves the escape-by-default security posture for all notifications.
       const slot = notif.meta.slots[slotIdx];
-      const confirmMsg = `${me.name} accepted your meeting request:\n\n<i class="ti ti-calendar"></i> ${formatSlotDate(slot.date)} at ${formatSlotTime(slot.time)}\n<i class="ti ti-clock"></i> ${notif.meta.duration} minutes\n<i class="ti ti-target"></i> ${notif.meta.purpose}`;
+      const confirmMsg = `${me.name} accepted your meeting request:\n\nWhen: ${formatSlotDate(slot.date)} at ${formatSlotTime(slot.time)}\nDuration: ${notif.meta.duration} minutes\nPurpose: ${notif.meta.purpose}`;
       if (notif.fromEmail) {
         addNotification(notif.fromEmail, {
           type: 'note',
