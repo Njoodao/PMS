@@ -105,154 +105,270 @@
       return data.session;
     },
 
-    /** Return the tour steps for the current user's role. */
+    /** Return the tour steps for the current user's role. Each step
+     *  includes a tabKey to navigate to and a description of what's there. */
     _getTourSteps() {
-      // Determine role from the current employee record + auth metadata
       const emp = state.myEmp;
       const isHC       = emp?.isHCAdmin === true;
       const isCEO      = emp?.isCEO === true;
-      const isManager  = emp?.hasManagerPortal === true || false;
+      // Check if the sidebar tab exists for this user
+      const hasTeamTab = !!document.querySelector(`button[onclick="empSwitchTab('team')"]`);
+      const hasKpiTab  = !!document.querySelector(`button[onclick="empSwitchTab('kpi')"]`);
+      const isManager  = hasTeamTab; // Managers get the sidebar with 'team' tab
 
-      // Fallback: infer manager from mgr chain (does anyone have this email as their mgr?)
-      const inferredManager = !isManager && state.mirror.PE_EMPLOYEES.some(e =>
-        e.mgr?.toLowerCase() === emp?.email?.toLowerCase() && !e.isFormer
-      );
+      const firstName = emp?.name?.split(' ')[0] || 'there';
 
-      const role = isHC ? 'hc' : (isCEO ? 'ceo' : (isManager || inferredManager ? 'manager' : 'employee'));
-
-      const commonWelcome = {
-        icon: '👋',
-        title: `Welcome to KABi, ${emp?.name?.split(' ')[0] || 'there'}!`,
-        body: `This is a quick tour of the KABi Performance Management System. We'll show you the main features you'll use. It only takes a minute — you can skip anytime.`
-      };
-
-      const commonEnd = {
-        icon: '🎉',
-        title: `You're all set!`,
-        body: `That's the tour. If you ever need a refresher, ask your HC representative. Have a productive day!`
-      };
-
-      if (role === 'employee') {
+      // ─── Employee tour (Staff with no sidebar) ───
+      // Employees see only the dashboard content — no sidebar tabs to navigate.
+      // For them we show a series of centered popups explaining sections.
+      if (!isManager && !isCEO && !isHC) {
         return [
-          commonWelcome,
-          { icon: '🏠', title: 'Your Dashboard',
-            body: 'This is your personal home. See your profile, upcoming celebrations, notifications, and recent activity — all in one glance.' },
-          { icon: '🎯', title: 'My KPIs',
-            body: `When your manager submits KPIs for your function and HC approves them, they'll appear here. You'll see what you're being evaluated on for the current cycle.` },
-          { icon: '💡', title: 'Initiatives',
-            body: `Submit ideas that improve KABi — academic (certificates, research) or general (process improvements, projects). Your manager reviews first, then HC gives final approval.` },
-          { icon: '🧠', title: 'INVIEWS Self-Assessment',
-            body: `Score yourself on behavioral, leadership, and technical competencies. This is private — even your manager cannot see the individual scores. Only aggregate is used.` },
-          { icon: '🔔', title: 'Notifications',
-            body: `Meeting requests, appreciation notes, evaluation releases, and initiative decisions all arrive here in real-time.` },
-          commonEnd
+          { tabKey: null, icon: '👋', title: `Welcome, ${firstName}!`,
+            body: `This is a short guided tour to help you get started with KABi. It only takes a minute.` },
+          { tabKey: null, icon: '👤', title: 'Your Profile Card',
+            body: `At the top you'll see your personal card — your name, role, function, and level. This is how the system identifies you across the platform.` },
+          { tabKey: null, icon: '🎯', title: 'My Performance KPIs',
+            body: `Once your manager submits KPIs for your function and HC approves them, they'll appear on your dashboard. You'll see what you're being evaluated on this cycle.` },
+          { tabKey: null, icon: '💡', title: 'Submit Initiatives',
+            body: `Have an idea to improve KABi? Submit it as an initiative — academic (certifications, courses) or general (process improvements). Your manager reviews first, then HC approves.` },
+          { tabKey: null, icon: '🧠', title: 'INVIEWS Self-Assessment',
+            body: `Rate yourself on behavioral, leadership, and technical competencies. Your scores stay private — even your manager cannot see individual ratings. Only aggregates roll up.` },
+          { tabKey: null, icon: '🔔', title: 'Notifications',
+            body: `Meeting requests, appreciation notes, and evaluation releases arrive in the top-right bell. Real-time — no refresh needed.` },
+          { tabKey: null, icon: '🎉', title: `You're all set!`,
+            body: `That's the tour. Explore the dashboard freely — everything you need is one click away. Welcome to KABi!` }
         ];
       }
 
-      if (role === 'manager') {
+      // ─── Manager tour (has sidebar) ───
+      if (isManager) {
+        const steps = [
+          { tabKey: null, icon: '👋', title: `Welcome, ${firstName}!`,
+            body: `Let's take a quick tour of your Manager Workspace. I'll walk you through each section of the sidebar.` },
+          { tabKey: 'dashboard', icon: '🏠', title: 'Dashboard',
+            body: `Your personal home. See your own profile at the top, plus your own KPIs, evaluation status, and any pending items that need your attention.` },
+          { tabKey: 'team', icon: '👥', title: 'My Team',
+            body: `Your direct reports live here. Send notes, schedule 1:1 meetings, and (during evaluation cycles) start their performance reviews. Team Initiatives from your reports also appear here for your approval.` }
+        ];
+        if (hasKpiTab) {
+          steps.push({ tabKey: 'kpi', icon: '📊', title: 'KPI Framework',
+            body: `Propose up to 4 KPIs per level for each function you manage. HC reviews and approves them; the approved KPIs become the official measurement basis for the current cycle.` });
+        }
+        steps.push({ tabKey: 'eval', icon: '✅', title: 'Evaluate Team',
+          body: `When evaluation season opens, score each direct report across KPIs, competencies, digital adoption, and initiatives. The AI Coach assists you, but the final call is yours.` });
+        // AI Insights tab may have different labels
+        const insightsBtn = document.querySelector(`button[onclick="empSwitchTab('ai_insights')"]`);
+        if (insightsBtn) {
+          const label = insightsBtn.querySelector('.hc-side-label')?.textContent || 'AI Insights';
+          steps.push({ tabKey: 'ai_insights', icon: '💡', title: label,
+            body: `Data-driven insights about your team's performance patterns, KPI health, and areas that may need coaching. Everything is grounded in real evaluation data.` });
+        }
+        steps.push({ tabKey: 'inviews', icon: '🧠', title: 'Team INVIEWS',
+          body: `Anonymized behavioral and leadership assessments from your team. You see aggregate patterns only — never individual scores. This preserves psychological safety and follows Saudi privacy norms.` });
+        steps.push({ tabKey: 'sent', icon: '📤', title: 'Sent Notifications',
+          body: `A log of every note, appreciation message, and meeting invite you've sent. Perfect for tracking your team engagement history.` });
+        steps.push({ tabKey: null, icon: '🎉', title: `You're all set!`,
+          body: `You've seen the main features. Feel free to explore — you can always return to any tab from the sidebar. Have a productive cycle!` });
+        return steps;
+      }
+
+      // ─── HC Admin tour (uses different page — pg-home) ───
+      if (isHC) {
         return [
-          commonWelcome,
-          { icon: '🏠', title: 'Your Dashboard',
-            body: `Your personal profile plus a summary of pending items across your team — evaluations to complete, initiatives to review, and notifications.` },
-          { icon: '👥', title: 'My Team',
-            body: `See all your direct reports. Send notes, schedule 1:1 meetings, and (when the cycle is open) start their performance evaluations.` },
-          { icon: '📊', title: 'KPI Framework',
-            body: `For each function you manage, propose up to 4 KPIs per level. HC reviews and approves, then those KPIs become official for the current cycle.` },
-          { icon: '✅', title: 'Evaluate Team',
-            body: `When it's evaluation time, score your reports across their KPIs, competencies, digital adoption, and initiatives. The AI Coach helps but final decisions are yours.` },
-          { icon: '💡', title: 'Team Initiatives',
-            body: `When your team members submit initiatives, they appear in the "My Team" page for your review. Approve them and they move to HC for final approval.` },
-          { icon: '🔔', title: 'Notifications',
-            body: `Real-time updates on team activity, HC decisions, and messages from other managers.` },
-          commonEnd
+          { tabKey: null, icon: '👋', title: `Welcome, ${firstName}!`,
+            body: `You're now signed in as HC Admin. Here's a quick tour of your main tools.` },
+          { tabKey: null, icon: '🎯', title: 'HC Performance Hub',
+            body: `Your central dashboard. Review manager KPI submissions, approve or reject them, and monitor evaluation progress across all 8 departments.` },
+          { tabKey: null, icon: '📈', title: 'All Submissions',
+            body: `Every KPI submission from every manager, in one filterable table. Export to Excel any time for offline review or archival.` },
+          { tabKey: null, icon: '💡', title: 'Initiative Approvals',
+            body: `Two-stage flow: employees submit → managers approve → arrives at HC. You make the final call. Approved initiatives count toward employees' evaluation scores.` },
+          { tabKey: null, icon: '⚙️', title: 'Settings & Configuration',
+            body: `Fine-tune weights per department and level, justification mode, cycle timing, and result visibility toggles. All the levers to run the system.` },
+          { tabKey: null, icon: '🏆', title: 'Release Results',
+            body: `Employees see their evaluation scores only after you release them. This is intentional — you control the moment of disclosure per employee.` },
+          { tabKey: null, icon: '🔔', title: 'Notifications & Audit',
+            body: `Every important action is auditable. Notifications keep you in the loop on critical events across the system.` },
+          { tabKey: null, icon: '🎉', title: `You're all set!`,
+            body: `You've seen the HC Admin toolkit. Reach out if you need help; otherwise, welcome to your new command center.` }
         ];
       }
 
-      if (role === 'hc') {
-        return [
-          commonWelcome,
-          { icon: '🎯', title: 'HC Performance Hub',
-            body: `The main tab. Review manager KPI submissions, approve or reject, monitor evaluation progress across all departments.` },
-          { icon: '📈', title: 'All Submissions',
-            body: `Every KPI submission from every manager — filterable, exportable to Excel. This is your central pipeline.` },
-          { icon: '💡', title: 'Initiative Approvals',
-            body: `Two-stage flow: manager approves → arrives at HC. You make the final call. Approved initiatives count toward employees' evaluation scores.` },
-          { icon: '⚙️', title: 'Settings & Configuration',
-            body: `Tune weights per department × level, justification mode, cycle timing, and toggle result visibility. Everything the system needs to run.` },
-          { icon: '🏆', title: 'Release Results',
-            body: `When you flip "results_visible" ON and mark individual evaluations as released, employees can finally see their scores. This is intentional — you control the moment.` },
-          { icon: '🔔', title: 'Notifications & Audit',
-            body: `Every important action across the system is auditable. Notifications keep you in the loop.` },
-          commonEnd
-        ];
-      }
-
-      // CEO
+      // ─── CEO tour ───
       return [
-        commonWelcome,
-        { icon: '📊', title: 'Executive Dashboard',
-          body: `Organization-wide performance overview — scores by department, level, and location. Sourced from a live materialized view for speed.` },
-        { icon: '👥', title: 'Full Organization View',
-          body: `Explore any employee's evaluation, KPIs, and history. You have read access to everything (except the private INVIEWS breakdown).` },
-        { icon: '📈', title: 'Trends & Patterns',
-          body: `Identify high performers, watch retention risks, and see how the org evolves cycle over cycle.` },
-        commonEnd
+        { tabKey: null, icon: '👋', title: `Welcome, ${firstName}!`,
+          body: `A quick tour of your Executive View at KABi.` },
+        { tabKey: null, icon: '📊', title: 'Executive Dashboard',
+          body: `Organization-wide performance at a glance — scores by department, level, and location. Sourced from a live materialized view for instant loading.` },
+        { tabKey: null, icon: '👥', title: 'Full Organization View',
+          body: `Explore any employee's evaluation, KPIs, and history. You have read access to everything (except the private INVIEWS breakdown, which stays confidential).` },
+        { tabKey: null, icon: '📈', title: 'Trends & Patterns',
+          body: `Identify high performers, watch retention risks, and see how the organization evolves cycle over cycle.` },
+        { tabKey: null, icon: '🎉', title: `You're all set!`,
+          body: `Welcome to the executive suite. Explore freely.` }
       ];
     },
 
-    /** Show the sequential onboarding tour. Called once per user. */
+        /** Show the sequential onboarding tour. Called once per user. */
     _showOnboardingTour() {
       const steps = kabiDb._getTourSteps();
       if (!steps || steps.length === 0) return;
 
-      let idx = 0;
-      const modal = document.createElement('div');
-      modal.id = 'kabi-onboarding-tour';
-      modal.innerHTML = `
-        <div id="kabi-tour-backdrop" style="position:fixed;inset:0;background:rgba(0,15,40,0.86);z-index:2147483646;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,Segoe UI,sans-serif;backdrop-filter:blur(6px);">
-          <div style="background:linear-gradient(135deg,#0a1f52,#132a6b);padding:36px;border-radius:16px;max-width:520px;width:90%;color:#fff;box-shadow:0 24px 60px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.08);position:relative;">
-            <button id="kabi-tour-skip" title="Skip tour" style="position:absolute;top:12px;right:12px;background:transparent;border:none;color:rgba(255,255,255,0.5);font-size:20px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.15s;">✕</button>
-            <div id="kabi-tour-icon" style="font-size:44px;margin-bottom:10px;line-height:1;"></div>
-            <h2 id="kabi-tour-title" style="margin:0 0 8px;font-size:22px;font-weight:800;letter-spacing:-0.01em;"></h2>
-            <p id="kabi-tour-body" style="margin:0 0 24px;font-size:14px;line-height:1.65;opacity:0.85;"></p>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-              <div style="display:flex;gap:5px;" id="kabi-tour-dots"></div>
-              <div style="display:flex;gap:8px;">
-                <button id="kabi-tour-back" style="padding:10px 18px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">← Back</button>
-                <button id="kabi-tour-next" style="padding:10px 22px;background:linear-gradient(135deg,#00c2e0,#1338b0);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:0.3px;">Next →</button>
-              </div>
-            </div>
-          </div>
-        </div>`;
-      document.body.appendChild(modal);
+      // Track if we already added our stylesheet
+      if (!document.getElementById('kabi-tour-styles')) {
+        const style = document.createElement('style');
+        style.id = 'kabi-tour-styles';
+        style.textContent = `
+          @keyframes kabi-tour-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+          @keyframes kabi-tour-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(0,194,224,0.5), 0 8px 20px rgba(0,194,224,0.2); } 50% { box-shadow: 0 0 0 8px rgba(0,194,224,0), 0 8px 20px rgba(0,194,224,0.35); } }
+          .kabi-tour-highlight {
+            position: relative;
+            z-index: 999998 !important;
+            animation: kabi-tour-pulse 2s ease-in-out infinite;
+            border-radius: 8px;
+          }
+          #kabi-tour-bubble {
+            position: fixed;
+            background: #ffffff;
+            color: #0f172a;
+            border-radius: 16px;
+            padding: 18px 20px 16px;
+            max-width: 340px;
+            width: max-content;
+            min-width: 280px;
+            box-shadow: 0 24px 48px rgba(19,56,176,0.18), 0 4px 12px rgba(0,0,0,0.06);
+            border: 1px solid rgba(0,194,224,0.15);
+            z-index: 999999;
+            font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+            animation: kabi-tour-fade 0.28s ease-out;
+          }
+          #kabi-tour-bubble.side::before {
+            content: '';
+            position: absolute;
+            left: -9px;
+            top: 24px;
+            width: 0; height: 0;
+            border-top: 9px solid transparent;
+            border-bottom: 9px solid transparent;
+            border-right: 10px solid #ffffff;
+            filter: drop-shadow(-2px 0 2px rgba(19,56,176,0.05));
+          }
+          #kabi-tour-backdrop {
+            position: fixed; inset: 0;
+            background: rgba(15,25,55,0.28);
+            backdrop-filter: blur(2px);
+            z-index: 999997;
+            animation: kabi-tour-fade 0.25s ease-out;
+          }
+        `;
+        document.head.appendChild(style);
+      }
 
-      const iconEl  = document.getElementById('kabi-tour-icon');
-      const titleEl = document.getElementById('kabi-tour-title');
-      const bodyEl  = document.getElementById('kabi-tour-body');
-      const backBtn = document.getElementById('kabi-tour-back');
-      const nextBtn = document.getElementById('kabi-tour-next');
-      const skipBtn = document.getElementById('kabi-tour-skip');
-      const dotsEl  = document.getElementById('kabi-tour-dots');
+      // Backdrop
+      const backdrop = document.createElement('div');
+      backdrop.id = 'kabi-tour-backdrop';
+      document.body.appendChild(backdrop);
+
+      // Bubble
+      const bubble = document.createElement('div');
+      bubble.id = 'kabi-tour-bubble';
+      document.body.appendChild(bubble);
+
+      let idx = 0;
+      let highlightedEl = null;
+
+      function positionBubble(tabEl) {
+        if (tabEl) {
+          const rect = tabEl.getBoundingClientRect();
+          bubble.classList.add('side');
+          // Position to the right of the sidebar tab
+          const bubbleTop = Math.max(20, rect.top - 4);
+          const bubbleLeft = rect.right + 18;
+          bubble.style.top = bubbleTop + 'px';
+          bubble.style.left = bubbleLeft + 'px';
+          bubble.style.right = '';
+          bubble.style.transform = '';
+          // If it would go off-screen, position below the tab instead
+          if (bubbleLeft + 340 > window.innerWidth) {
+            bubble.classList.remove('side');
+            bubble.style.top = (rect.bottom + 12) + 'px';
+            bubble.style.left = Math.max(20, rect.left) + 'px';
+          }
+        } else {
+          bubble.classList.remove('side');
+          bubble.style.top = '50%';
+          bubble.style.left = '50%';
+          bubble.style.right = '';
+          bubble.style.transform = 'translate(-50%, -50%)';
+        }
+      }
+
+      function highlightTab(tabEl) {
+        if (highlightedEl) highlightedEl.classList.remove('kabi-tour-highlight');
+        if (tabEl) {
+          tabEl.classList.add('kabi-tour-highlight');
+          highlightedEl = tabEl;
+        } else {
+          highlightedEl = null;
+        }
+      }
 
       function render() {
         const step = steps[idx];
-        iconEl.textContent  = step.icon || '✨';
-        titleEl.textContent = step.title || '';
-        bodyEl.textContent  = step.body || '';
-        backBtn.style.visibility = idx === 0 ? 'hidden' : 'visible';
-        nextBtn.textContent = idx === steps.length - 1 ? 'Finish ✓' : 'Next →';
-        // Progress dots
-        dotsEl.innerHTML = steps.map((_, i) => {
-          const active = i === idx;
-          const past = i < idx;
-          const color = active ? '#00c2e0' : (past ? 'rgba(0,194,224,0.4)' : 'rgba(255,255,255,0.15)');
-          const size = active ? '10px' : '7px';
-          return `<div style="width:${size};height:${size};border-radius:50%;background:${color};transition:all 0.2s;"></div>`;
-        }).join('');
+
+        // Navigate to the tab (if any)
+        if (step.tabKey && typeof window.empSwitchTab === 'function') {
+          try { window.empSwitchTab(step.tabKey); } catch (e) { /* silent */ }
+        }
+
+        // Small delay to let DOM update
+        setTimeout(() => {
+          const tabEl = step.tabKey
+            ? document.querySelector(`button[onclick="empSwitchTab('${step.tabKey}')"]`)
+            : null;
+
+          highlightTab(tabEl);
+          positionBubble(tabEl);
+
+          // Render content
+          const isFirst = idx === 0;
+          const isLast = idx === steps.length - 1;
+          const dots = steps.map((_, i) => {
+            const active = i === idx;
+            const past = i < idx;
+            const color = active ? '#00c2e0' : (past ? 'rgba(0,194,224,0.5)' : '#e2e8f0');
+            const size = active ? '9px' : '6px';
+            return `<span style="display:inline-block;width:${size};height:${size};border-radius:50%;background:${color};transition:all 0.2s;"></span>`;
+          }).join('');
+
+          bubble.innerHTML = `
+            <button id="kabi-tour-close" title="Skip tour" style="position:absolute;top:10px;right:10px;background:transparent;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:6px;line-height:1;font-family:inherit;">✕</button>
+            <div style="font-size:32px;line-height:1;margin-bottom:8px;">${step.icon || '✨'}</div>
+            <h3 style="margin:0 0 6px;font-size:16px;font-weight:800;color:#0a1f52;letter-spacing:-0.01em;line-height:1.3;">${step.title || ''}</h3>
+            <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#475569;">${step.body || ''}</p>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div style="display:flex;gap:4px;align-items:center;">${dots}</div>
+              <div style="display:flex;gap:6px;">
+                ${isFirst ? '' : `<button id="kabi-tour-back" style="padding:7px 12px;background:transparent;color:#64748b;border:1px solid #e2e8f0;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Back</button>`}
+                <button id="kabi-tour-next" style="padding:7px 16px;background:linear-gradient(135deg,#00c2e0,#1338b0);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:0.2px;box-shadow:0 3px 10px rgba(0,194,224,0.3);">${isLast ? 'Finish ✓' : 'Next →'}</button>
+              </div>
+            </div>
+          `;
+
+          // Bind handlers
+          document.getElementById('kabi-tour-close').onclick = finish;
+          document.getElementById('kabi-tour-next').onclick = () => {
+            if (idx < steps.length - 1) { idx++; render(); } else finish();
+          };
+          const backBtn = document.getElementById('kabi-tour-back');
+          if (backBtn) backBtn.onclick = () => { if (idx > 0) { idx--; render(); } };
+        }, step.tabKey ? 250 : 60);
       }
 
       async function finish() {
-        modal.remove();
+        highlightTab(null);
+        backdrop.remove();
+        bubble.remove();
         try {
           await state.supabase.auth.updateUser({
             data: { tour_completed: true }
@@ -263,24 +379,19 @@
         }
       }
 
-      nextBtn.onclick = () => {
-        if (idx < steps.length - 1) { idx++; render(); }
-        else finish();
-      };
-      backBtn.onclick = () => { if (idx > 0) { idx--; render(); } };
-      skipBtn.onclick = finish;
-
       // Escape key = skip
-      const onKey = (e) => { if (e.key === 'Escape') { skipBtn.click(); } };
-      document.addEventListener('keydown', onKey, { once: false });
-      // Cleanup on removal
-      const cleanup = () => document.removeEventListener('keydown', onKey);
-      modal.addEventListener('DOMNodeRemoved', cleanup, { once: true });
+      const onKey = (e) => { if (e.key === 'Escape') finish(); };
+      document.addEventListener('keydown', onKey);
+      const origFinish = finish;
+      finish = async function() {
+        document.removeEventListener('keydown', onKey);
+        return origFinish();
+      };
 
       render();
     },
 
-    /** Check + prompt for password change if session says must_change_password */
+        /** Check + prompt for password change if session says must_change_password */
     async checkFirstLogin() {
       const { data: { user } } = await state.supabase.auth.getUser();
       if (user?.user_metadata?.must_change_password === true) {
@@ -297,18 +408,18 @@
         const modal = document.createElement('div');
         modal.id = 'kabi-first-login-modal';
         modal.innerHTML = `
-          <div style="position:fixed;inset:0;background:rgba(0,15,40,0.92);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,Segoe UI,sans-serif;backdrop-filter:blur(8px);">
-            <div style="background:linear-gradient(135deg,#0a1f52,#132a6b);padding:36px;border-radius:16px;max-width:460px;width:90%;color:#fff;box-shadow:0 24px 60px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.08);">
-              <div style="font-size:36px;margin-bottom:12px;">🎉</div>
-              <h2 style="margin:0 0 8px;font-size:24px;font-weight:800;">Welcome to KABi</h2>
-              <p style="margin:0 0 24px;opacity:0.8;font-size:14px;line-height:1.6;">This is your first login. Please set a new secure password to continue. This is required only once.</p>
-              <label style="display:block;margin:0 0 6px;font-size:13px;font-weight:600;opacity:0.9;">New password</label>
-              <input id="kabi-fl-pw1" type="password" placeholder="At least 8 characters" autocomplete="new-password" style="width:100%;padding:12px 14px;margin:0 0 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.35);color:#fff;font-size:14px;box-sizing:border-box;outline:none;transition:border-color 0.15s;" />
-              <label style="display:block;margin:0 0 6px;font-size:13px;font-weight:600;opacity:0.9;">Confirm password</label>
-              <input id="kabi-fl-pw2" type="password" placeholder="Repeat the same password" autocomplete="new-password" style="width:100%;padding:12px 14px;margin:0 0 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.35);color:#fff;font-size:14px;box-sizing:border-box;outline:none;transition:border-color 0.15s;" />
-              <div id="kabi-fl-err" style="color:#f87171;font-size:13px;margin:0 0 14px;min-height:18px;font-weight:500;"></div>
-              <button id="kabi-fl-submit" style="width:100%;padding:14px;background:linear-gradient(135deg,#00c2e0,#1338b0);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:0.3px;">Set password & continue</button>
-              <div style="margin-top:16px;padding:10px 12px;background:rgba(255,193,7,0.1);border:1px solid rgba(255,193,7,0.3);border-radius:6px;font-size:12px;opacity:0.9;line-height:1.5;">💡 Tip: use a mix of letters, numbers and symbols. Store it somewhere safe.</div>
+          <div style="position:fixed;inset:0;background:rgba(240,243,250,0.85);backdrop-filter:blur(6px);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;">
+            <div style="background:#ffffff;padding:32px 36px;border-radius:20px;max-width:440px;width:90%;color:#0f172a;box-shadow:0 30px 70px rgba(19,56,176,0.18),0 4px 12px rgba(0,0,0,0.06);border:1px solid rgba(0,194,224,0.12);">
+              <div style="font-size:40px;margin-bottom:10px;line-height:1;">🔐</div>
+              <h2 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#0a1f52;letter-spacing:-0.01em;">Welcome to KABi</h2>
+              <p style="margin:0 0 22px;font-size:13.5px;line-height:1.6;color:#475569;">This is your first login. Please set a new secure password to continue — required only once.</p>
+              <label style="display:block;margin:0 0 6px;font-size:12.5px;font-weight:700;color:#334155;">New password</label>
+              <input id="kabi-fl-pw1" type="password" placeholder="At least 8 characters" autocomplete="new-password" style="width:100%;padding:11px 14px;margin:0 0 14px;border-radius:10px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#0f172a;font-size:14px;box-sizing:border-box;outline:none;transition:all 0.15s;font-family:inherit;" />
+              <label style="display:block;margin:0 0 6px;font-size:12.5px;font-weight:700;color:#334155;">Confirm password</label>
+              <input id="kabi-fl-pw2" type="password" placeholder="Repeat the same password" autocomplete="new-password" style="width:100%;padding:11px 14px;margin:0 0 12px;border-radius:10px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#0f172a;font-size:14px;box-sizing:border-box;outline:none;transition:all 0.15s;font-family:inherit;" />
+              <div id="kabi-fl-err" style="color:#dc2626;font-size:12.5px;margin:0 0 14px;min-height:18px;font-weight:600;"></div>
+              <button id="kabi-fl-submit" style="width:100%;padding:13px;background:linear-gradient(135deg,#00c2e0,#1338b0);color:#fff;border:none;border-radius:10px;font-size:13.5px;font-weight:800;cursor:pointer;letter-spacing:0.3px;font-family:inherit;box-shadow:0 4px 14px rgba(0,194,224,0.35);transition:transform 0.1s;">Set password & continue</button>
+              <div style="margin-top:14px;padding:9px 12px;background:linear-gradient(135deg,rgba(0,194,224,0.06),rgba(19,56,176,0.04));border:1px solid rgba(0,194,224,0.2);border-radius:8px;font-size:11.5px;color:#475569;line-height:1.55;">💡 <strong style="color:#0a1f52">Tip:</strong> use a mix of letters, numbers and symbols. Store it somewhere safe.</div>
             </div>
           </div>`;
 
@@ -320,8 +431,8 @@
         pw1.focus();
 
         [pw1, pw2].forEach(el => {
-          el.addEventListener('focus', () => el.style.borderColor = 'rgba(0,194,224,0.6)');
-          el.addEventListener('blur',  () => el.style.borderColor = 'rgba(255,255,255,0.15)');
+          el.addEventListener('focus', () => { el.style.borderColor = '#00c2e0'; el.style.background = '#ffffff'; });
+          el.addEventListener('blur',  () => { el.style.borderColor = '#e2e8f0'; el.style.background = '#f8fafc'; });
         });
 
         const submit = async () => {

@@ -3,14 +3,23 @@
 
 <head>
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- KABi Supabase Backend Integration v1.0 - feature-flagged OFF   -->
+<!-- KABi Supabase Backend Integration v1.1 + LIGHT mode default    -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
+<script>
+  // Force LIGHT mode as the default theme (user requirement).
+  // Runs before the KABi boot code so the theme init picks it up.
+  try {
+    if (!localStorage.getItem('kabi-theme')) {
+      localStorage.setItem('kabi-theme', 'light');
+    }
+  } catch (e) { /* localStorage unavailable */ }
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="./06_kabiDb.js"></script>
 <script>
   // ═══ REPLACE THESE 2 VALUES WITH YOUR SUPABASE CREDENTIALS ═══
-  window.SUPABASE_URL      = 'https://eglseqpywedwmdbhhkmh.supabase.co';
-  window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnbHNlcXB5d2Vkd21kYmhoa21oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MDYyMjMsImV4cCI6MjA5OTA4MjIyM30.-CVhfXFU-3itc1tIGW4y3orpP23_K4cgqb2kgDMS53w';
+  window.SUPABASE_URL      = 'REPLACE_WITH_YOUR_SUPABASE_URL';
+  window.SUPABASE_ANON_KEY = 'REPLACE_WITH_YOUR_ANON_KEY';
   // ═══════════════════════════════════════════════════════════════
 
   const USE_SUPABASE = localStorage.getItem('kabi_db_backend') === '1';
