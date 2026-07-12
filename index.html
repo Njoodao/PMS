@@ -9,13 +9,10 @@
 <script src="./06_kabiDb.js"></script>
 <script>
   // ═══ REPLACE THESE 2 VALUES WITH YOUR SUPABASE CREDENTIALS ═══
-  // Find them in: Supabase Dashboard - Settings - API
-  const SUPABASE_URL      = 'https://eglseqpywedwmdbhhkmh.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnbHNlcXB5d2Vkd21kYmhoa21oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MDYyMjMsImV4cCI6MjA5OTA4MjIyM30.-CVhfXFU-3itc1tIGW4y3orpP23_K4cgqb2kgDMS53w';
+  const SUPABASE_URL      = 'REPLACE_WITH_YOUR_SUPABASE_URL';
+  const SUPABASE_ANON_KEY = 'REPLACE_WITH_YOUR_ANON_KEY';
   // ═══════════════════════════════════════════════════════════════
 
-  // Feature flag - default OFF for safe deploy
-  // Users flip it via DevTools: localStorage.setItem('kabi_db_backend','1')
   const USE_SUPABASE = localStorage.getItem('kabi_db_backend') === '1';
   if (USE_SUPABASE && window.kabiDb) {
     window.kabiDb.init({ url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY });
@@ -8815,15 +8812,10 @@
           </div>
         </div>
 
-        <!-- v67.37 FIX: Team Initiatives panel injected at the TOP of My Team
-             tab. v67.36 restored the panel only in Manager View (pg-home)
-             but managers land on pg-employee by default and navigate to
-             this My Team tab rather than switching views. Without this,
-             pending team initiatives were still invisible in the manager's
-             natural navigation path. The panel self-hides when there are
-             no initiatives (empty team OR no submissions), so this adds
-             zero clutter when nothing needs attention. -->
-        ${(typeof genManagerInitiativesPanel === 'function' ? genManagerInitiativesPanel(direct) : '')}
+        <!-- v67.41: Team Initiatives moved AFTER Direct Reports (see below).
+             The panel now also self-hides when no direct report has an
+             initiative target > 0 — avoids noise for teams that don't use
+             the initiative program. -->
 
         <!-- Evaluable Direct Reports — FTE, active, in evaluation cycle -->
         <div style="margin-bottom:20px">
@@ -8849,6 +8841,20 @@
           ${empRenderTeamList(tracked, 'tracked')}
         </div>
         ` : ''}
+
+        <!-- v67.41: Team Initiatives panel — moved from top to here (after
+             Direct Reports + Tracked). Gated: only renders when at least one
+             direct report has an annual initiative target > 0. This prevents
+             visual clutter for managers whose team is not participating in
+             the initiative program at all. -->
+        ${(() => {
+          const anyHasTarget = direct.some(d =>
+            typeof getEmpInitiativeTarget === 'function' && getEmpInitiativeTarget(d) > 0
+          );
+          return (anyHasTarget && typeof genManagerInitiativesPanel === 'function')
+            ? `<div style="margin-top:16px">${genManagerInitiativesPanel(direct)}</div>`
+            : '';
+        })()}
 
         <!-- View switcher for All / Tree -->
         <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;padding-top:14px;border-top:1px solid rgba(255,255,255,.06)">

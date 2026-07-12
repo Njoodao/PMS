@@ -96,7 +96,188 @@
       if (data.user?.user_metadata?.must_change_password === true) {
         await kabiDb._showFirstLoginModal();
       }
+
+      // Onboarding tour — shown once per user, right after password change
+      if (data.user?.user_metadata?.tour_completed !== true) {
+        // Wait a bit for the UI to settle after login
+        setTimeout(() => kabiDb._showOnboardingTour(), 800);
+      }
       return data.session;
+    },
+
+    /** Return the tour steps for the current user's role. */
+    _getTourSteps() {
+      // Determine role from the current employee record + auth metadata
+      const emp = state.myEmp;
+      const isHC       = emp?.isHCAdmin === true;
+      const isCEO      = emp?.isCEO === true;
+      const isManager  = emp?.hasManagerPortal === true || false;
+
+      // Fallback: infer manager from mgr chain (does anyone have this email as their mgr?)
+      const inferredManager = !isManager && state.mirror.PE_EMPLOYEES.some(e =>
+        e.mgr?.toLowerCase() === emp?.email?.toLowerCase() && !e.isFormer
+      );
+
+      const role = isHC ? 'hc' : (isCEO ? 'ceo' : (isManager || inferredManager ? 'manager' : 'employee'));
+
+      const commonWelcome = {
+        icon: '👋',
+        title: `Welcome to KABi, ${emp?.name?.split(' ')[0] || 'there'}!`,
+        body: `This is a quick tour of the KABi Performance Management System. We'll show you the main features you'll use. It only takes a minute — you can skip anytime.`
+      };
+
+      const commonEnd = {
+        icon: '🎉',
+        title: `You're all set!`,
+        body: `That's the tour. If you ever need a refresher, ask your HC representative. Have a productive day!`
+      };
+
+      if (role === 'employee') {
+        return [
+          commonWelcome,
+          { icon: '🏠', title: 'Your Dashboard',
+            body: 'This is your personal home. See your profile, upcoming celebrations, notifications, and recent activity — all in one glance.' },
+          { icon: '🎯', title: 'My KPIs',
+            body: `When your manager submits KPIs for your function and HC approves them, they'll appear here. You'll see what you're being evaluated on for the current cycle.` },
+          { icon: '💡', title: 'Initiatives',
+            body: `Submit ideas that improve KABi — academic (certificates, research) or general (process improvements, projects). Your manager reviews first, then HC gives final approval.` },
+          { icon: '🧠', title: 'INVIEWS Self-Assessment',
+            body: `Score yourself on behavioral, leadership, and technical competencies. This is private — even your manager cannot see the individual scores. Only aggregate is used.` },
+          { icon: '🔔', title: 'Notifications',
+            body: `Meeting requests, appreciation notes, evaluation releases, and initiative decisions all arrive here in real-time.` },
+          commonEnd
+        ];
+      }
+
+      if (role === 'manager') {
+        return [
+          commonWelcome,
+          { icon: '🏠', title: 'Your Dashboard',
+            body: `Your personal profile plus a summary of pending items across your team — evaluations to complete, initiatives to review, and notifications.` },
+          { icon: '👥', title: 'My Team',
+            body: `See all your direct reports. Send notes, schedule 1:1 meetings, and (when the cycle is open) start their performance evaluations.` },
+          { icon: '📊', title: 'KPI Framework',
+            body: `For each function you manage, propose up to 4 KPIs per level. HC reviews and approves, then those KPIs become official for the current cycle.` },
+          { icon: '✅', title: 'Evaluate Team',
+            body: `When it's evaluation time, score your reports across their KPIs, competencies, digital adoption, and initiatives. The AI Coach helps but final decisions are yours.` },
+          { icon: '💡', title: 'Team Initiatives',
+            body: `When your team members submit initiatives, they appear in the "My Team" page for your review. Approve them and they move to HC for final approval.` },
+          { icon: '🔔', title: 'Notifications',
+            body: `Real-time updates on team activity, HC decisions, and messages from other managers.` },
+          commonEnd
+        ];
+      }
+
+      if (role === 'hc') {
+        return [
+          commonWelcome,
+          { icon: '🎯', title: 'HC Performance Hub',
+            body: `The main tab. Review manager KPI submissions, approve or reject, monitor evaluation progress across all departments.` },
+          { icon: '📈', title: 'All Submissions',
+            body: `Every KPI submission from every manager — filterable, exportable to Excel. This is your central pipeline.` },
+          { icon: '💡', title: 'Initiative Approvals',
+            body: `Two-stage flow: manager approves → arrives at HC. You make the final call. Approved initiatives count toward employees' evaluation scores.` },
+          { icon: '⚙️', title: 'Settings & Configuration',
+            body: `Tune weights per department × level, justification mode, cycle timing, and toggle result visibility. Everything the system needs to run.` },
+          { icon: '🏆', title: 'Release Results',
+            body: `When you flip "results_visible" ON and mark individual evaluations as released, employees can finally see their scores. This is intentional — you control the moment.` },
+          { icon: '🔔', title: 'Notifications & Audit',
+            body: `Every important action across the system is auditable. Notifications keep you in the loop.` },
+          commonEnd
+        ];
+      }
+
+      // CEO
+      return [
+        commonWelcome,
+        { icon: '📊', title: 'Executive Dashboard',
+          body: `Organization-wide performance overview — scores by department, level, and location. Sourced from a live materialized view for speed.` },
+        { icon: '👥', title: 'Full Organization View',
+          body: `Explore any employee's evaluation, KPIs, and history. You have read access to everything (except the private INVIEWS breakdown).` },
+        { icon: '📈', title: 'Trends & Patterns',
+          body: `Identify high performers, watch retention risks, and see how the org evolves cycle over cycle.` },
+        commonEnd
+      ];
+    },
+
+    /** Show the sequential onboarding tour. Called once per user. */
+    _showOnboardingTour() {
+      const steps = kabiDb._getTourSteps();
+      if (!steps || steps.length === 0) return;
+
+      let idx = 0;
+      const modal = document.createElement('div');
+      modal.id = 'kabi-onboarding-tour';
+      modal.innerHTML = `
+        <div id="kabi-tour-backdrop" style="position:fixed;inset:0;background:rgba(0,15,40,0.86);z-index:2147483646;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,Segoe UI,sans-serif;backdrop-filter:blur(6px);">
+          <div style="background:linear-gradient(135deg,#0a1f52,#132a6b);padding:36px;border-radius:16px;max-width:520px;width:90%;color:#fff;box-shadow:0 24px 60px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.08);position:relative;">
+            <button id="kabi-tour-skip" title="Skip tour" style="position:absolute;top:12px;right:12px;background:transparent;border:none;color:rgba(255,255,255,0.5);font-size:20px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.15s;">✕</button>
+            <div id="kabi-tour-icon" style="font-size:44px;margin-bottom:10px;line-height:1;"></div>
+            <h2 id="kabi-tour-title" style="margin:0 0 8px;font-size:22px;font-weight:800;letter-spacing:-0.01em;"></h2>
+            <p id="kabi-tour-body" style="margin:0 0 24px;font-size:14px;line-height:1.65;opacity:0.85;"></p>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <div style="display:flex;gap:5px;" id="kabi-tour-dots"></div>
+              <div style="display:flex;gap:8px;">
+                <button id="kabi-tour-back" style="padding:10px 18px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">← Back</button>
+                <button id="kabi-tour-next" style="padding:10px 22px;background:linear-gradient(135deg,#00c2e0,#1338b0);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:0.3px;">Next →</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+
+      const iconEl  = document.getElementById('kabi-tour-icon');
+      const titleEl = document.getElementById('kabi-tour-title');
+      const bodyEl  = document.getElementById('kabi-tour-body');
+      const backBtn = document.getElementById('kabi-tour-back');
+      const nextBtn = document.getElementById('kabi-tour-next');
+      const skipBtn = document.getElementById('kabi-tour-skip');
+      const dotsEl  = document.getElementById('kabi-tour-dots');
+
+      function render() {
+        const step = steps[idx];
+        iconEl.textContent  = step.icon || '✨';
+        titleEl.textContent = step.title || '';
+        bodyEl.textContent  = step.body || '';
+        backBtn.style.visibility = idx === 0 ? 'hidden' : 'visible';
+        nextBtn.textContent = idx === steps.length - 1 ? 'Finish ✓' : 'Next →';
+        // Progress dots
+        dotsEl.innerHTML = steps.map((_, i) => {
+          const active = i === idx;
+          const past = i < idx;
+          const color = active ? '#00c2e0' : (past ? 'rgba(0,194,224,0.4)' : 'rgba(255,255,255,0.15)');
+          const size = active ? '10px' : '7px';
+          return `<div style="width:${size};height:${size};border-radius:50%;background:${color};transition:all 0.2s;"></div>`;
+        }).join('');
+      }
+
+      async function finish() {
+        modal.remove();
+        try {
+          await state.supabase.auth.updateUser({
+            data: { tour_completed: true }
+          });
+          console.info('[kabiDb] Onboarding tour completed — flag saved');
+        } catch (e) {
+          console.warn('[kabiDb] Could not save tour_completed flag:', e.message);
+        }
+      }
+
+      nextBtn.onclick = () => {
+        if (idx < steps.length - 1) { idx++; render(); }
+        else finish();
+      };
+      backBtn.onclick = () => { if (idx > 0) { idx--; render(); } };
+      skipBtn.onclick = finish;
+
+      // Escape key = skip
+      const onKey = (e) => { if (e.key === 'Escape') { skipBtn.click(); } };
+      document.addEventListener('keydown', onKey, { once: false });
+      // Cleanup on removal
+      const cleanup = () => document.removeEventListener('keydown', onKey);
+      modal.addEventListener('DOMNodeRemoved', cleanup, { once: true });
+
+      render();
     },
 
     /** Check + prompt for password change if session says must_change_password */
@@ -303,6 +484,9 @@
       const { data: { user: currentUser } } = await sb.auth.getUser();
       if (currentUser?.user_metadata?.must_change_password === true) {
         setTimeout(() => kabiDb._showFirstLoginModal(), 300);
+      } else if (currentUser && currentUser.user_metadata?.tour_completed !== true) {
+        // Tour only shows for users who have completed password change but haven't seen the tour
+        setTimeout(() => kabiDb._showOnboardingTour(), 800);
       }
 
       console.info('[kabiDb] mirror loaded — employees=' + state.mirror.PE_EMPLOYEES.length +
@@ -351,6 +535,20 @@
     },
 
     /** Debug: dump current mirror state. */
+    /** Expose internal state read-only for diagnostics. */
+    _state: state,
+
+    /** Manually trigger the tour again — useful for testing */
+    async _restartTour() {
+      try {
+        await state.supabase.auth.updateUser({ data: { tour_completed: false } });
+        console.info('[kabiDb] Tour flag reset. Reloading in 500ms...');
+        setTimeout(() => location.reload(), 500);
+      } catch (e) {
+        console.error('Could not reset tour flag:', e.message);
+      }
+    },
+
     debug: {
       dump() {
         return JSON.parse(JSON.stringify({
