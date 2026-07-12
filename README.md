@@ -1,5 +1,6 @@
 # KABi Performance Management System v67.21.0
 
+
 ## Deployment — Pure Static (Zero Server Dependencies)
 
 KABi is a **single self-contained HTML file**. All data lives in localStorage.
