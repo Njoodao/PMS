@@ -920,4 +920,17 @@
 
   // Expose
   window.kabiDb = kabiDb;
+
+  // Auto-init if credentials are present on window (safer than relying on
+  // the init snippet in index.html running at the right time)
+  setTimeout(() => {
+    if (!state.supabase && window.SUPABASE_URL && window.SUPABASE_ANON_KEY
+        && !window.SUPABASE_URL.includes('YOUR-PROJECT')) {
+      const useFlag = localStorage.getItem('kabi_db_backend') === '1';
+      if (useFlag) {
+        kabiDb.init({ url: window.SUPABASE_URL, anonKey: window.SUPABASE_ANON_KEY });
+        console.info('%c[KABi] Auto-init triggered', 'color:#00c2e0;font-weight:bold');
+      }
+    }
+  }, 100);
 })();
