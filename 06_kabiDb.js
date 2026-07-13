@@ -1455,8 +1455,36 @@
     const render = () => {
       const step = steps[idx];
       const el = step.sel ? document.querySelector(step.sel) : null;
-      highlightEl(el);
-      positionAt(el);
+
+      // Trigger the tab click on step 1+ (step 0 is the section's default first tab,
+      // no click needed there). Try multiple methods for robustness:
+      //   1) el.click() — native DOM click
+      //   2) el.onclick.call() — fallback if 1 didn't fire the handler
+      //   3) dispatchEvent — final fallback
+      if (el && idx > 0) {
+        let clicked = false;
+        try { el.click(); clicked = true; } catch (e) {}
+        if (!clicked && typeof el.onclick === 'function') {
+          try { el.onclick.call(el, new MouseEvent('click', { bubbles: true })); } catch (e) {}
+        }
+        if (!clicked) {
+          try {
+            el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+          } catch (e) {}
+        }
+      }
+
+      // Wait for the section to re-render (renderPEAdmin/renderKPIFramework/etc.
+      // rebuild the whole sidebar), then re-query the fresh element and position.
+      setTimeout(() => {
+        const freshEl = step.sel ? (document.querySelector(step.sel) || el) : null;
+        highlightEl(freshEl);
+        positionAt(freshEl);
+      }, 280);
+      // Also position immediately in case re-render is instant (avoids flicker)
+      const eagerEl = step.sel ? document.querySelector(step.sel) : null;
+      highlightEl(eagerEl);
+      positionAt(eagerEl);
       const dotsHTML = steps.map((_, i) =>
         `<span style="width:6px;height:6px;border-radius:50%;background:${i === idx ? '#00c2e0' : '#dbe4f0'};transition:.2s"></span>`
       ).join('');
