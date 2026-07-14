@@ -366,6 +366,68 @@
       return res;
     },
 
+    /* Provider-INDEPENDENT scope guard for a single generated/inline suggestion.
+       Reuses validate()'s function-fit (domain classifier). Returns a warning
+       string when the suggestion is out of the function's scope, else ''. */
+    scopeWarning: function (text, fnKey) {
+      if (!text) return '';
+      var A = KABi.Agents && KABi.Agents.kpiArchitect;
+      if (!A || typeof A.validate !== 'function') return '';
+      try {
+        var r = A.validate(String(text), fnKey, []);
+        if (r && r.functionFit && r.functionFit.ok === false) {
+          return '⚠ Out of scope for this function — belongs to another function; review before using.';
+        }
+      } catch (_) {}
+      return '';
+    },
+
+    /* Provider-INDEPENDENT pre-submit gate over the whole 4-KPI set.
+       Catches near-duplicates and out-of-scope KPIs even when the LLM/mock
+       coherence check misses them. Returns an array of issue objects
+       {code, severity, message} to merge into the coherence result. */
+    presubmitChecks: function (kpis, fnKey) {
+      var out = [];
+      var A = KABi.Agents && KABi.Agents.kpiArchitect;
+      if (!A || typeof A.validate !== 'function' || !Array.isArray(kpis)) return out;
+      var texts = kpis.map(function (k) { return typeof k === 'string' ? k : (k && k.text) || ''; });
+
+      // Duplicates — explicit PAIRWISE comparison so the KPI indices are exact
+      // (validate()'s matchedKpiIndex is relative to the siblings array passed in,
+      //  so we compare one pair at a time to keep the mapping correct).
+      for (var i = 0; i < texts.length; i++) {
+        if (!texts[i] || !texts[i].trim()) continue;
+        for (var j = i + 1; j < texts.length; j++) {
+          if (!texts[j] || !texts[j].trim()) continue;
+          var rp;
+          try { rp = A.validate(texts[i], fnKey, [texts[j]]); } catch (_) { continue; }
+          if (rp.duplicate && (rp.duplicate.severity === 'high' || rp.duplicate.similarity >= 0.85)) {
+            out.push({ code: 'set_duplicate', severity: 'critical',
+              title: 'Near-duplicate KPI',
+              description: 'KPI ' + (i + 1) + ' and KPI ' + (j + 1) + ' measure the same thing (~' +
+                Math.round((rp.duplicate.similarity || 0.9) * 100) + '% similar).',
+              suggestion: 'Remove one, or re-angle it (e.g. swap an activity KPI for an outcome KPI).',
+              kpisInvolved: [i, j] });
+          }
+        }
+      }
+
+      // Out-of-scope — one pass per KPI
+      texts.forEach(function (t, i) {
+        if (!t || !t.trim()) return;
+        var rs;
+        try { rs = A.validate(t, fnKey, []); } catch (_) { return; }
+        if (rs.functionFit && rs.functionFit.ok === false) {
+          out.push({ code: 'out_of_scope', severity: 'critical',
+            title: 'Out of function scope',
+            description: 'KPI ' + (i + 1) + ' falls outside this function’s scope — it belongs to another function.',
+            suggestion: 'Replace it with a KPI this role actually owns.',
+            kpisInvolved: [i] });
+        }
+      });
+      return out;
+    },
+
     /* Builds an enriched context block injected into a prompt.
        mode: 'generate' | 'coherence'
        opts may carry { level: 'officer'|'specialist'|'lead'|'manager' } */

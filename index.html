@@ -38942,6 +38942,14 @@
         existingKpis: existing,
         previousSuggestion: previousSuggestionText || null
       });
+      // v68: provider-independent scope guard — flag out-of-scope suggestions
+      // (e.g. an "uptime" KPI proposed for a Sales function) before showing them.
+      try {
+        if (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.scopeWarning && result.kpi) {
+          var _sw = KABi.KpiKnowledge.scopeWarning(result.kpi.text, fnKey);
+          if (_sw) result.kpi.reasoning = _sw + (result.kpi.reasoning ? ' — ' + result.kpi.reasoning : '');
+        }
+      } catch (_) {}
       renderSuggestion(container, result.kpi, fnKey, si, li);
 
       // Track for "Try another" history (optional analytics)
@@ -39493,6 +39501,15 @@
         return;
       }
 
+      // v68: provider-INDEPENDENT deterministic gate (duplicates + out-of-scope).
+      // Runs even on the mock provider, so a duplicate/off-scope set can't slip through.
+      var detIssues = [];
+      try {
+        if (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.presubmitChecks) {
+          detIssues = KABi.KpiKnowledge.presubmitChecks(kpis, fnKey) || [];
+        }
+      } catch (_) {}
+
       showLoading();
 
       try {
@@ -39501,6 +39518,12 @@
           throw new Error('checkCoherence not available');
         }
         var result = await KABi.Agents.kpiArchitect.checkCoherence(kpis, fnKey);
+
+        // Merge deterministic issues in front of the LLM/mock issues.
+        if (detIssues.length) {
+          result.issues = detIssues.concat(result.issues || []);
+          if (result.decision === 'approved') result.decision = 'review';
+        }
 
         // If no issues, skip the modal entirely and proceed
         if (result.issues.length === 0) {
