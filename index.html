@@ -32964,6 +32964,11 @@
       // v67 Sprint 7 — Phase 2: pull connector context (Jira + uploaded docs)
       var connectorContext = _buildKpiConnectorContext(ctx.fnKey, lang);
 
+      // v68: inject enriched, level-aware Knowledge Pack context (07_kabiKpiKnowledge.js).
+      // Returns '' for functions without an enriched pack — filtered out below.
+      var packContext = (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.buildPromptContext)
+        ? KABi.KpiKnowledge.buildPromptContext(ctx.fnKey, ctx, lang, 'generate') : '';
+
       if (lang === 'ar') {
         return [
           'الوظيفة: ' + ctx.fnName,
@@ -32972,6 +32977,7 @@
           (ctx.fnPillar ? 'الركيزة: ' + ctx.fnPillar : ''),
           salesContext,
           connectorContext,
+          packContext,
           'كلمات نموذجية لهذه الوظيفة (للإلهام، ليست إلزامية):',
           'أفعال: ' + ctx.validVerbs.join('، '),
           'مفاهيم: ' + ctx.validNouns.join('، '),
@@ -32992,6 +32998,7 @@
         (ctx.fnPillar ? 'Pillar: ' + ctx.fnPillar : ''),
         salesContext,
         connectorContext,
+        packContext,
         'Domain vocabulary (for inspiration, not mandatory):',
         'Verbs: ' + ctx.validVerbs.join(', '),
         'Concepts: ' + ctx.validNouns.join(', '),
@@ -33171,6 +33178,10 @@
       // v67 Sprint 7 — Phase 2: same connector context as bulk generate
       var connectorContext = _buildKpiConnectorContext(ctx.fnKey, lang);
 
+      // v68: enriched level-aware Knowledge Pack context ('' when no pack — filtered out)
+      var packContext = (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.buildPromptContext)
+        ? KABi.KpiKnowledge.buildPromptContext(ctx.fnKey, ctx, lang, 'generate') : '';
+
       if (lang === 'ar') {
         lines = [
           'الوظيفة: ' + ctx.fnName,
@@ -33178,6 +33189,7 @@
           (ctx.fnPillar ? 'الركيزة: ' + ctx.fnPillar : ''),
           (ctx.slotIndex !== null ? 'الخانة المطلوبة: KPI ' + (ctx.slotIndex + 1) + ' من 4' : ''),
           connectorContext,
+          packContext,
           ''
         ];
         if (ctx.existing && ctx.existing.length > 0) {
@@ -33209,6 +33221,7 @@
           (ctx.fnPillar ? 'Pillar: ' + ctx.fnPillar : ''),
           (ctx.slotIndex !== null ? 'Slot: KPI ' + (ctx.slotIndex + 1) + ' of 4' : ''),
           connectorContext,
+          packContext,
           ''
         ];
         if (ctx.existing && ctx.existing.length > 0) {
@@ -33426,20 +33439,23 @@
           lines.push('  "' + (k || '(فارغ)') + '"');
           lines.push('');
         });
-        // إضافة مكتبة المؤشرات المعتمدة كمرجع
+        // v68 FIX: library was read from a non-existent `.sections` field → injected nothing.
+        // Read the REAL approved library (enriched pack .library, else _KPI_DB) + pack rules.
         var libKpisAr = '';
         try {
-          var _kbAr = KABi.KpiKnowledgeBase[ctx.fnKey || ''];
-          if (_kbAr && _kbAr.sections) {
+          var _libAr = (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.getLibrary)
+            ? KABi.KpiKnowledge.getLibrary(ctx.fnKey) : [];
+          if ((!_libAr || !_libAr.length) && typeof _KPI_DB !== 'undefined' && _KPI_DB[ctx.fnKey] && _KPI_DB[ctx.fnKey].kpis) {
+            _libAr = _KPI_DB[ctx.fnKey].kpis;
+          }
+          if (_libAr && _libAr.length) {
             libKpisAr = '\n═══ مكتبة المؤشرات المعتمدة لوظيفة ' + ctx.fnName + ' ═══\n';
-            _kbAr.sections.forEach(function(sec) {
-              libKpisAr += '\nالقسم: ' + sec.name + '\n';
-              (sec.kpis || []).forEach(function(kpi, i) {
-                libKpisAr += '  ' + (i+1) + '. ' + kpi + '\n';
-              });
-            });
+            _libAr.forEach(function(kpi, i) { libKpisAr += '  ' + (i+1) + '. ' + kpi + '\n'; });
             libKpisAr += '\nاستخدم هذه كمرجع أساسي. قارن كل مؤشر مقدّم مع المكتبة.\n';
           }
+          var _packAr = (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.buildPromptContext)
+            ? KABi.KpiKnowledge.buildPromptContext(ctx.fnKey, {}, 'ar', 'coherence') : '';
+          if (_packAr) libKpisAr += '\n' + _packAr + '\n';
         } catch(_) {}
         lines.push(libKpisAr);
         lines.push('');
@@ -33454,19 +33470,23 @@
         lines.push('أعد JSON الآن:');
       } else {
         // Build library context for this function
+        // v68 FIX: library was read from a non-existent `.sections` field → injected nothing.
+        // Read the REAL approved library (enriched pack .library, else _KPI_DB) + pack rules.
         var libKpis = '';
         try {
-          var _kb = KABi.KpiKnowledgeBase[ctx.fnKey || ''];
-          if (_kb && _kb.sections) {
+          var _lib = (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.getLibrary)
+            ? KABi.KpiKnowledge.getLibrary(ctx.fnKey) : [];
+          if ((!_lib || !_lib.length) && typeof _KPI_DB !== 'undefined' && _KPI_DB[ctx.fnKey] && _KPI_DB[ctx.fnKey].kpis) {
+            _lib = _KPI_DB[ctx.fnKey].kpis;
+          }
+          if (_lib && _lib.length) {
             libKpis = '\n═══ APPROVED KPI LIBRARY FOR ' + ctx.fnName.toUpperCase() + ' ═══\n';
-            _kb.sections.forEach(function(sec) {
-              libKpis += '\nSection: ' + sec.name + '\n';
-              (sec.kpis || []).forEach(function(kpi, i) {
-                libKpis += '  ' + (i+1) + '. ' + kpi + '\n';
-              });
-            });
+            _lib.forEach(function(kpi, i) { libKpis += '  ' + (i+1) + '. ' + kpi + '\n'; });
             libKpis += '\nUse these as the authoritative reference. Compare each submitted KPI against this library.\n';
           }
+          var _pack = (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.buildPromptContext)
+            ? KABi.KpiKnowledge.buildPromptContext(ctx.fnKey, {}, 'en', 'coherence') : '';
+          if (_pack) libKpis += '\n' + _pack + '\n';
         } catch(_) { /* library injection is best-effort */ }
 
         lines = [
@@ -33591,6 +33611,25 @@
             });
           }
         }
+
+        // v68: deterministic checks from the enriched Knowledge Pack (metric bounds,
+        // compound KPIs, unrealistic vs approved default). Additive — no-op without a pack.
+        try {
+          if (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.deterministicChecks) {
+            var _det = KABi.KpiKnowledge.deterministicChecks(text, fnKey);
+            if (_det && _det.issues && _det.issues.length) {
+              _det.issues.forEach(function (i) { issues.unshift(i); });
+              var _ov = _det.smartOverrides || {};
+              ['S', 'M', 'A', 'R', 'T'].forEach(function (k) {
+                if (_ov[k] === false && smart[k] !== false) {
+                  smart[k] = false;
+                  if (smart.evidence) smart.evidence[k] = _det.issues[0].message;
+                }
+              });
+              smart.score = ['S', 'M', 'A', 'R', 'T'].reduce(function (n, k) { return n + (smart[k] ? 1 : 0); }, 0);
+            }
+          }
+        } catch (e) { /* deterministic layer is best-effort */ }
 
         return {
           smart: smart,
@@ -39544,6 +39583,10 @@
       setTimeout(_kabiFooterSync, 800);
     })();
   </script>
+
+  <!-- v68: Enriched, level-aware KPI Knowledge Packs. Loaded LAST so it merges
+       after KABi.KpiKnowledgeBase is defined during inline-script parse. -->
+  <script src="./07_kabiKpiKnowledge.js"></script>
 
 </body>
 
