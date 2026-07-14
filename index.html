@@ -20298,8 +20298,8 @@
               Without an API key, a basic rule-based engine is used instead.
             </p>
           </div>
-          <span style="padding:4px 10px;border-radius:20px;font-size:10px;font-weight:800;background:\${isConnected ? 'rgba(59,182,145,.15)' : 'rgba(245,158,11,.15)'};color:\${isConnected ? '#3BB691' : '#F59E0B'};border:1px solid \${isConnected ? 'rgba(59,182,145,.3)' : 'rgba(245,158,11,.3)'}">
-            \${isConnected ? '<i class="ti ti-circle-check"></i> Connected' : '<i class="ti ti-alert-circle"></i> Not configured'}
+          <span style="padding:4px 10px;border-radius:20px;font-size:10px;font-weight:800;background:${isConnected ? 'rgba(59,182,145,.15)' : 'rgba(245,158,11,.15)'};color:${isConnected ? '#3BB691' : '#F59E0B'};border:1px solid ${isConnected ? 'rgba(59,182,145,.3)' : 'rgba(245,158,11,.3)'}">
+            ${isConnected ? '<i class="ti ti-circle-check"></i> Connected' : '<i class="ti ti-alert-circle"></i> Not configured'}
           </span>
         </div>
       </div>
@@ -20307,11 +20307,11 @@
       <!-- Status cards -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:18px">
         <div style="padding:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;text-align:center">
-          <div style="font-size:20px;font-weight:900;color:\${isConnected ? '#3BB691' : 'var(--text-muted)'}">\${isConnected ? 'Claude' : 'Basic'}</div>
+          <div style="font-size:20px;font-weight:900;color:${isConnected ? '#3BB691' : 'var(--text-muted)'}">${isConnected ? 'Claude' : 'Basic'}</div>
           <div style="font-size:9px;color:var(--text-dim);margin-top:4px">Active Provider</div>
         </div>
         <div style="padding:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;text-align:center">
-          <div style="font-size:20px;font-weight:900;color:var(--cyan)">\${usage.callCount || 0}</div>
+          <div style="font-size:20px;font-weight:900;color:var(--cyan)">${usage.callCount || 0}</div>
           <div style="font-size:9px;color:var(--text-dim);margin-top:4px">API Calls (this session)</div>
         </div>
         <div style="padding:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;text-align:center">
@@ -20326,9 +20326,9 @@
         <div style="display:flex;gap:8px;align-items:center">
           <input type="password" id="pe-ai-apikey" placeholder="sk-ant-api03-..." value="" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--white);font-family:'SF Mono',Consolas,monospace;font-size:11px;outline:none" />
           <button onclick="_peAISaveKey()" style="padding:10px 18px;background:linear-gradient(135deg,#9B81BC,#675EAA);color:white;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap"><i class="ti ti-device-floppy"></i> Save</button>
-          \${isConnected ? '<button onclick="_peAIRemoveKey()" style="padding:10px 14px;background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-trash"></i></button>' : ''}
+          ${isConnected ? '<button onclick="_peAIRemoveKey()" style="padding:10px 14px;background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-trash"></i></button>' : ''}
         </div>
-        \${currentKey ? '<div style="font-size:10px;color:var(--text-muted);margin-top:6px">Current: <code style="color:var(--cyan)">' + currentKey + '</code></div>' : ''}
+        ${currentKey ? '<div style="font-size:10px;color:var(--text-muted);margin-top:6px">Current: <code style="color:var(--cyan)">' + currentKey + '</code></div>' : ''}
         <div style="font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5">
           Get your key from <strong style="color:var(--text-muted)">console.anthropic.com → Settings → API Keys</strong>.<br>
           The key is stored in your browser only (localStorage) — never sent to KABi servers.
