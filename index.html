@@ -20322,15 +20322,16 @@
 
       <!-- API Key Input -->
       <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;margin-bottom:18px">
-        <div style="font-size:12px;font-weight:800;color:var(--white);margin-bottom:10px"><i class="ti ti-key" style="color:rgba(155,129,188,.85)"></i> Anthropic API Key</div>
+        <div style="font-size:12px;font-weight:800;color:var(--white);margin-bottom:10px"><i class="ti ti-key" style="color:rgba(155,129,188,.85)"></i> Anthropic / OpenRouter API Key</div>
         <div style="display:flex;gap:8px;align-items:center">
-          <input type="password" id="pe-ai-apikey" placeholder="sk-ant-api03-..." value="" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--white);font-family:'SF Mono',Consolas,monospace;font-size:11px;outline:none" />
+          <input type="password" id="pe-ai-apikey" placeholder="sk-ant-... (Anthropic)  or  sk-or-... (OpenRouter)" value="" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--white);font-family:'SF Mono',Consolas,monospace;font-size:11px;outline:none" />
           <button onclick="_peAISaveKey()" style="padding:10px 18px;background:linear-gradient(135deg,#9B81BC,#675EAA);color:white;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap"><i class="ti ti-device-floppy"></i> Save</button>
           ${isConnected ? '<button onclick="_peAIRemoveKey()" style="padding:10px 14px;background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-trash"></i></button>' : ''}
         </div>
         ${currentKey ? '<div style="font-size:10px;color:var(--text-muted);margin-top:6px">Current: <code style="color:var(--cyan)">' + currentKey + '</code></div>' : ''}
         <div style="font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5">
-          Get your key from <strong style="color:var(--text-muted)">console.anthropic.com → Settings → API Keys</strong>.<br>
+          Anthropic key: <strong style="color:var(--text-muted)">console.anthropic.com → Settings → API Keys</strong> (sk-ant-…).<br>
+          OpenRouter key: <strong style="color:var(--text-muted)">openrouter.ai → Keys</strong> (sk-or-…) — needs account credits; default model anthropic/claude-3.5-sonnet.<br>
           The key is stored in your browser only (localStorage) — never sent to KABi servers.
         </div>
       </div>
@@ -20368,10 +20369,12 @@
       if (!input) return;
       var key = (input.value || '').trim();
       if (!key) { toast('Please enter an API key', 'err'); return; }
-      if (key.indexOf('sk-ant-') !== 0) { toast('Key must start with sk-ant-', 'err'); return; }
+      if (key.indexOf('sk-ant-') !== 0 && key.indexOf('sk-or-') !== 0) {
+        toast('Key must start with sk-ant- (Anthropic) or sk-or- (OpenRouter)', 'err'); return;
+      }
       try {
         KABi.LLM.setApiKey(key);
-        toast('<i class="ti ti-circle-check ti-green"></i> API key saved — Claude AI is now active', 'ok');
+        toast('<i class="ti ti-circle-check ti-green"></i> API key saved — AI engine is now active', 'ok');
         renderPESettings(document.getElementById('pe-admin-body'));
       } catch(e) {
         toast('Failed to save key: ' + e.message, 'err');
@@ -37292,7 +37295,7 @@
               console.log('[KABi.LLM] Migrated API key from sessionStorage → localStorage');
             }
           }
-          if (stored && stored.indexOf('sk-ant-') === 0) {
+          if (stored && (stored.indexOf('sk-ant-') === 0 || stored.indexOf('sk-or-') === 0)) {
             cfg = Object.assign({}, cfg, { apiKey: stored });
           }
         } catch (e) { /* storage may be blocked */ }
@@ -37312,7 +37315,7 @@
       var cfg = this.getConfig();
       return !!(cfg.apiKey
         && cfg.apiKey !== 'YOUR_ANTHROPIC_API_KEY_HERE'
-        && cfg.apiKey.indexOf('sk-ant-') === 0);
+        && (cfg.apiKey.indexOf('sk-ant-') === 0 || cfg.apiKey.indexOf('sk-or-') === 0));
     },
 
     call: async function (messages, options) {
@@ -37332,6 +37335,13 @@
       }
 
       var opts = options || {};
+
+      // v68: OpenRouter (OpenAI-compatible gateway) — used when the key is sk-or-...
+      // Kept in a separate method so the Anthropic-direct path below is untouched.
+      if (cfg.apiKey.indexOf('sk-or-') === 0) {
+        return await this._callOpenRouter(messages, opts, cfg);
+      }
+
       var requestBody = {
         model: cfg.model || 'claude-sonnet-4-6',
         max_tokens: Math.min(opts.maxTokens || 1500, cfg.maxTokensPerCall || 8192), // v67.23: fallback aligned with raised clamp
@@ -37420,6 +37430,87 @@
         usage: { inputTokens: inputTokens, outputTokens: outputTokens, costUSD: callCost },
         model: data.model,
         stopReason: data.stop_reason,
+        elapsedMs: elapsedMs
+      };
+    },
+
+    /* v68: OpenRouter path (OpenAI-compatible). System prompt is prepended as a
+       system message; response is read from choices[0].message.content. Default
+       model is anthropic/claude-3.5-sonnet — override via window.KABi_LLM_Config.model
+       with any OpenRouter slug (must contain a '/'). */
+    _callOpenRouter: async function (messages, opts, cfg) {
+      var model = (cfg.model && cfg.model.indexOf('/') !== -1) ? cfg.model : 'anthropic/claude-3.5-sonnet';
+      var orMessages = Array.isArray(messages) ? messages.slice() : [];
+      if (opts.systemPrompt) {
+        orMessages = [{ role: 'system', content: opts.systemPrompt }].concat(orMessages);
+      }
+      var requestBody = {
+        model: model,
+        messages: orMessages,
+        max_tokens: Math.min(opts.maxTokens || 1500, cfg.maxTokensPerCall || 8192)
+      };
+      if (opts.temperature !== undefined) requestBody.temperature = opts.temperature;
+
+      var startTime = Date.now();
+      var response;
+      try {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + cfg.apiKey,
+            'HTTP-Referer': (typeof location !== 'undefined' && location.origin) || 'https://kabi.ai',
+            'X-Title': 'KABi PMS'
+          },
+          body: JSON.stringify(requestBody)
+        });
+      } catch (e) {
+        usageTracker.lastError = 'NETWORK: ' + e.message;
+        throw new Error('NETWORK_ERROR: Could not reach OpenRouter. Check your internet connection.');
+      }
+      var elapsedMs = Date.now() - startTime;
+
+      if (!response.ok) {
+        var errBody = null, errText;
+        try { errBody = await response.json(); errText = JSON.stringify(errBody); }
+        catch (e) { errText = response.statusText; }
+        usageTracker.lastError = 'HTTP_' + response.status + ': ' + errText;
+        var detail = (errBody && errBody.error && (errBody.error.message || errBody.error)) || errText;
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('AUTH_ERROR: OpenRouter rejected the API key. Reason: ' + detail
+            + '. Verify the key at openrouter.ai → Keys, and ensure the account has credits.');
+        }
+        if (response.status === 402) {
+          throw new Error('COST_LIMIT: OpenRouter account has insufficient credits. Add credits at openrouter.ai → Credits.');
+        }
+        if (response.status === 400) {
+          throw new Error('BAD_REQUEST: ' + detail + '  (If it mentions the model, set a valid OpenRouter slug in window.KABi_LLM_Config.model — default is anthropic/claude-3.5-sonnet.)');
+        }
+        if (response.status === 429) {
+          throw new Error('RATE_LIMIT: Too many requests. Wait a moment and try again.');
+        }
+        throw new Error('API_ERROR: ' + response.status + ' — ' + errText);
+      }
+
+      var data = await response.json();
+      var fullText = ((data.choices && data.choices[0] && data.choices[0].message
+        && data.choices[0].message.content) || '').trim();
+      var inputTokens = (data.usage && data.usage.prompt_tokens) || 0;
+      var outputTokens = (data.usage && data.usage.completion_tokens) || 0;
+      var callCost = estimateCost(inputTokens, outputTokens);
+      usageTracker.callCount++;
+      usageTracker.totalInputTokens += inputTokens;
+      usageTracker.totalOutputTokens += outputTokens;
+      usageTracker.totalCostUSD += callCost;
+      if (cfg.enableUsageTracking !== false) {
+        console.log('[KABi.LLM] OpenRouter call complete',
+          { model: model, tokens: { in: inputTokens, out: outputTokens }, elapsedMs: elapsedMs });
+      }
+      return {
+        text: fullText,
+        usage: { inputTokens: inputTokens, outputTokens: outputTokens, costUSD: callCost },
+        model: data.model || model,
+        stopReason: (data.choices && data.choices[0] && data.choices[0].finish_reason) || 'stop',
         elapsedMs: elapsedMs
       };
     }
@@ -38088,14 +38179,17 @@
       if (cleaned !== key) {
         console.warn('[KABi.LLM] Stripped', key.length - cleaned.length, 'whitespace chars from API key');
       }
-      if (cleaned.indexOf('sk-ant-') !== 0) {
-        throw new Error('Invalid API key format. Expected: sk-ant-... (got: '
-          + cleaned.substring(0, 12) + '...)');
+      var _isAnt = cleaned.indexOf('sk-ant-') === 0;
+      var _isOR = cleaned.indexOf('sk-or-') === 0;
+      if (!_isAnt && !_isOR) {
+        throw new Error('Invalid API key format. Expected sk-ant-... (Anthropic) or sk-or-... (OpenRouter). Got: '
+          + cleaned.substring(0, 12) + '...');
       }
-      // Real Anthropic keys are ~108 chars. Reject obvious placeholders/truncated keys.
-      if (cleaned.length < 80) {
+      // Anthropic keys are ~108 chars; OpenRouter keys ~73. Reject obvious truncation/placeholders.
+      var _minLen = _isOR ? 40 : 80;
+      if (cleaned.length < _minLen) {
         throw new Error('API key looks truncated (length=' + cleaned.length
-          + '). Real Anthropic keys are ~108 chars. Did you paste a placeholder like "sk-ant-api03-..." instead of the full key from console.anthropic.com?');
+          + '). Paste the FULL key (Anthropic ~108 chars from console.anthropic.com, OpenRouter ~73 chars from openrouter.ai).');
       }
       if (cleaned.indexOf('...') !== -1) {
         throw new Error('API key contains "..." which is a placeholder. Paste the FULL key from console.anthropic.com → Settings → API Keys.');
