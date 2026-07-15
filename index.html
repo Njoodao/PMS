@@ -6212,11 +6212,29 @@
       'Product Department', 'Technology Department', 'Commercial Department',
       'Operations Department', 'Finance Department', 'Human Capital Department'
     ];
+    // v69: 5-level career framework (was 3: Staff/Management/Top Management).
+    // Descriptive names + typical titles (used for tooltips). Ordered HIGH→LOW.
     const KABI_LEVELS = [
-      { id: 'Top Management', icon: '<i class="ti ti-crown"></i>', desc: 'Chief, Director' },
-      { id: 'Management',      icon: '<i class="ti ti-briefcase"></i>', desc: 'Manager, Lead' },
-      { id: 'Staff Level',     icon: '<i class="ti ti-clipboard-list"></i>', desc: 'Specialist, Officer' }
+      { id: 'Executive',              icon: '<i class="ti ti-crown"></i>',          color: '#F59E0B', desc: 'CEO, COO, Deputy CEO' },
+      { id: 'Advanced',               icon: '<i class="ti ti-star"></i>',           color: '#A855F7', desc: 'Director, Senior Director' },
+      { id: 'First-level management', icon: '<i class="ti ti-briefcase"></i>',      color: '#216AB1', desc: 'Lead, Manager, Technical Lead' },
+      { id: 'Intermediate',           icon: '<i class="ti ti-user"></i>',           color: '#0EA5E9', desc: 'Specialist, Engineer, Consultant' },
+      { id: 'Entry',                  icon: '<i class="ti ti-clipboard-list"></i>', color: '#3BB691', desc: 'Officer, Junior, Associate' }
     ];
+    // Level ordering LOW→HIGH + legacy 3-level → 5-level normalizer + meta helpers.
+    const _KABI_LEVEL_ORDER = ['Entry', 'Intermediate', 'First-level management', 'Advanced', 'Executive'];
+    const _KABI_LEGACY_LEVEL = { 'Staff Level': 'Intermediate', 'Management': 'First-level management', 'Top Management': 'Advanced' };
+    function kabiLevelMeta(id) {
+      for (var i = 0; i < KABI_LEVELS.length; i++) { if (KABI_LEVELS[i].id === id) return KABI_LEVELS[i]; }
+      return KABI_LEVELS[KABI_LEVELS.length - 1]; // default = Entry
+    }
+    function kabiNormalizeLevel(v) {
+      if (!v) return 'Entry';
+      if (_KABI_LEVEL_ORDER.indexOf(v) > -1) return v;          // already a new 5-level value
+      return _KABI_LEGACY_LEVEL[v] || 'Entry';                  // map legacy 3-level value
+    }
+    function kabiLevelIcon(v) { return kabiLevelMeta(kabiNormalizeLevel(v)).icon; }
+    function kabiLevelColor(v) { return kabiLevelMeta(kabiNormalizeLevel(v)).color; }
 
     // ═══════════════════════════════════════════════════════
     // BASE SYSTEM USERS (non-employee accounts)
@@ -6422,7 +6440,7 @@
 
     // v67.21: Get allowed levels for a manager on a given function
     function _getKpiLevelAccess(email, fnKey) {
-      var ALL_LEVELS = ['Staff Level', 'Management', 'Top Management'];
+      var ALL_LEVELS = _KABI_LEVEL_ORDER.slice(); // v69: 5 levels (Entry…Executive)
       var grant = _hasKpiGrant(email);
       if (!grant || !grant.levelAccess || !grant.levelAccess[fnKey]) return ALL_LEVELS; // default: all
       var lvls = grant.levelAccess[fnKey];
@@ -6965,17 +6983,10 @@
       if (u.role === 'manager' || u.role === 'employee') {
         const empRec = PE_EMPLOYEES.find(e => (e.email || '').toLowerCase() === (u.email || me.email || '').toLowerCase());
         if (empRec) {
-          const lvl = empRec.level || 'Staff Level';
-          if (lvl === 'Top Management') {
-            badgeLabel = 'Top Mgmt';
-            badgeColor = '#fbbf24'; badgeBg = 'rgba(251,191,36,.12)'; badgeBorder = 'rgba(251,191,36,.3)';
-          } else if (lvl === 'Management') {
-            badgeLabel = 'Mgmt';
-            badgeColor = '#a78bfa'; badgeBg = 'rgba(167,139,250,.12)'; badgeBorder = 'rgba(167,139,250,.3)';
-          } else {
-            badgeLabel = 'Staff';
-            badgeColor = '#60a5fa'; badgeBg = 'rgba(96,165,250,.12)'; badgeBorder = 'rgba(96,165,250,.3)';
-          }
+          const lvl = kabiNormalizeLevel(empRec.level);
+          const _lst = window.getLevelStyle(lvl);
+          badgeColor = _lst.color; badgeBg = _lst.bg; badgeBorder = _lst.border;
+          badgeLabel = { 'Executive': 'Executive', 'Advanced': 'Advanced', 'First-level management': 'Manager', 'Intermediate': 'Professional', 'Entry': 'Entry' }[lvl] || lvl;
         }
       }
       rb.textContent = badgeLabel;
@@ -7420,9 +7431,11 @@
     // v66.7.x split-target shape.
     const _INIT_TARGETS_LS_KEY = 'kabi_initiative_targets_v668';
     const _INIT_TARGETS_DEFAULTS = {
-      'Top Management': 6,
-      'Management':     4,
-      'Staff Level':    2
+      'Executive':              6,
+      'Advanced':               6,
+      'First-level management': 4,
+      'Intermediate':           2,
+      'Entry':                  2
     };
 
     // v66.8: Load persisted targets at boot. Accepts:
@@ -7490,7 +7503,7 @@
     // employee, derived from their management level.
     function getEmpInitiativeTarget(emp) {
       if (!emp) return 0;
-      const level = typeof peGetEmpLevel === 'function' ? peGetEmpLevel(emp) : (emp.level || emp.group || 'Staff Level');
+      const level = typeof peGetEmpLevel === 'function' ? peGetEmpLevel(emp) : (emp.level || emp.group || 'Entry');
       const t = INITIATIVE_TARGETS[level];
       if (typeof t === 'number') return Math.max(0, t);
       // Legacy split shape — coerce
@@ -7499,16 +7512,16 @@
         const g = parseInt(t.general, 10) || 0;
         return a + g;
       }
-      return INITIATIVE_TARGETS['Staff Level'] || 0;
+      return INITIATIVE_TARGETS['Entry'] || 0;
     }
 
     // v66.8: Returns just the level name. Useful for renderer to show
     // "Your level: Staff" without needing the full targets object.
     function getEmpInitiativeLevel(emp) {
-      if (!emp) return 'Staff Level';
+      if (!emp) return 'Entry';
       return typeof peGetEmpLevel === 'function'
         ? peGetEmpLevel(emp)
-        : (emp.level || emp.group || 'Staff Level');
+        : (emp.level || emp.group || 'Entry');
     }
 
     // v66.8: Backward-compat shim. The old API returned {academic, general, total}.
@@ -7546,7 +7559,7 @@
       const isTracked = mode === 'tracked';
       const cards = members.map(m => {
         const initials = (m.name || '').split(' ').filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
-        const levelIcon = { 'Top Management': '<i class=\"ti ti-crown ti-amber\"></i>', 'Management': '<i class=\"ti ti-briefcase\"></i>', 'Staff Level': '<i class=\"ti ti-user\"></i>' }[m.level || 'Staff Level'] || '<i class=\"ti ti-user\"></i>';
+        const levelIcon = kabiLevelIcon(m.level);
         const locFlag = { 'Riyadh (HQ)': '<i class="ti ti-map-pin" title="Saudi Arabia"></i>', 'Jordan': '<i class="ti ti-map-pin" title="Jordan"></i>', 'Palestine': '<i class="ti ti-map-pin" title="Palestine"></i>', 'Dubai': '<i class="ti ti-map-pin" title="UAE"></i>' }[m.loc] || '<i class=\"ti ti-map-pin\"></i>';
         const directCount = peGetDirectReports(m.email).length;
         const mgrBadge = directCount > 0 ? `<span style="padding:1px 6px;border-radius:8px;background:rgba(167,139,250,.12);color:#a78bfa;font-size:8px;font-weight:800;margin-left:4px">MGR · ${directCount}</span>` : '';
@@ -7571,7 +7584,7 @@
                 ${catBadge}
               </div>
               <div style="font-size:10px;color:var(--text-primary);margin-top:3px">${m.title || '—'}</div>
-              <div style="font-size:9px;color:var(--text-muted);margin-top:2px">${levelIcon} ${m.level || 'Staff Level'} · ${locFlag} ${m.loc || '—'} · Hired: ${m.hireDate || 'N/A'}</div>
+              <div style="font-size:9px;color:var(--text-muted);margin-top:2px">${levelIcon} ${m.level || 'Entry'} · ${locFlag} ${m.loc || '—'} · Hired: ${m.hireDate || 'N/A'}</div>
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0">
               <button onclick="event.stopPropagation();openSendNoteModal('${m.name.replace(/'/g,"&#39;")}','${m.email}')" title="Send a note" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(155,129,188,.3);background:rgba(155,129,188,.1);color:#9B81BC;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit"><i class=\"ti ti-message-circle\"></i> Note</button>
@@ -7605,7 +7618,7 @@
               ${mgrBadge}
             </div>
             <div style="font-size:10px;color:var(--text-primary);margin-top:3px">${m.title || '—'}</div>
-            <div style="font-size:9px;color:var(--text-muted);margin-top:2px">${levelIcon} ${m.level || 'Staff Level'} · ${locFlag} ${m.loc || '—'} · ${m.email}</div>
+            <div style="font-size:9px;color:var(--text-muted);margin-top:2px">${levelIcon} ${m.level || 'Entry'} · ${locFlag} ${m.loc || '—'} · ${m.email}</div>
             ${indirectPath}
           </div>
           ${isDirect ? `
@@ -7635,7 +7648,7 @@
           const subDirects = peGetDirectReports(d.email);
           const isLastChild = idx === directs.length - 1;
           const hasMoreKids = subDirects.length > 0;
-          const levelIcon = { 'Top Management': '<i class=\"ti ti-crown ti-amber\"></i>', 'Management': '<i class=\"ti ti-briefcase\"></i>', 'Staff Level': '<i class=\"ti ti-user\"></i>' }[d.level || 'Staff Level'] || '<i class=\"ti ti-user\"></i>';
+          const levelIcon = kabiLevelIcon(d.level);
           const locFlag = { 'Riyadh (HQ)': '<i class="ti ti-map-pin" title="Saudi Arabia"></i>', 'Jordan': '<i class="ti ti-map-pin" title="Jordan"></i>', 'Palestine': '<i class="ti ti-map-pin" title="Palestine"></i>', 'Dubai': '<i class="ti ti-map-pin" title="UAE"></i>' }[d.loc] || '<i class=\"ti ti-map-pin\"></i>';
 
           // Is this a DIRECT report of the root user? (only depth=0 children are direct)
@@ -8361,7 +8374,7 @@
       // Profile card
       if (emp) {
         const initials = (emp.name || '').split(' ').filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
-        const levelIcon = { 'Top Management': '<i class=\"ti ti-crown ti-amber\"></i>', 'Management': '<i class=\"ti ti-briefcase\"></i>', 'Staff Level': '<i class=\"ti ti-user\"></i>' }[emp.level || 'Staff Level'] || '<i class=\"ti ti-user\"></i>';
+        const levelIcon = kabiLevelIcon(emp.level);
         const locFlag = { 'Riyadh (HQ)': '<i class="ti ti-map-pin" title="Saudi Arabia"></i>', 'Jordan': '<i class="ti ti-map-pin" title="Jordan"></i>', 'Palestine': '<i class="ti ti-map-pin" title="Palestine"></i>', 'Dubai': '<i class="ti ti-map-pin" title="UAE"></i>' }[emp.loc] || '<i class=\"ti ti-map-pin\"></i>';
 
         // ─── CEO is OUTSIDE the performance cycle — no score, no reports-to ───
@@ -8454,7 +8467,7 @@
               <div style="font-size:10px;color:var(--text-muted)">${
                 isCEO
                   ? `${levelIcon} Executive`
-                  : `${emp.dept || ''} · ${levelIcon} ${emp.level || 'Staff Level'}`
+                  : `${emp.dept || ''} · ${levelIcon} ${emp.level || 'Entry'}`
               }</div>
               ${fnDisplay && !isCEO ? '<div style="font-size:9px;color:var(--cyan);margin-top:2px">' + fnDisplay + '</div>' : ''}
             </div>
@@ -13338,7 +13351,7 @@
         const hireFmt = emp.hireDate ? new Date(emp.hireDate).toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
         const tenureYears = emp.hireDate ? ((Date.now() - new Date(emp.hireDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : 0;
         const tenureText = tenureYears >= 1 ? `${tenureYears.toFixed(1)} years` : tenureYears > 0 ? `${Math.round(tenureYears * 12)} months` : '—';
-        const levelIcon = { 'Top Management': '<i class=\"ti ti-crown ti-amber\"></i>', 'Management': '<i class=\"ti ti-briefcase\"></i>', 'Staff Level': '<i class=\"ti ti-user\"></i>' }[emp.level || 'Staff Level'] || '<i class=\"ti ti-user\"></i>';
+        const levelIcon = kabiLevelIcon(emp.level);
         const locFlag = { 'Riyadh (HQ)': '<i class="ti ti-map-pin" title="Saudi Arabia"></i>', 'Jordan': '<i class="ti ti-map-pin" title="Jordan"></i>', 'Palestine': '<i class="ti ti-map-pin" title="Palestine"></i>', 'Dubai': '<i class="ti ti-map-pin" title="UAE"></i>' }[emp.loc] || '<i class=\"ti ti-map-pin\"></i>';
         html += `
         <div style="margin-bottom:22px;background:linear-gradient(135deg,rgba(10,31,82,.7),rgba(10,31,82,.4));border:1px solid rgba(0,194,224,.2);border-radius:16px;padding:20px;backdrop-filter:blur(14px);position:relative;overflow:hidden">
@@ -13356,7 +13369,7 @@
                 ${emp.teamTracker ? '<span style="padding:2px 8px;border-radius:10px;background:rgba(30,175,217,.12);color:#1EAFD9;font-size:9px;font-weight:800"><i class=\"ti ti-users\"></i> Tracker</span>' : ''}
               </div>
               <div style="font-size:12px;color:var(--text-primary);margin-bottom:2px">${emp.title}</div>
-              <div style="font-size:10px;color:var(--text-muted)">${emp.dept} · ${levelIcon} ${emp.level || 'Staff Level'}</div>
+              <div style="font-size:10px;color:var(--text-muted)">${emp.dept} · ${levelIcon} ${emp.level || 'Entry'}</div>
               ${emp.fn ? '<div style="font-size:9px;color:var(--cyan);margin-top:2px">' + (function(){ var fa = Array.isArray(emp.fn)?emp.fn:[emp.fn]; return fa.map(function(f){ var nf=(typeof _normFn==='function')?_normFn(f):f; var fm=(typeof _FN_METRICS!=='undefined')?_FN_METRICS[nf]:null; return fm?(fm.icon+' '+fm.name):f; }).join(' · '); })() + '</div>' : ''}
             </div>
             <!-- Quick meta grid -->
@@ -14089,7 +14102,7 @@
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;position:relative">
               ${direct.map(m => {
                 const init = (m.name || '').split(' ').filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
-                const levelIcon = { 'Top Management': '<i class=\"ti ti-crown ti-amber\"></i>', 'Management': '<i class=\"ti ti-briefcase\"></i>', 'Staff Level': '<i class=\"ti ti-user\"></i>' }[m.level || 'Staff Level'] || '<i class=\"ti ti-user\"></i>';
+                const levelIcon = kabiLevelIcon(m.level);
                 const subCount = peGetDirectReports(m.email).length;
                 const subBadge = subCount > 0 ? `<span style="padding:1px 6px;border-radius:8px;background:rgba(167,139,250,.12);color:#a78bfa;font-size:8px;font-weight:800;margin-left:4px">MGR · ${subCount}</span>` : '';
                 return `
@@ -14246,10 +14259,10 @@
       // v66.6: paired-aware submission lookup
       // v67.9: ignore superseded (re-submitted after rejection) entries — pick the active one
       // v67.21: Filter by current level so each level has independent submission state
-      var _curLevel = (window._kpiSelectedLevel && window._kpiSelectedLevel[primary]) || 'Staff Level';
+      var _curLevel = (window._kpiSelectedLevel && window._kpiSelectedLevel[primary]) || 'Entry';
       const sub = paired
         ? subs.filter(s => !s.superseded).find(s => (s.fnKey === primary || s.pairedFnKey === primary) && (isCEOOwner ? s.ceoOwned : s.email === me?.email))
-        : subs.filter(s => !s.superseded).find(s => s.fnKey === primary && (s.level || 'Staff Level') === _curLevel && (isCEOOwner ? s.ceoOwned : s.email === me?.email));
+        : subs.filter(s => !s.superseded).find(s => s.fnKey === primary && (s.level || 'Entry') === _curLevel && (isCEOOwner ? s.ceoOwned : s.email === me?.email));
       const cont = document.getElementById('kpi-container'); cont.innerHTML = '';
       cont.classList.remove('submitted');
       document.getElementById('sub-ok').style.display = 'none';
@@ -14260,7 +14273,7 @@
       if (isMgr && (!sub || sub.status === 'rejected')) {
         // v67.21: Level-scoped selections — each level gets its own sels namespace
         var _lvlKey = function(fn) {
-          var lvl = (window._kpiSelectedLevel && window._kpiSelectedLevel[fn]) || 'Staff Level';
+          var lvl = (window._kpiSelectedLevel && window._kpiSelectedLevel[fn]) || 'Entry';
           return fn + '::' + lvl;
         };
         // Map the original fnKey to the level-scoped key for this session
@@ -14282,7 +14295,7 @@
       var _renderLevelBar = function() {
         if (!isMgr) return;
         var _allowedLevels = (typeof _getKpiLevelAccess === 'function' && typeof me !== 'undefined')
-          ? _getKpiLevelAccess(me.email, primary) : ['Staff Level', 'Management', 'Top Management'];
+          ? _getKpiLevelAccess(me.email, primary) : _KABI_LEVEL_ORDER.slice();
         if (!window._kpiSelectedLevel) window._kpiSelectedLevel = {};
         if (!window._kpiSelectedLevel[primary]) window._kpiSelectedLevel[primary] = _allowedLevels[0];
         if (_allowedLevels.length <= 1) return; // no need for a switcher if only one level is granted
@@ -14299,17 +14312,17 @@
         _allowedLevels.forEach(function(lvl) {
           // v67.23: mark levels that already have a submission (per-level scope)
           var lvlSub = subs.filter(function(s){return !s.superseded;}).find(function(s){
-            return s.fnKey === primary && (s.level || 'Staff Level') === lvl && (isCEOOwner ? s.ceoOwned : s.email === (me && me.email));
+            return s.fnKey === primary && (s.level || 'Entry') === lvl && (isCEOOwner ? s.ceoOwned : s.email === (me && me.email));
           });
           var isAct = _curLvl === lvl;
-          var lvlColors = { 'Staff Level': { bg: 'rgba(59,182,145,.15)', border: 'rgba(59,182,145,.4)', color: '#3BB691' },
-                            'Management': { bg: 'rgba(155,129,188,.15)', border: 'rgba(155,129,188,.4)', color: '#9B81BC' },
-                            'Top Management': { bg: 'rgba(245,158,11,.15)', border: 'rgba(245,158,11,.4)', color: '#F59E0B' } };
-          var lc = lvlColors[lvl] || lvlColors['Staff Level'];
+          // v69: 5-level colors from the shared level model + a tooltip listing typical titles.
+          var _lcHex = kabiLevelColor(lvl);
+          var lc = { color: _lcHex, bg: _lcHex + '26', border: _lcHex + '66' };
+          var _lvlTip = 'Typical titles: ' + (kabiLevelMeta(lvl).desc || '');
           var subMarker = lvlSub && lvlSub.status !== 'rejected'
             ? '<span style="margin-left:6px;font-size:9px;font-weight:800;opacity:.75">(SUBMITTED)</span>'
             : '';
-          lvlHtml += '<button onclick="window._kpiSelectedLevel[\'' + primary + '\']=\'' + lvl + '\';openFn(\'' + primary + '\')" style="padding:7px 16px;border-radius:8px;font-size:11px;font-weight:' + (isAct ? '800' : '600') + ';cursor:pointer;border:1px solid ' + (isAct ? lc.border : 'rgba(255,255,255,.1)') + ';background:' + (isAct ? lc.bg : 'transparent') + ';color:' + (isAct ? lc.color : 'var(--text-dim)') + ';font-family:inherit;transition:all .2s">' + lvl + subMarker + '</button>';
+          lvlHtml += '<button title="' + _lvlTip + '" onclick="window._kpiSelectedLevel[\'' + primary + '\']=\'' + lvl + '\';openFn(\'' + primary + '\')" style="padding:7px 16px;border-radius:8px;font-size:11px;font-weight:' + (isAct ? '800' : '600') + ';cursor:pointer;border:1px solid ' + (isAct ? lc.border : 'rgba(255,255,255,.1)') + ';background:' + (isAct ? lc.bg : 'transparent') + ';color:' + (isAct ? lc.color : 'var(--text-dim)') + ';font-family:inherit;transition:all .2s">' + lvl + subMarker + '</button>';
         });
         lvlBar.innerHTML = lvlHtml;
         cont.appendChild(lvlBar);
@@ -15055,8 +15068,8 @@
         email: me.email, name: me.name,
         dept: f.dept, ts,
         sel: selKPIs.map(x => x.li),
-        level: window._kpiSelectedLevel ? (window._kpiSelectedLevel[primary] || 'Staff Level') : 'Staff Level',
-        _levelKey: primary + '::' + (window._kpiSelectedLevel ? (window._kpiSelectedLevel[primary] || 'Staff Level') : 'Staff Level'),
+        level: window._kpiSelectedLevel ? (window._kpiSelectedLevel[primary] || 'Entry') : 'Entry',
+        _levelKey: primary + '::' + (window._kpiSelectedLevel ? (window._kpiSelectedLevel[primary] || 'Entry') : 'Staff Level'),
         secSels,
         selKPIs,
         status: 'pending',
@@ -15095,9 +15108,9 @@
 
       // v67.9: If re-submitting after rejection, mark the old rejected sub as superseded
       // so the manager view shows the NEW submission as the active one.
-      var _subLevel = submission.level || 'Staff Level';
+      var _subLevel = submission.level || 'Entry';
       var existingRejected = subs.find(function(s){
-        return s.email === me.email && s.fnKey === primary && (s.level || 'Staff Level') === _subLevel && s.status === 'rejected' && !s.superseded;
+        return s.email === me.email && s.fnKey === primary && (s.level || 'Entry') === _subLevel && s.status === 'rejected' && !s.superseded;
       });
       if (existingRejected) {
         existingRejected.superseded = true;
@@ -18531,7 +18544,7 @@
       if (!emp) return '';
       const level = typeof peGetEmpLevel === 'function'
         ? peGetEmpLevel(emp)
-        : (emp.level || emp.group || 'Staff Level');
+        : (emp.level || emp.group || 'Entry');
       const link = INVIEWS_CONFIG.technicalLinks && INVIEWS_CONFIG.technicalLinks[level];
       return typeof link === 'string' ? link : '';
     }
@@ -18568,9 +18581,11 @@
     //   Mid Mgmt — balanced cross-functional: 50 / 50
     //   Staff   — execution-heavy:  70 tech / 30 behavioral
     const _PE_WEIGHTS_DEFAULTS = {
-      'Top Management':    { label: 'Chief, Director',     criteria: { objectives: 55, competencies: 45 }, inviewsSplit: { technical: 30, behavioral: 70 } },
-      'Management':        { label: 'Manager, Lead',       criteria: { objectives: 50, competencies: 50 }, inviewsSplit: { technical: 50, behavioral: 50 } },
-      'Staff Level':       { label: 'Specialist, Officer', criteria: { objectives: 60, competencies: 40 }, inviewsSplit: { technical: 70, behavioral: 30 } },
+      'Executive':              { label: 'CEO, COO, Deputy CEO',            criteria: { objectives: 55, competencies: 45 }, inviewsSplit: { technical: 30, behavioral: 70 } },
+      'Advanced':               { label: 'Director, Senior Director',       criteria: { objectives: 55, competencies: 45 }, inviewsSplit: { technical: 30, behavioral: 70 } },
+      'First-level management': { label: 'Lead, Manager, Technical Lead',   criteria: { objectives: 50, competencies: 50 }, inviewsSplit: { technical: 50, behavioral: 50 } },
+      'Intermediate':           { label: 'Specialist, Engineer, Consultant',criteria: { objectives: 60, competencies: 40 }, inviewsSplit: { technical: 70, behavioral: 30 } },
+      'Entry':                  { label: 'Officer, Junior, Associate',      criteria: { objectives: 60, competencies: 40 }, inviewsSplit: { technical: 70, behavioral: 30 } },
     };
 
     // v66.7.4 → v66.8: Load persisted core weights at boot.
@@ -18640,9 +18655,11 @@
       const matrix = {};
       PE_DEPARTMENTS.forEach(dept => {
         matrix[dept] = {
-          'Top Management':    { digitalAdoption: 20, initiatives: 0 },
-          'Management': { digitalAdoption: 10, initiatives: 10 },
-          'Staff Level':       { digitalAdoption: 15, initiatives: 5 }
+          'Executive':              { digitalAdoption: 20, initiatives: 0 },
+          'Advanced':               { digitalAdoption: 20, initiatives: 0 },
+          'First-level management': { digitalAdoption: 10, initiatives: 10 },
+          'Intermediate':           { digitalAdoption: 15, initiatives: 5 },
+          'Entry':                  { digitalAdoption: 15, initiatives: 5 }
         };
       });
       return matrix;
@@ -18651,9 +18668,11 @@
 
     // Legacy flat accessor — kept as a per-level fallback (for employees with unknown dept)
     let PE_EXTRA_WEIGHTS = {
-      'Top Management':    { digitalAdoption: 20, initiatives: 0 },
-      'Management': { digitalAdoption: 10, initiatives: 10 },
-      'Staff Level':       { digitalAdoption: 15, initiatives: 5 },
+      'Executive':              { digitalAdoption: 20, initiatives: 0 },
+      'Advanced':               { digitalAdoption: 20, initiatives: 0 },
+      'First-level management': { digitalAdoption: 10, initiatives: 10 },
+      'Intermediate':           { digitalAdoption: 15, initiatives: 5 },
+      'Entry':                  { digitalAdoption: 15, initiatives: 5 },
     };
 
     // ─── DELEGATION SYSTEM ───
@@ -18710,7 +18729,7 @@
 
     // Helper: determine employee's level (Top/Middle/Staff) from title or explicit level
     function peGetEmpLevel(emp) {
-      if (!emp) return 'Staff Level';
+      if (!emp) return 'Entry';
       if (emp.level) return emp.level;
       // Fallback: infer from group
       if (emp.group && PE_WEIGHTS[emp.group]) return emp.group;
@@ -18804,9 +18823,11 @@
       // Super Admin can toggle each level on/off. Default: all visible.
       wellbeingVisible: {
         'all': true,           // master switch — if false, overrides all levels
-        'Top Management': true,
-        'Management': true,
-        'Staff Level': true,
+        'Executive': true,
+        'Advanced': true,
+        'First-level management': true,
+        'Intermediate': true,
+        'Entry': true,
       }
     };
 
@@ -20086,12 +20107,11 @@
     // Attached to window so template literals in any script block can call
     // it without scope juggling.
     window.getLevelStyle = function (level) {
-      var map = {
-        'Top Management': { color: '#F59E0B', bg: 'rgba(245,158,11,.14)', border: 'rgba(245,158,11,.35)', icon: 'ti-crown' },
-        'Management':     { color: '#216AB1', bg: 'rgba(33,106,177,.14)',  border: 'rgba(33,106,177,.35)',  icon: 'ti-briefcase' },
-        'Staff Level':    { color: '#3BB691', bg: 'rgba(59,182,145,.14)',  border: 'rgba(59,182,145,.35)',  icon: 'ti-user' }
-      };
-      return map[level] || { color: '#9CA3AF', bg: 'rgba(156,163,175,.10)', border: 'rgba(156,163,175,.25)', icon: 'ti-user' };
+      // v69: derive from the shared 5-level model (normalizes legacy values too).
+      var meta = kabiLevelMeta(kabiNormalizeLevel(level));
+      var hex = meta.color || '#9CA3AF';
+      var iconName = (meta.icon.match(/ti-[a-z-]+/) || ['ti-user'])[0];
+      return { color: hex, bg: hex + '24', border: hex + '59', icon: iconName };
     };
 
     function peGetApprovedKPIs(fnArr, forEmail, forLevel) {
@@ -22479,7 +22499,7 @@
     // Convert parsed CSV row into a fresh employee record (for 'new' rows)
     function _reconBuildNewEmployee(parsed) {
       const fns = parsed.fnStr ? parsed.fnStr.split(';').map(function (s) { return s.trim(); }).filter(Boolean) : [];
-      const validLevel = ['Top Management', 'Management', 'Staff Level'].indexOf(parsed.level) >= 0 ? parsed.level : 'Staff Level';
+      const validLevel = kabiNormalizeLevel(parsed.level); // v69: accepts 5 new levels, normalizes legacy
       const validLoc = ['Riyadh (HQ)', 'Jordan', 'Palestine', 'Dubai'].indexOf(parsed.loc) >= 0 ? parsed.loc : 'Riyadh (HQ)';
       return {
         id: parsed.id.trim(),
@@ -22924,11 +22944,33 @@
       }catch(e){console.warn('[PE] Load failed:',e);}
       return false;
     }
-    // Load saved employees on startup
+    // v69: 3→5 level migration. Reclassifies every employee to the new 5-level
+    // framework by verified email→level map (from the HR roster, Job Title based).
+    // Employees not in the map fall back to the legacy-level normalizer. The CEO
+    // is flagged notEvaluated (evaluates others, is not evaluated by anyone).
+    const _PE_LEVEL_MAP_V69 = {
+      'ahamed@kabi.ai':'First-level management','aabolhouf@kabi.ai':'Intermediate','aalzaid@kabi.ai':'First-level management','aelian@kabi.ai':'Intermediate','aabozainih@kabi.ai':'Intermediate','abarradah@kabi.ai':'First-level management','akhamis@kabi.ai':'Executive','aobeid@kabi.ai':'First-level management','aaltwijery@kabi.ai':'Intermediate','abanyali@kabi.ai':'Intermediate','ayousef@kabi.ai':'Intermediate','amcluntun@kabi.ai':'Advanced','ashayeb@kabi.ai':'Intermediate','aalqurashi@kabi.ai':'Entry','azahmad@kabi.ai':'Intermediate','bamer@kabi.ai':'First-level management','babuhani@kabi.ai':'Intermediate','destaiteh@kabi.ai':'Intermediate','faljudhei@kabi.ai':'First-level management','fsaleem@kabi.ai':'Intermediate','fabufares@kabi.ai':'Intermediate','halkharouf@kabi.ai':'Intermediate','ialzimami@kabi.ai':'Executive','ihajji@kabi.ai':'First-level management','kalmohammadi@kabi.ai':'First-level management','kjarrad@kabi.ai':'Intermediate','kaloraij@kabi.ai':'Executive','lramadan@kabi.ai':'Entry','lalkhadheir@kabi.ai':'First-level management','malatawi@kabi.ai':'Intermediate','malogayel@kabi.ai':'Entry','malnajdi@kabi.ai':'Intermediate','malkadi@kabi.ai':'Advanced','mabdulqader@kabi.ai':'Intermediate','mmodallal@kabi.ai':'First-level management','msumrein@kabi.ai':'Intermediate','mkarman@kabi.ai':'First-level management','mamer@kabi.ai':'Intermediate','malkhudair@kabi.ai':'Intermediate','nalsadhan@kabi.ai':'First-level management','nabdoullah@kabi.ai':'Intermediate','naloraij@kabi.ai':'Entry','nazab@kabi.ai':'Intermediate','oabukhader@kabi.ai':'Intermediate','oabualhija@kabi.ai':'Intermediate','oaljohani@kabi.ai':'Intermediate','oabualjamieh@kabi.ai':'Intermediate','rabdullah@kabi.ai':'Intermediate','rodeh@kabi.ai':'Intermediate','ralowais@kabi.ai':'Intermediate','rtubasi@kabi.ai':'Intermediate','salamoudi@kabi.ai':'Entry','smohamad@kabi.ai':'Intermediate','salotaibi@kabi.ai':'First-level management','sassi@kabi.ai':'Advanced','sjoban@kabi.ai':'Intermediate','salkhunain@kabi.ai':'Intermediate','ssaleh@kabi.ai':'Intermediate','salbasri@kabi.ai':'Entry','salsaheel@kabi.ai':'First-level management','talqsairi@kabi.ai':'Entry','yaljamal@kabi.ai':'Intermediate','yhawash@kabi.ai':'Intermediate','zhannoun@kabi.ai':'Intermediate','aalkhawaja@kabi.ai':'First-level management','dalenazi@kabi.ai':'Intermediate','nalfayez@kabi.ai':'Entry','yjaziah@kabi.ai':'Intermediate'
+    };
+    function _peMigrateLevels(){
+      if (typeof PE_EMPLOYEES === 'undefined') return;
+      var changed = false;
+      PE_EMPLOYEES.forEach(function(e){
+        if (!e) return;
+        var email = (e.email || '').toLowerCase();
+        var target = _PE_LEVEL_MAP_V69[email] || kabiNormalizeLevel(e.level);
+        if (e.level !== target) { e.level = target; changed = true; }
+        // CEO only: not evaluated by anyone (evaluates executives/directors).
+        var isCEO = email === 'kaloraij@kabi.ai' || (e.title && /\bceo\b/i.test(e.title) && !/deputy/i.test(e.title));
+        if (isCEO && !e.notEvaluated) { e.notEvaluated = true; changed = true; }
+      });
+      if (changed) { _peSaveEmployees(); console.info('[PE] v69 level migration applied (5 levels).'); }
+    }
+
+    // Load saved employees on startup, then apply the 5-level migration.
     setTimeout(function(){
-      if(_peLoadEmployees()){
-        if(typeof rebuildEmployeeUsers==='function')rebuildEmployeeUsers();
-      }
+      var loaded = _peLoadEmployees();
+      if (typeof _peMigrateLevels === 'function') _peMigrateLevels();
+      if (loaded && typeof rebuildEmployeeUsers==='function') rebuildEmployeeUsers();
     },100);
 
     function peCloseReconModal() {
@@ -23057,7 +23099,7 @@
                 </div>
               </label>
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">
-                ${[{id:'Top Management',desc:'Chiefs & Directors'},{id:'Management',desc:'Managers & Leads'},{id:'Staff Level',desc:'Specialists & Officers'}].map(lv => {
+                ${KABI_LEVELS.map(function(_l){return {id:_l.id,desc:_l.desc};}).map(lv => {
                   var vis = wbVis[lv.id] !== false;
                   var dim = !masterOn;
                   return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:9px 12px;background:' + (vis && masterOn ? 'rgba(59,182,145,.06)' : 'rgba(255,255,255,.03)') + ';border:1px solid ' + (vis && masterOn ? 'rgba(59,182,145,.3)' : 'rgba(255,255,255,.08)') + ';border-radius:8px;' + (dim ? 'opacity:.45;pointer-events:none' : '') + '"><input type="checkbox" ' + (vis ? 'checked' : '') + ' onchange="peToggleWellbeing(\'' + lv.id + '\',this.checked)" style="accent-color:#3BB691;cursor:pointer"><div><div style="font-size:11px;font-weight:700;color:' + (vis && masterOn ? '#3BB691' : 'var(--text-muted)') + '">' + lv.id + '</div><div style="font-size:9px;color:var(--text-dim)">' + lv.desc + '</div></div></label>';
@@ -27643,7 +27685,7 @@
     function peGetInviewsScore(emp) {
       if (!emp) return { done: false, score: 0, tech: { done: false }, behav: { done: false }, split: { technical: 50, behavioral: 50 } };
 
-      const level = typeof peGetEmpLevel === 'function' ? peGetEmpLevel(emp) : (emp.level || 'Staff Level');
+      const level = typeof peGetEmpLevel === 'function' ? peGetEmpLevel(emp) : (emp.level || 'Entry');
       const cfg = (PE_WEIGHTS && PE_WEIGHTS[level] && PE_WEIGHTS[level].inviewsSplit)
                   ? PE_WEIGHTS[level].inviewsSplit
                   : { technical: 50, behavioral: 50 };
