@@ -39704,6 +39704,33 @@
     })();
   </script>
 
+  <!-- v68: Disable the buggy auto-firing onboarding tour (06_kabiDb.js). Its
+       bubbles mis-position and leak onto the login screen. REVERSIBLE — delete
+       this whole <script> block to restore the tour. Does NOT touch 06_kabiDb.js. -->
+  <script>
+    (function () {
+      function killTour() {
+        try {
+          var b = document.getElementById('kabi-tour-bubble'); if (b) b.remove();
+          var bd = document.getElementById('kabi-tour-backdrop'); if (bd) bd.remove();
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && (k.indexOf('kabi_hc_subtour_') === 0 || k.indexOf('kabi_tour_completed') === 0)) {
+              localStorage.setItem(k, '1');
+            }
+          }
+        } catch (e) {}
+      }
+      killTour();
+      // Safety net: if a tour bubble/backdrop is ever appended, remove it immediately.
+      try {
+        new MutationObserver(function () {
+          if (document.getElementById('kabi-tour-bubble') || document.getElementById('kabi-tour-backdrop')) killTour();
+        }).observe(document.documentElement, { childList: true, subtree: true });
+      } catch (e) {}
+    })();
+  </script>
+
   <!-- v68: Enriched, level-aware KPI Knowledge Packs. Loaded LAST so it merges
        after KABi.KpiKnowledgeBase is defined during inline-script parse. -->
   <script src="./07_kabiKpiKnowledge.js"></script>
