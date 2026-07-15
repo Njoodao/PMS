@@ -20331,7 +20331,7 @@
         ${currentKey ? '<div style="font-size:10px;color:var(--text-muted);margin-top:6px">Current: <code style="color:var(--cyan)">' + currentKey + '</code></div>' : ''}
         <div style="font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5">
           Anthropic key: <strong style="color:var(--text-muted)">console.anthropic.com → Settings → API Keys</strong> (sk-ant-…).<br>
-          OpenRouter key: <strong style="color:var(--text-muted)">openrouter.ai → Keys</strong> (sk-or-…) — needs account credits; default model anthropic/claude-3.5-sonnet.<br>
+          OpenRouter key: <strong style="color:var(--text-muted)">openrouter.ai → Keys</strong> (sk-or-…) — needs account credits; default model anthropic/claude-haiku-latest.<br>
           The key is stored in your browser only (localStorage) — never sent to KABi servers.
         </div>
       </div>
@@ -37436,10 +37436,10 @@
 
     /* v68: OpenRouter path (OpenAI-compatible). System prompt is prepended as a
        system message; response is read from choices[0].message.content. Default
-       model is anthropic/claude-3.5-sonnet — override via window.KABi_LLM_Config.model
+       model is anthropic/claude-haiku-latest — override via window.KABi_LLM_Config.model
        with any OpenRouter slug (must contain a '/'). */
     _callOpenRouter: async function (messages, opts, cfg) {
-      var model = (cfg.model && cfg.model.indexOf('/') !== -1) ? cfg.model : 'anthropic/claude-3.5-sonnet';
+      var model = (cfg.model && cfg.model.indexOf('/') !== -1) ? cfg.model : 'anthropic/claude-haiku-latest';
       var orMessages = Array.isArray(messages) ? messages.slice() : [];
       if (opts.systemPrompt) {
         orMessages = [{ role: 'system', content: opts.systemPrompt }].concat(orMessages);
@@ -37484,7 +37484,7 @@
           throw new Error('COST_LIMIT: OpenRouter account has insufficient credits. Add credits at openrouter.ai → Credits.');
         }
         if (response.status === 400) {
-          throw new Error('BAD_REQUEST: ' + detail + '  (If it mentions the model, set a valid OpenRouter slug in window.KABi_LLM_Config.model — default is anthropic/claude-3.5-sonnet.)');
+          throw new Error('BAD_REQUEST: ' + detail + '  (If it mentions the model, set a valid OpenRouter slug in window.KABi_LLM_Config.model — default is anthropic/claude-haiku-latest.)');
         }
         if (response.status === 429) {
           throw new Error('RATE_LIMIT: Too many requests. Wait a moment and try again.');
@@ -39704,29 +39704,24 @@
     })();
   </script>
 
-  <!-- v68: Disable the buggy auto-firing onboarding tour (06_kabiDb.js). Its
-       bubbles mis-position and leak onto the login screen. REVERSIBLE — delete
-       this whole <script> block to restore the tour. Does NOT touch 06_kabiDb.js. -->
+  <!-- v68: Disable the buggy onboarding tour (06_kabiDb.js) — its bubbles
+       mis-position and leak onto the login screen. We HIDE the bubble/backdrop
+       via CSS (not remove them) so the tour's own button-wiring in 06_kabiDb.js
+       still finds its elements and does NOT throw "onclick of null". Also mark
+       tour flags seen so it stops firing. REVERSIBLE — delete this <style> +
+       <script>. Does NOT touch 06_kabiDb.js. -->
+  <style>
+    #kabi-tour-bubble, #kabi-tour-backdrop { display: none !important; }
+  </style>
   <script>
     (function () {
-      function killTour() {
-        try {
-          var b = document.getElementById('kabi-tour-bubble'); if (b) b.remove();
-          var bd = document.getElementById('kabi-tour-backdrop'); if (bd) bd.remove();
-          for (var i = 0; i < localStorage.length; i++) {
-            var k = localStorage.key(i);
-            if (k && (k.indexOf('kabi_hc_subtour_') === 0 || k.indexOf('kabi_tour_completed') === 0)) {
-              localStorage.setItem(k, '1');
-            }
-          }
-        } catch (e) {}
-      }
-      killTour();
-      // Safety net: if a tour bubble/backdrop is ever appended, remove it immediately.
       try {
-        new MutationObserver(function () {
-          if (document.getElementById('kabi-tour-bubble') || document.getElementById('kabi-tour-backdrop')) killTour();
-        }).observe(document.documentElement, { childList: true, subtree: true });
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && (k.indexOf('kabi_hc_subtour_') === 0 || k.indexOf('kabi_tour_completed') === 0)) {
+            localStorage.setItem(k, '1');
+          }
+        }
       } catch (e) {}
     })();
   </script>
