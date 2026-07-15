@@ -6444,7 +6444,11 @@
       var grant = _hasKpiGrant(email);
       if (!grant || !grant.levelAccess || !grant.levelAccess[fnKey]) return ALL_LEVELS; // default: all
       var lvls = grant.levelAccess[fnKey];
-      return Array.isArray(lvls) && lvls.length > 0 ? lvls : ALL_LEVELS;
+      if (!Array.isArray(lvls) || lvls.length === 0) return ALL_LEVELS;
+      // v69: a pre-migration grant stored legacy 3-level values — can't map cleanly to
+      // the new 5 levels, so treat it as "all levels" (HC can re-restrict afterwards).
+      if (lvls.some(function (l) { return _KABI_LEGACY_LEVEL[l]; })) return ALL_LEVELS;
+      return lvls;
     }
     window._getKpiLevelAccess = _getKpiLevelAccess;
 
