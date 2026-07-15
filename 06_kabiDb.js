@@ -57,15 +57,26 @@
   };
 
   // ─── Level label mapping (DB enum ↔ JS label) ─────────────────────
+  // v69: 5-level framework. New codes map to new labels; legacy 3-level codes are
+  // still read (mapped to the nearest new label) so un-migrated Supabase rows load
+  // cleanly during the transition — the in-app _peMigrateLevels() then finalizes by email.
   const levelDbToLabel = {
-    top_management: 'Top Management',
-    management:     'Management',
-    staff_level:    'Staff Level',
+    entry:                  'Entry',
+    intermediate:           'Intermediate',
+    first_level_management: 'First-level management',
+    advanced:               'Advanced',
+    executive:              'Executive',
+    // legacy → nearest new label (transition only)
+    staff_level:    'Intermediate',
+    management:     'First-level management',
+    top_management: 'Advanced',
   };
   const levelLabelToDb = {
-    'Top Management': 'top_management',
-    'Management':     'management',
-    'Staff Level':    'staff_level',
+    'Entry':                  'entry',
+    'Intermediate':           'intermediate',
+    'First-level management': 'first_level_management',
+    'Advanced':               'advanced',
+    'Executive':              'executive',
   };
 
   // ─── Public API root ──────────────────────────────────────────────

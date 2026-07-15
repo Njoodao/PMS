@@ -30980,6 +30980,16 @@
       return null;
     }
   }
+  // v69: global resolver for a function's full display name (fnKey → "Business Development").
+  // Defined here (in the scope that can reach FNS) and exposed on window so other
+  // script modules (e.g. the KPI Generate modal) can show the full name, not the key.
+  window.kabiFnName = function (fnKey) {
+    try {
+      var m = _v47('FNS');
+      if (m && m[fnKey] && m[fnKey].name) return m[fnKey].name;
+    } catch (e) {}
+    return fnKey;
+  };
   function _v47Call(fnName) {
     var args = Array.prototype.slice.call(arguments, 1);
     var fn = _v47(fnName);
@@ -38512,7 +38522,9 @@
     document.getElementById('kabi-kpi-generate-title').textContent = rtl
       ? 'توليد مؤشرات أداء بالذكاء الاصطناعي'
       : 'AI Generate KPIs';
-    document.getElementById('kabi-kpi-generate-subtitle').textContent = fnName;
+    // v69: show the full function name (e.g. "Business Development"), not the fnKey.
+    var _fullFnName = (typeof window.kabiFnName === 'function') ? window.kabiFnName(fnKey) : fnName;
+    document.getElementById('kabi-kpi-generate-subtitle').textContent = _fullFnName;
     document.getElementById('kabi-kpi-generate-refresh').textContent = rtl ? '↻ تحديث' : '↻ Refresh';
     document.getElementById('kabi-kpi-generate-done').textContent = rtl ? 'تم' : 'Done';
   }
