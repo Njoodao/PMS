@@ -20298,8 +20298,8 @@
               Without an API key, a basic rule-based engine is used instead.
             </p>
           </div>
-          <span style="padding:4px 10px;border-radius:20px;font-size:10px;font-weight:800;background:${isConnected ? 'rgba(59,182,145,.15)' : 'rgba(245,158,11,.15)'};color:${isConnected ? '#3BB691' : '#F59E0B'};border:1px solid ${isConnected ? 'rgba(59,182,145,.3)' : 'rgba(245,158,11,.3)'}">
-            ${isConnected ? '<i class="ti ti-circle-check"></i> Connected' : '<i class="ti ti-alert-circle"></i> Not configured'}
+          <span style="padding:4px 10px;border-radius:20px;font-size:10px;font-weight:800;background:\${isConnected ? 'rgba(59,182,145,.15)' : 'rgba(245,158,11,.15)'};color:\${isConnected ? '#3BB691' : '#F59E0B'};border:1px solid \${isConnected ? 'rgba(59,182,145,.3)' : 'rgba(245,158,11,.3)'}">
+            \${isConnected ? '<i class="ti ti-circle-check"></i> Connected' : '<i class="ti ti-alert-circle"></i> Not configured'}
           </span>
         </div>
       </div>
@@ -20307,11 +20307,11 @@
       <!-- Status cards -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:18px">
         <div style="padding:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;text-align:center">
-          <div style="font-size:20px;font-weight:900;color:${isConnected ? '#3BB691' : 'var(--text-muted)'}">${isConnected ? 'Claude' : 'Basic'}</div>
+          <div style="font-size:20px;font-weight:900;color:\${isConnected ? '#3BB691' : 'var(--text-muted)'}">\${isConnected ? 'Claude' : 'Basic'}</div>
           <div style="font-size:9px;color:var(--text-dim);margin-top:4px">Active Provider</div>
         </div>
         <div style="padding:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;text-align:center">
-          <div style="font-size:20px;font-weight:900;color:var(--cyan)">${usage.callCount || 0}</div>
+          <div style="font-size:20px;font-weight:900;color:var(--cyan)">\${usage.callCount || 0}</div>
           <div style="font-size:9px;color:var(--text-dim);margin-top:4px">API Calls (this session)</div>
         </div>
         <div style="padding:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;text-align:center">
@@ -20326,9 +20326,9 @@
         <div style="display:flex;gap:8px;align-items:center">
           <input type="password" id="pe-ai-apikey" placeholder="sk-ant-api03-..." value="" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--white);font-family:'SF Mono',Consolas,monospace;font-size:11px;outline:none" />
           <button onclick="_peAISaveKey()" style="padding:10px 18px;background:linear-gradient(135deg,#9B81BC,#675EAA);color:white;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap"><i class="ti ti-device-floppy"></i> Save</button>
-          ${isConnected ? '<button onclick="_peAIRemoveKey()" style="padding:10px 14px;background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-trash"></i></button>' : ''}
+          \${isConnected ? '<button onclick="_peAIRemoveKey()" style="padding:10px 14px;background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-trash"></i></button>' : ''}
         </div>
-        ${currentKey ? '<div style="font-size:10px;color:var(--text-muted);margin-top:6px">Current: <code style="color:var(--cyan)">' + currentKey + '</code></div>' : ''}
+        \${currentKey ? '<div style="font-size:10px;color:var(--text-muted);margin-top:6px">Current: <code style="color:var(--cyan)">' + currentKey + '</code></div>' : ''}
         <div style="font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5">
           Get your key from <strong style="color:var(--text-muted)">console.anthropic.com → Settings → API Keys</strong>.<br>
           The key is stored in your browser only (localStorage) — never sent to KABi servers.
@@ -32964,11 +32964,6 @@
       // v67 Sprint 7 — Phase 2: pull connector context (Jira + uploaded docs)
       var connectorContext = _buildKpiConnectorContext(ctx.fnKey, lang);
 
-      // v68: inject enriched, level-aware Knowledge Pack context (07_kabiKpiKnowledge.js).
-      // Returns '' for functions without an enriched pack — filtered out below.
-      var packContext = (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.buildPromptContext)
-        ? KABi.KpiKnowledge.buildPromptContext(ctx.fnKey, ctx, lang, 'generate') : '';
-
       if (lang === 'ar') {
         return [
           'الوظيفة: ' + ctx.fnName,
@@ -32977,7 +32972,6 @@
           (ctx.fnPillar ? 'الركيزة: ' + ctx.fnPillar : ''),
           salesContext,
           connectorContext,
-          packContext,
           'كلمات نموذجية لهذه الوظيفة (للإلهام، ليست إلزامية):',
           'أفعال: ' + ctx.validVerbs.join('، '),
           'مفاهيم: ' + ctx.validNouns.join('، '),
@@ -32998,7 +32992,6 @@
         (ctx.fnPillar ? 'Pillar: ' + ctx.fnPillar : ''),
         salesContext,
         connectorContext,
-        packContext,
         'Domain vocabulary (for inspiration, not mandatory):',
         'Verbs: ' + ctx.validVerbs.join(', '),
         'Concepts: ' + ctx.validNouns.join(', '),
@@ -33178,10 +33171,6 @@
       // v67 Sprint 7 — Phase 2: same connector context as bulk generate
       var connectorContext = _buildKpiConnectorContext(ctx.fnKey, lang);
 
-      // v68: enriched level-aware Knowledge Pack context ('' when no pack — filtered out)
-      var packContext = (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.buildPromptContext)
-        ? KABi.KpiKnowledge.buildPromptContext(ctx.fnKey, ctx, lang, 'generate') : '';
-
       if (lang === 'ar') {
         lines = [
           'الوظيفة: ' + ctx.fnName,
@@ -33189,7 +33178,6 @@
           (ctx.fnPillar ? 'الركيزة: ' + ctx.fnPillar : ''),
           (ctx.slotIndex !== null ? 'الخانة المطلوبة: KPI ' + (ctx.slotIndex + 1) + ' من 4' : ''),
           connectorContext,
-          packContext,
           ''
         ];
         if (ctx.existing && ctx.existing.length > 0) {
@@ -33221,7 +33209,6 @@
           (ctx.fnPillar ? 'Pillar: ' + ctx.fnPillar : ''),
           (ctx.slotIndex !== null ? 'Slot: KPI ' + (ctx.slotIndex + 1) + ' of 4' : ''),
           connectorContext,
-          packContext,
           ''
         ];
         if (ctx.existing && ctx.existing.length > 0) {
@@ -33439,23 +33426,20 @@
           lines.push('  "' + (k || '(فارغ)') + '"');
           lines.push('');
         });
-        // v68 FIX: library was read from a non-existent `.sections` field → injected nothing.
-        // Read the REAL approved library (enriched pack .library, else _KPI_DB) + pack rules.
+        // إضافة مكتبة المؤشرات المعتمدة كمرجع
         var libKpisAr = '';
         try {
-          var _libAr = (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.getLibrary)
-            ? KABi.KpiKnowledge.getLibrary(ctx.fnKey) : [];
-          if ((!_libAr || !_libAr.length) && typeof _KPI_DB !== 'undefined' && _KPI_DB[ctx.fnKey] && _KPI_DB[ctx.fnKey].kpis) {
-            _libAr = _KPI_DB[ctx.fnKey].kpis;
-          }
-          if (_libAr && _libAr.length) {
+          var _kbAr = KABi.KpiKnowledgeBase[ctx.fnKey || ''];
+          if (_kbAr && _kbAr.sections) {
             libKpisAr = '\n═══ مكتبة المؤشرات المعتمدة لوظيفة ' + ctx.fnName + ' ═══\n';
-            _libAr.forEach(function(kpi, i) { libKpisAr += '  ' + (i+1) + '. ' + kpi + '\n'; });
+            _kbAr.sections.forEach(function(sec) {
+              libKpisAr += '\nالقسم: ' + sec.name + '\n';
+              (sec.kpis || []).forEach(function(kpi, i) {
+                libKpisAr += '  ' + (i+1) + '. ' + kpi + '\n';
+              });
+            });
             libKpisAr += '\nاستخدم هذه كمرجع أساسي. قارن كل مؤشر مقدّم مع المكتبة.\n';
           }
-          var _packAr = (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.buildPromptContext)
-            ? KABi.KpiKnowledge.buildPromptContext(ctx.fnKey, {}, 'ar', 'coherence') : '';
-          if (_packAr) libKpisAr += '\n' + _packAr + '\n';
         } catch(_) {}
         lines.push(libKpisAr);
         lines.push('');
@@ -33470,23 +33454,19 @@
         lines.push('أعد JSON الآن:');
       } else {
         // Build library context for this function
-        // v68 FIX: library was read from a non-existent `.sections` field → injected nothing.
-        // Read the REAL approved library (enriched pack .library, else _KPI_DB) + pack rules.
         var libKpis = '';
         try {
-          var _lib = (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.getLibrary)
-            ? KABi.KpiKnowledge.getLibrary(ctx.fnKey) : [];
-          if ((!_lib || !_lib.length) && typeof _KPI_DB !== 'undefined' && _KPI_DB[ctx.fnKey] && _KPI_DB[ctx.fnKey].kpis) {
-            _lib = _KPI_DB[ctx.fnKey].kpis;
-          }
-          if (_lib && _lib.length) {
+          var _kb = KABi.KpiKnowledgeBase[ctx.fnKey || ''];
+          if (_kb && _kb.sections) {
             libKpis = '\n═══ APPROVED KPI LIBRARY FOR ' + ctx.fnName.toUpperCase() + ' ═══\n';
-            _lib.forEach(function(kpi, i) { libKpis += '  ' + (i+1) + '. ' + kpi + '\n'; });
+            _kb.sections.forEach(function(sec) {
+              libKpis += '\nSection: ' + sec.name + '\n';
+              (sec.kpis || []).forEach(function(kpi, i) {
+                libKpis += '  ' + (i+1) + '. ' + kpi + '\n';
+              });
+            });
             libKpis += '\nUse these as the authoritative reference. Compare each submitted KPI against this library.\n';
           }
-          var _pack = (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.buildPromptContext)
-            ? KABi.KpiKnowledge.buildPromptContext(ctx.fnKey, {}, 'en', 'coherence') : '';
-          if (_pack) libKpis += '\n' + _pack + '\n';
         } catch(_) { /* library injection is best-effort */ }
 
         lines = [
@@ -33611,25 +33591,6 @@
             });
           }
         }
-
-        // v68: deterministic checks from the enriched Knowledge Pack (metric bounds,
-        // compound KPIs, unrealistic vs approved default). Additive — no-op without a pack.
-        try {
-          if (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.deterministicChecks) {
-            var _det = KABi.KpiKnowledge.deterministicChecks(text, fnKey);
-            if (_det && _det.issues && _det.issues.length) {
-              _det.issues.forEach(function (i) { issues.unshift(i); });
-              var _ov = _det.smartOverrides || {};
-              ['S', 'M', 'A', 'R', 'T'].forEach(function (k) {
-                if (_ov[k] === false && smart[k] !== false) {
-                  smart[k] = false;
-                  if (smart.evidence) smart.evidence[k] = _det.issues[0].message;
-                }
-              });
-              smart.score = ['S', 'M', 'A', 'R', 'T'].reduce(function (n, k) { return n + (smart[k] ? 1 : 0); }, 0);
-            }
-          }
-        } catch (e) { /* deterministic layer is best-effort */ }
 
         return {
           smart: smart,
@@ -38942,14 +38903,6 @@
         existingKpis: existing,
         previousSuggestion: previousSuggestionText || null
       });
-      // v68: provider-independent scope guard — flag out-of-scope suggestions
-      // (e.g. an "uptime" KPI proposed for a Sales function) before showing them.
-      try {
-        if (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.scopeWarning && result.kpi) {
-          var _sw = KABi.KpiKnowledge.scopeWarning(result.kpi.text, fnKey);
-          if (_sw) result.kpi.reasoning = _sw + (result.kpi.reasoning ? ' — ' + result.kpi.reasoning : '');
-        }
-      } catch (_) {}
       renderSuggestion(container, result.kpi, fnKey, si, li);
 
       // Track for "Try another" history (optional analytics)
@@ -39501,15 +39454,6 @@
         return;
       }
 
-      // v68: provider-INDEPENDENT deterministic gate (duplicates + out-of-scope).
-      // Runs even on the mock provider, so a duplicate/off-scope set can't slip through.
-      var detIssues = [];
-      try {
-        if (window.KABi && KABi.KpiKnowledge && KABi.KpiKnowledge.presubmitChecks) {
-          detIssues = KABi.KpiKnowledge.presubmitChecks(kpis, fnKey) || [];
-        }
-      } catch (_) {}
-
       showLoading();
 
       try {
@@ -39518,12 +39462,6 @@
           throw new Error('checkCoherence not available');
         }
         var result = await KABi.Agents.kpiArchitect.checkCoherence(kpis, fnKey);
-
-        // Merge deterministic issues in front of the LLM/mock issues.
-        if (detIssues.length) {
-          result.issues = detIssues.concat(result.issues || []);
-          if (result.decision === 'approved') result.decision = 'review';
-        }
 
         // If no issues, skip the modal entirely and proceed
         if (result.issues.length === 0) {
@@ -39606,10 +39544,6 @@
       setTimeout(_kabiFooterSync, 800);
     })();
   </script>
-
-  <!-- v68: Enriched, level-aware KPI Knowledge Packs. Loaded LAST so it merges
-       after KABi.KpiKnowledgeBase is defined during inline-script parse. -->
-  <script src="./07_kabiKpiKnowledge.js"></script>
 
 </body>
 
