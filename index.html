@@ -7003,7 +7003,7 @@
           const lvl = kabiNormalizeLevel(empRec.level);
           const _lst = window.getLevelStyle(lvl);
           badgeColor = _lst.color; badgeBg = _lst.bg; badgeBorder = _lst.border;
-          badgeLabel = { 'Executive': 'Executive', 'Advanced': 'Advanced', 'First-level management': 'Manager', 'Intermediate': 'Professional', 'Entry': 'Entry' }[lvl] || lvl;
+          badgeLabel = lvl; // v69: show the exact level name (consistent with the employee card / everywhere)
         }
       }
       rb.textContent = badgeLabel;
@@ -39801,6 +39801,9 @@
   <!-- v68: Enriched, level-aware KPI Knowledge Packs. Loaded LAST so it merges
        after KABi.KpiKnowledgeBase is defined during inline-script parse. -->
   <script src="./07_kabiKpiKnowledge.js"></script>
+
+  <!-- v69: Enterprise KPI Library (696 level-specific KPIs; pilot = bd-sales). -->
+  <script src="./09_kabiKpiLibrary.js"></script>
 
 </body>
 

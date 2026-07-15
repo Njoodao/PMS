@@ -296,6 +296,14 @@
 
     /* Returns the approved KPI library strings for a function (for coherence). */
     getLibrary: function (fnKey) {
+      // v69: prefer the Enterprise KPI Library (distinct metrics + coverage tags).
+      if (typeof window !== 'undefined' && window.KABi && KABi.KpiLibrary && KABi.KpiLibrary.has(fnKey)) {
+        var seen = {}, out = [];
+        KABi.KpiLibrary.get(fnKey, 'Entry').forEach(function (k) {
+          if (!seen[k.name]) { seen[k.name] = 1; out.push(k.name + ' [' + k.cat + '/' + k.rec + ']'); }
+        });
+        if (out.length) return out;
+      }
       var pack = KABi.KpiKnowledgeBase[fnKey];
       if (pack && Array.isArray(pack.library) && pack.library.length) {
         return pack.library.map(function (k) { return k.text; });
@@ -444,9 +452,24 @@
       if (_isReal(pack.scopeIn))  { H('IN SCOPE (this role owns)', 'ضمن النطاق (يملكها هذا الدور)'); pack.scopeIn.forEach(function (s) { L.push('• ' + s); }); }
       if (_isReal(pack.scopeOut)) { H('OUT OF SCOPE (belongs to other functions — reject KPIs here)', 'خارج النطاق (لوظائف أخرى — ارفض مؤشرات هنا)'); pack.scopeOut.forEach(function (s) { L.push('• ' + s); }); }
 
-      // Approved library (both modes)
-      if (_isReal(pack.library)) {
-        H('APPROVED KPI LIBRARY (authoritative baseline)', 'مكتبة المؤشرات المعتمدة (الأساس المرجعي)');
+      // Approved library (both modes). Prefer the v69 Enterprise KPI Library
+      // (rich, level-specific: SMART template + formula + coverage category) keyed
+      // to the target tier. Fall back to the older thin pack.library if absent.
+      var _tier = opts.level || (typeof window !== 'undefined' && window._kpiSelectedLevel && window._kpiSelectedLevel[fnKey]) || '';
+      if (typeof window !== 'undefined' && window.KABi && KABi.KpiLibrary && KABi.KpiLibrary.has(fnKey)) {
+        var _libKpis = KABi.KpiLibrary.get(fnKey, _tier || 'Entry');
+        if (_libKpis && _libKpis.length) {
+          H('APPROVED KPI LIBRARY' + (_tier ? ' — level: ' + _tier : '') + ' (AUTHORITATIVE — build the 4 KPIs from these metrics; keep {TARGET}/{PERIOD} placeholders for the manager)',
+            'مكتبة المؤشرات المعتمدة' + (_tier ? ' — المستوى: ' + _tier : '') + ' (المصدر الأساسي — ابنِ المؤشرات الأربعة من هذه المقاييس؛ أبقِ {TARGET}/{PERIOD} للمدير)');
+          _libKpis.forEach(function (k, i) {
+            L.push((i + 1) + '. [' + k.cat + ' / ' + k.rec + '] ' + k.name);
+            L.push('   ' + k.smart);
+            L.push('   formula: ' + k.formula + '  ·  unit ' + k.unit + '  ·  ' + k.dir + '  ·  ' + k.cadence + '  ·  source: ' + k.source);
+          });
+        }
+      } else if (_isReal(pack.library)) {
+        H('APPROVED KPI LIBRARY (reference for wording — NOT a template to copy wholesale)',
+          'مكتبة المؤشرات المعتمدة (مرجع للصياغة فقط — ليست قالبًا يُنسخ كما هو)');
         pack.library.forEach(function (k, i) { L.push((i + 1) + '. ' + k.text); });
       }
 
@@ -480,6 +503,20 @@
               L.push('   - ' + k.text + '  (' + tgt + ')');
             });
           });
+        }
+        // Coverage balance — the #1 reason a generated set gets rejected by the
+        // governance/coherence layer. The approved library is activity-heavy, so
+        // force at least one real OUTCOME KPI and cap pure-activity KPIs.
+        if (_isReal(pack.coverageProfile)) {
+          H('REQUIRED COVERAGE BALANCE (an independent governance layer WILL REJECT an unbalanced, activity-only set)',
+            'التوازن المطلوب (طبقة حوكمة مستقلة سترفض حزمة غير متوازنة كلها نشاط)');
+          Object.keys(pack.coverageProfile).forEach(function (cat) {
+            var r = pack.coverageProfile[cat];
+            L.push('• ' + cat + ': ' + r.min + '–' + r.max);
+          });
+          L.push(ar
+            ? 'إلزامي: ضمِّن مؤشر نتيجة واحدًا على الأقل (إيراد جديد / قيمة pipeline / معدل فوز / معدل تحويل) من قاموس المقاييس. لا تُنتج 4 مؤشرات نشاط (متابعات، عروض، تسجيل CRM، مقترحات) — النشاط يُحتسب "process" وله حد أقصى. النتائج (outcome) تتفوّق دائمًا على النشاط.'
+            : 'MANDATORY: include at least ONE outcome KPI (new revenue / pipeline value / win rate / conversion rate) drawn from the metric dictionary. Do NOT return 4 activity KPIs (follow-ups, demos, CRM logging, proposals) — activity counts as "process" and is capped by the mix above. Outcomes always beat activity counts.');
         }
         // Data sources + the golden rule
         if (_isReal(pack.dataSources)) {
