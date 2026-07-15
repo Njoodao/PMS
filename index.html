@@ -6235,6 +6235,19 @@
     }
     function kabiLevelIcon(v) { return kabiLevelMeta(kabiNormalizeLevel(v)).icon; }
     function kabiLevelColor(v) { return kabiLevelMeta(kabiNormalizeLevel(v)).color; }
+    // v69: classify a Job Title → level (for new hires without an explicit mapping).
+    // Order matters: GDP/Junior programs are Entry regardless of the base role.
+    function kabiClassifyTitle(title) {
+      if (!title) return null;
+      var t = String(title).toLowerCase();
+      if (/\bgdp\b|\bjunior\b|\bintern\b|\btrainee\b/.test(t)) return 'Entry';                                  // graduate/entry program
+      if (/\bchief\b|\bceo\b|\bcoo\b|\bcfo\b|\bcto\b|\bcco\b|\bcmo\b|\bcpo\b|\bcxo\b|deputy ceo/.test(t)) return 'Executive';
+      if (/\bdirector\b|\bvp\b|vice president|\badvisor\b/.test(t)) return 'Advanced';
+      if (/\bmanager\b|\blead\b|\bhead\b/.test(t)) return 'First-level management';
+      if (/\bofficer\b|\bassociate\b|\bcoordinator\b|\bassistant\b|\bclerk\b/.test(t)) return 'Entry';
+      if (/\bspecialist\b|\bengineer\b|\bconsultant\b|\banalyst\b|\bdesigner\b|scientist|architect|\bdeveloper\b|\badministrator\b/.test(t)) return 'Intermediate';
+      return null;
+    }
 
     // ═══════════════════════════════════════════════════════
     // BASE SYSTEM USERS (non-employee accounts)
@@ -22953,7 +22966,14 @@
     // Employees not in the map fall back to the legacy-level normalizer. The CEO
     // is flagged notEvaluated (evaluates others, is not evaluated by anyone).
     const _PE_LEVEL_MAP_V69 = {
-      'ahamed@kabi.ai':'First-level management','aabolhouf@kabi.ai':'Intermediate','aalzaid@kabi.ai':'First-level management','aelian@kabi.ai':'Intermediate','aabozainih@kabi.ai':'Intermediate','abarradah@kabi.ai':'First-level management','akhamis@kabi.ai':'Executive','aobeid@kabi.ai':'First-level management','aaltwijery@kabi.ai':'Intermediate','abanyali@kabi.ai':'Intermediate','ayousef@kabi.ai':'Intermediate','amcluntun@kabi.ai':'Advanced','ashayeb@kabi.ai':'Intermediate','aalqurashi@kabi.ai':'Entry','azahmad@kabi.ai':'Intermediate','bamer@kabi.ai':'First-level management','babuhani@kabi.ai':'Intermediate','destaiteh@kabi.ai':'Intermediate','faljudhei@kabi.ai':'First-level management','fsaleem@kabi.ai':'Intermediate','fabufares@kabi.ai':'Intermediate','halkharouf@kabi.ai':'Intermediate','ialzimami@kabi.ai':'Executive','ihajji@kabi.ai':'First-level management','kalmohammadi@kabi.ai':'First-level management','kjarrad@kabi.ai':'Intermediate','kaloraij@kabi.ai':'Executive','lramadan@kabi.ai':'Entry','lalkhadheir@kabi.ai':'First-level management','malatawi@kabi.ai':'Intermediate','malogayel@kabi.ai':'Entry','malnajdi@kabi.ai':'Intermediate','malkadi@kabi.ai':'Advanced','mabdulqader@kabi.ai':'Intermediate','mmodallal@kabi.ai':'First-level management','msumrein@kabi.ai':'Intermediate','mkarman@kabi.ai':'First-level management','mamer@kabi.ai':'Intermediate','malkhudair@kabi.ai':'Intermediate','nalsadhan@kabi.ai':'First-level management','nabdoullah@kabi.ai':'Intermediate','naloraij@kabi.ai':'Entry','nazab@kabi.ai':'Intermediate','oabukhader@kabi.ai':'Intermediate','oabualhija@kabi.ai':'Intermediate','oaljohani@kabi.ai':'Intermediate','oabualjamieh@kabi.ai':'Intermediate','rabdullah@kabi.ai':'Intermediate','rodeh@kabi.ai':'Intermediate','ralowais@kabi.ai':'Intermediate','rtubasi@kabi.ai':'Intermediate','salamoudi@kabi.ai':'Entry','smohamad@kabi.ai':'Intermediate','salotaibi@kabi.ai':'First-level management','sassi@kabi.ai':'Advanced','sjoban@kabi.ai':'Intermediate','salkhunain@kabi.ai':'Intermediate','ssaleh@kabi.ai':'Intermediate','salbasri@kabi.ai':'Entry','salsaheel@kabi.ai':'First-level management','talqsairi@kabi.ai':'Entry','yaljamal@kabi.ai':'Intermediate','yhawash@kabi.ai':'Intermediate','zhannoun@kabi.ai':'Intermediate','aalkhawaja@kabi.ai':'First-level management','dalenazi@kabi.ai':'Intermediate','nalfayez@kabi.ai':'Entry','yjaziah@kabi.ai':'Intermediate'
+      'ahamed@kabi.ai':'First-level management','aabolhouf@kabi.ai':'Intermediate','aalzaid@kabi.ai':'First-level management','aelian@kabi.ai':'Intermediate','aabozainih@kabi.ai':'Intermediate','abarradah@kabi.ai':'First-level management','akhamis@kabi.ai':'Executive','aobeid@kabi.ai':'First-level management','aaltwijery@kabi.ai':'Intermediate','abanyali@kabi.ai':'Intermediate','ayousef@kabi.ai':'Intermediate','amcluntun@kabi.ai':'Advanced','ashayeb@kabi.ai':'Intermediate','aalqurashi@kabi.ai':'Entry','azahmad@kabi.ai':'Intermediate','bamer@kabi.ai':'First-level management','babuhani@kabi.ai':'Intermediate','destaiteh@kabi.ai':'Intermediate','faljudhei@kabi.ai':'First-level management','fsaleem@kabi.ai':'Intermediate','fabufares@kabi.ai':'Intermediate','halkharouf@kabi.ai':'Intermediate','ialzimami@kabi.ai':'Executive','ihajji@kabi.ai':'First-level management','kalmohammadi@kabi.ai':'First-level management','kjarrad@kabi.ai':'Intermediate','kaloraij@kabi.ai':'Executive','lramadan@kabi.ai':'Entry','lalkhadheir@kabi.ai':'First-level management','malatawi@kabi.ai':'Intermediate','malogayel@kabi.ai':'Entry','malnajdi@kabi.ai':'Intermediate','malkadi@kabi.ai':'Executive','mabdulqader@kabi.ai':'Intermediate','mmodallal@kabi.ai':'First-level management','msumrein@kabi.ai':'Intermediate','mkarman@kabi.ai':'First-level management','mamer@kabi.ai':'Intermediate','malkhudair@kabi.ai':'Intermediate','nalsadhan@kabi.ai':'First-level management','nabdoullah@kabi.ai':'Intermediate','naloraij@kabi.ai':'Entry','nazab@kabi.ai':'Intermediate','oabukhader@kabi.ai':'Intermediate','oabualhija@kabi.ai':'Intermediate','oaljohani@kabi.ai':'Intermediate','oabualjamieh@kabi.ai':'Intermediate','rabdullah@kabi.ai':'Intermediate','rodeh@kabi.ai':'Intermediate','ralowais@kabi.ai':'Intermediate','rtubasi@kabi.ai':'Intermediate','salamoudi@kabi.ai':'Entry','smohamad@kabi.ai':'Intermediate','salotaibi@kabi.ai':'First-level management','sassi@kabi.ai':'Advanced','sjoban@kabi.ai':'Intermediate','salkhunain@kabi.ai':'Intermediate','ssaleh@kabi.ai':'Intermediate','salbasri@kabi.ai':'Entry','salsaheel@kabi.ai':'First-level management','talqsairi@kabi.ai':'Entry','yaljamal@kabi.ai':'Intermediate','yhawash@kabi.ai':'Intermediate','zhannoun@kabi.ai':'Intermediate','aalkhawaja@kabi.ai':'First-level management','dalenazi@kabi.ai':'Intermediate','nalfayez@kabi.ai':'Entry','yjaziah@kabi.ai':'Intermediate'
+    };
+    // v69: contractors / advisors that are NOT in the evaluation cycle (non-FTE).
+    // Excluded from evaluation via employmentType==='non-fte' (see index.html:6315).
+    const _NON_FTE_V69 = {
+      'aaloraij@kabi.ai': 'contractor',   // Abdulaziz Aloraij — IT Advisor (contract)
+      'mqatab@kabi.ai':   'contractor'    // Manal Qatab — contractor, not evaluated
+      // NOTE: GDP graduate batch is also non-FTE and will be added later.
     };
     function _peMigrateLevels(){
       if (typeof PE_EMPLOYEES === 'undefined') return;
@@ -22961,11 +22981,16 @@
       PE_EMPLOYEES.forEach(function(e){
         if (!e) return;
         var email = (e.email || '').toLowerCase();
-        var target = _PE_LEVEL_MAP_V69[email] || kabiNormalizeLevel(e.level);
+        var target = _PE_LEVEL_MAP_V69[email] || kabiClassifyTitle(e.title) || kabiNormalizeLevel(e.level);
         if (e.level !== target) { e.level = target; changed = true; }
         // CEO only: not evaluated by anyone (evaluates executives/directors).
         var isCEO = email === 'kaloraij@kabi.ai' || (e.title && /\bceo\b/i.test(e.title) && !/deputy/i.test(e.title));
         if (isCEO && !e.notEvaluated) { e.notEvaluated = true; changed = true; }
+        // Non-FTE contractors/advisors → excluded from the evaluation cycle.
+        if (_NON_FTE_V69[email]) {
+          if (e.employmentType !== 'non-fte') { e.employmentType = 'non-fte'; changed = true; }
+          if (!e.nonFteCategory) { e.nonFteCategory = _NON_FTE_V69[email]; changed = true; }
+        }
       });
       if (changed) { _peSaveEmployees(); console.info('[PE] v69 level migration applied (5 levels).'); }
     }
@@ -26225,8 +26250,9 @@
                 var grant = (typeof _hasKpiGrant === 'function') ? _hasKpiGrant(emp.email) : null;
                 var lvls = (grant && grant.levelAccess && grant.levelAccess[f.key]) || [];
                 return '<div style="display:' + (currentFnAccess.includes(f.key) ? 'block' : 'none') + ';margin-bottom:6px;padding:6px 8px;background:rgba(155,129,188,.04);border:1px solid rgba(155,129,188,.12);border-radius:6px" data-fn-lvl-block="' + f.key + '"><div style="font-size:9px;font-weight:700;color:#9B81BC;margin-bottom:4px">' + f.name + '</div><div style="display:flex;gap:10px;flex-wrap:wrap">' +
-                  ['Staff Level','Management','Top Management'].map(function(lvl) {
-                    return '<label style="display:flex;align-items:center;gap:4px;font-size:9px;color:var(--text-primary);cursor:pointer"><input type="checkbox" class="epe-lvl-' + safeKey + '" value="' + lvl + '" ' + (lvls.indexOf(lvl) >= 0 ? 'checked' : '') + ' style="accent-color:#9B81BC"> ' + lvl + '</label>';
+                  _KABI_LEVEL_ORDER.map(function(lvl) {
+                    var _chk = (lvls.indexOf(lvl) >= 0 || (lvls.some && lvls.some(function(x){return kabiNormalizeLevel(x)===lvl;}))) ? 'checked' : '';
+                    return '<label title="Typical titles: ' + (kabiLevelMeta(lvl).desc || '') + '" style="display:flex;align-items:center;gap:4px;font-size:9px;color:var(--text-primary);cursor:pointer"><input type="checkbox" class="epe-lvl-' + safeKey + '" value="' + lvl + '" ' + _chk + ' style="accent-color:#9B81BC"> ' + lvl + '</label>';
                   }).join('') +
                 '</div></div>';
               }).join('')}
