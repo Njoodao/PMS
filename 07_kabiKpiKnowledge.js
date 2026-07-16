@@ -474,6 +474,16 @@
       }
 
       if (mode === 'generate') {
+        // v69: evaluation cycle + target phasing — make targets/deadlines period-appropriate.
+        if (typeof window !== 'undefined' && window.kabiEvalPeriod) {
+          var _period = window.kabiEvalPeriod();
+          var _freq = window.kabiEvalFreq ? window.kabiEvalFreq() : '';
+          H('EVALUATION CYCLE — target phasing', 'دورة التقييم — مواءمة الأهداف');
+          L.push((ar ? 'الفترة الحالية: ' : 'Current period: ') + _period + (_freq ? ' (' + _freq + ')' : ''));
+          L.push(ar
+            ? 'إلزامي: اجعل كل {PERIOD} = هذه الفترة، والموعد النهائي = نهايتها. واءم حجم الهدف مع الفترة — المقاييس التراكمية (إيراد، عدد صفقات، قيمة pipeline) تُحسب لهذه الفترة فقط (هدف ربعي ≠ سنوي)؛ مقاييس النِّسب/المعدلات (%، ratio، دقة، معدل) يبقى حدّها كما هو مهما كان طول الفترة. لا تضع رقمًا سنويًا على دورة ربعية.'
+            : 'MANDATORY: set every {PERIOD} to THIS period and the deadline to its end. Size the target to the period — cumulative metrics (revenue, deal count, pipeline value) count ONLY within this period (a quarterly target ≠ an annual one); rate/ratio metrics (%, ratio, accuracy) keep the same threshold regardless of period length. Never put an annual number on a quarterly cycle.');
+        }
         // Metric dictionary (compact — only metrics with a real formula)
         if (_isReal(pack.metrics)) {
           H('METRIC DICTIONARY (respect these formulas & bounds)', 'قاموس المقاييس (التزم بالصيغ والحدود)');

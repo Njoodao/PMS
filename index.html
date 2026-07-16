@@ -9421,6 +9421,15 @@
       });
       h += '</div></div>';
 
+      // v70: performance-level colour legend
+      h += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;font-size:8px;color:var(--text-dim)">'
+        + '<span><i class="ti ti-robot ti-cyan"></i> AI compares each metric vs the KPI:</span>'
+        + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#4ade80;display:inline-block"></span> On/above target</span>'
+        + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#fbbf24;display:inline-block"></span> Watch</span>'
+        + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#EF4444;display:inline-block"></span> Below</span>'
+        + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#22d3ee;display:inline-block"></span> Context (volume)</span>'
+        + '</div>';
+
       // Employee cards
       h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px">';
       directs.forEach(function(emp) {
@@ -9460,6 +9469,8 @@
         h += '</div>';
         // Score badge
         h += '<div style="text-align:center;flex-shrink:0"><div style="font-size:16px;font-weight:900;color:'+scoreColor+'">'+scoreText+'</div><div style="font-size:6px;color:var(--text-dim);text-transform:uppercase">Score</div></div>';
+        // v70: AI evidence compare (per employee, vs their KPIs)
+        h += '<button onclick="event.stopPropagation();peAIReview(\''+emp.id+'\',\'MONITOR_PERFORMANCE\')" title="AI: compare '+(emp.name||'').replace(/"/g,'&quot;')+'’s actual evidence vs their KPIs" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;border:1px solid rgba(0,194,224,.3);background:rgba(0,194,224,.1);color:var(--cyan);font-size:12px;cursor:pointer;font-family:inherit"><i class="ti ti-robot"></i></button>';
         h += '</div>';
 
         // Check for system data (Pipedrive or Jira)
@@ -9500,9 +9511,17 @@
             }
           }
 
+          // v70: unify colour by performance LEVEL (green/amber/red) via kabiPerfLevel
+          var _pl = (kpi && kpiValue !== '—' && typeof window.kabiPerfLevel === 'function') ? window.kabiPerfLevel(kpi, kpiValue) : null;
+          if (_pl && _pl.level !== 'na') { kpiColor = _pl.color; }
+          if (_pl && _pl.level !== 'na') kpiTooltip += ' — ' + _pl.label;
+          var _plBar = (_pl && (_pl.level === 'high' || _pl.level === 'good' || _pl.level === 'watch' || _pl.level === 'low'))
+            ? '<div style="height:3px;border-radius:2px;margin-top:4px;background:' + _pl.color + '"></div>'
+            : '<div style="height:3px;border-radius:2px;margin-top:4px;background:rgba(255,255,255,.06)"></div>';
           h += '<div style="text-align:center;padding:6px 3px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);border-radius:6px;cursor:default" title="'+kpiTooltip.replace(/"/g,'&quot;')+'">';
           h += '<div style="font-size:6px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.2px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+kpiShort+'</div>';
           h += '<div style="font-size:13px;font-weight:800;color:'+kpiColor+'">'+kpiValue+'</div>';
+          h += _plBar;
           h += '</div>';
         }
         h += '</div>';
@@ -9572,9 +9591,13 @@
         fm.kpis.forEach(function(k){
           var v = vals[k.name];
           var hasVal = v !== undefined && v !== null && v !== '' && v !== '—';
-          h += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px" title="'+k.desc+'">';
+          var _pl2 = (hasVal && typeof window.kabiPerfLevel === 'function') ? window.kabiPerfLevel(k.name, v, { direction: (k.dir === 'lower' || k.lowerBetter ? 'lower' : undefined), target: k.target }) : null;
+          var _vc2 = hasVal ? ((_pl2 && _pl2.level !== 'na' && _pl2.level !== 'info') ? _pl2.color : (dept.color || '#216AB1')) : 'var(--text-dim)';
+          var _bar2 = (_pl2 && (_pl2.level === 'high' || _pl2.level === 'good' || _pl2.level === 'watch' || _pl2.level === 'low')) ? '<div style="height:3px;border-radius:2px;margin-top:5px;background:' + _pl2.color + '"></div>' : '';
+          h += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px" title="'+String(k.desc + (_pl2 && _pl2.level !== 'na' && _pl2.level !== 'info' ? ' — ' + _pl2.label : '')).replace(/"/g,'&quot;')+'">';
           h += '<div style="font-size:7px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">'+k.name+'</div>';
-          h += '<div style="font-size:16px;font-weight:800;color:'+(hasVal?(dept.color||'#216AB1'):'var(--text-dim)')+'">'+( hasVal ? v : '—')+'</div>';
+          h += '<div style="font-size:16px;font-weight:800;color:'+_vc2+'">'+( hasVal ? v : '—')+'</div>';
+          h += _bar2;
           h += '</div>';
         });
         h += '</div>';
@@ -12082,9 +12105,15 @@
               var hintMatch = _UNAVAILABLE_KPI_HINTS.find(function(u){ return u.test.test(k.name); });
               if (hintMatch) tooltipText = k.desc + ' \u2014 ' + hintMatch.hint;
             }
-            h += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px" title="'+tooltipText+'">';
+            // v70: colour by PERFORMANCE LEVEL (green/amber/red) when assessable
+            var _dpl = (hasVal && typeof window.kabiPerfLevel === 'function') ? window.kabiPerfLevel(k.name, displayVal, { direction: (k.dir === 'lower' || k.lowerBetter ? 'lower' : undefined), target: k.target }) : null;
+            var _valColor = hasVal ? ((_dpl && _dpl.level !== 'na' && _dpl.level !== 'info') ? _dpl.color : (dept.color || '#216AB1')) : 'var(--text-dim)';
+            var _dTip = tooltipText + (_dpl && _dpl.level !== 'na' && _dpl.level !== 'info' ? (' — ' + _dpl.label) : '');
+            var _dBar = (_dpl && (_dpl.level === 'high' || _dpl.level === 'good' || _dpl.level === 'watch' || _dpl.level === 'low')) ? '<div style="height:3px;border-radius:2px;margin-top:5px;background:' + _dpl.color + '"></div>' : '';
+            h += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px" title="'+String(_dTip).replace(/"/g,'&quot;')+'">';
             h += '<div style="font-size:7px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">'+k.name+'</div>';
-            h += '<div style="font-size:16px;font-weight:800;color:'+(hasVal?(dept.color||'#216AB1'):'var(--text-dim)')+'">'+displayVal+aiBadge+'</div>';
+            h += '<div style="font-size:16px;font-weight:800;color:'+_valColor+'">'+displayVal+aiBadge+'</div>';
+            h += _dBar;
             h += '</div>';
           });
           h += '</div>';
@@ -19064,7 +19093,30 @@
         return aToday - bToday;
       });
 
-      return insights.slice(0, 6);
+      // v70: append REAL evidence-based team insights (new joiner welcome,
+      // performance up/down, workload pressure, missing KPIs, data gaps,
+      // pending evaluations) from the shared kabiTeamInsights generator.
+      try {
+        var _sevColor = { urgent: '#EF4444', warning: '#F59E0B', positive: '#3BB691', info: '#60a5fa' };
+        var _extra = (typeof window.kabiTeamInsights === 'function') ? window.kabiTeamInsights(mgrEmail) : [];
+        _extra.forEach(function (ins) {
+          var _emp = ins.empId != null ? reports.filter(function (x) { return String(x.id) === String(ins.empId); })[0] : null;
+          var _acts;
+          if (ins.type === 'new_joiner') _acts = [{ label: '<i class="ti ti-confetti"></i> Send Welcome', type: 'message', priority: 'primary' }, { label: '<i class="ti ti-robot"></i> Review with AI', type: 'ai_review', priority: 'secondary' }];
+          else if (ins.type === 'low_perf' || ins.type === 'top_perf' || ins.type === 'workload') _acts = [{ label: '<i class="ti ti-robot"></i> Review with AI', type: 'ai_review', priority: 'primary' }, { label: '<i class="ti ti-calendar"></i> Schedule 1:1', type: 'schedule', priority: 'secondary' }];
+          else if (ins.type === 'missing_kpis') _acts = [{ label: '<i class="ti ti-clipboard-list"></i> Assign KPIs', type: 'assign_kpis', priority: 'primary' }];
+          else if (ins.type === 'pending_eval') _acts = [{ label: '<i class="ti ti-clipboard-check"></i> Start Evaluations', type: 'start_eval', priority: 'primary' }];
+          else _acts = [];
+          insights.push({
+            text: ins.desc, trend: ins.title,
+            target: _emp ? _emp.name : 'Team', targetEmail: _emp ? _emp.email : '',
+            icon: ins.icon || '<i class="ti ti-robot"></i>',
+            color: _sevColor[ins.severity] || '#60a5fa', type: ins.type, actions: _acts
+          });
+        });
+      } catch (e) { console.warn('[getMgrInsights extra]', e); }
+
+      return insights.slice(0, 8);
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -19416,6 +19468,19 @@
       }
 
       switch (actionType) {
+        case 'ai_review': {
+          // v70: open the Evidence Copilot (MONITOR_PERFORMANCE) for this employee
+          var _aiEmp = PE_EMPLOYEES.find(e => (e.email || '').toLowerCase() === (targetEmail || '').toLowerCase());
+          if (_aiEmp && typeof window.peAIReview === 'function') window.peAIReview(_aiEmp.id, 'MONITOR_PERFORMANCE');
+          else toast('AI review unavailable — no employee match', 'err');
+          return;
+        }
+        case 'start_eval':
+          if (typeof showPg === 'function') { showPg('pg-eval'); if (typeof peRenderManagerEval === 'function') peRenderManagerEval(); }
+          return;
+        case 'assign_kpis':
+          toast('Open the KPI Framework tab → your function to set level-specific KPIs for this employee.', 'ok');
+          return;
         case 'schedule':
           openScheduleMeetingModal(targetName, targetEmail);
           // v51: Writing Assistant prefills the meeting note when available
@@ -27315,6 +27380,9 @@
 
       // Edit request actions
       html += `<div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:6px;flex-wrap:wrap;align-items:center">`;
+      if (!ev.isDraft) {
+        html += `<button onclick="peAIReview('${empId}','REVIEW_MANAGER_RATING')" title="Check whether this rating is supported by connected evidence" style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:6px;border:1px solid rgba(0,194,224,.35);background:linear-gradient(135deg,rgba(0,194,224,.14),rgba(19,56,176,.1));color:var(--cyan);font-size:10px;font-weight:800;cursor:pointer;font-family:inherit"><i class="ti ti-robot"></i> Review rating with AI</button>`;
+      }
       if (hasPendingReq) {
         html += `<span style="font-size:10px;color:#fbbf24;padding:5px 10px;border-radius:6px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2)"><i class="ti ti-hourglass"></i> Edit request pending</span>`;
       } else if (approvedReq) {
@@ -27523,6 +27591,35 @@
     }
 
     // ── START EVALUATION (collapsible sections with descriptions) ──
+    // ── Phase-2: manager-facing Evidence Copilot launcher (per-employee) ──
+    // mode: 'MONITOR_PERFORMANCE' (evidence before scoring) or
+    //       'REVIEW_MANAGER_RATING' (is the submitted rating evidence-supported?)
+    window.peAIReview = function (empId, mode) {
+      try {
+        const emp = PE_EMPLOYEES.find(e => String(e.id) === String(empId));
+        if (!emp) { toast('Employee not found', 'err'); return; }
+        const openQ = peGetOpenQ();
+        const kpis = peGetApprovedKPIs(emp.fn, null, emp.level) || [];
+        const fnLabel = (Array.isArray(emp.fn) ? emp.fn : [emp.fn]).map(k => (FNS[k] && FNS[k].name) || k).join(', ');
+        const payload = {
+          mode: mode || 'MONITOR_PERFORMANCE',
+          email: emp.email, fnKey: emp.fn, level: peGetEmpLevel(emp),
+          kpis: kpis, empName: emp.name, fnLabel: fnLabel,
+          period: (window.kabiEvalPeriod ? window.kabiEvalPeriod() : null)
+        };
+        if (mode === 'REVIEW_MANAGER_RATING') {
+          const ev = PE_EVALS[`${emp.id}_${openQ}`];
+          if (ev && Array.isArray(ev.kpiScores) && ev.kpiScores.length) {
+            payload.proposedRatings = kpis.map((kName, i) => {
+              const m = ev.kpiScores.find(k => (k.name || '') === kName);
+              return m ? m.score : (ev.kpiScores[i] ? ev.kpiScores[i].score : null);
+            });
+          } else { toast('No submitted rating to review yet', 'err'); return; }
+        }
+        window.kabiRunEvalCopilot(payload);
+      } catch (e) { toast('AI review error: ' + e.message, 'err'); }
+    };
+
     function peStartEval(empId, editSections) {
       const emp = PE_EMPLOYEES.find(e => e.id === empId); if (!emp) return;
       const openQ = peGetOpenQ(); if (!openQ) { toast('No open quarter', 'err'); return; }
@@ -27540,7 +27637,8 @@
       const init = emp.name.split(' ').map(w2 => w2[0]).join('').slice(0, 2);
       const isJustPerItem = PE_CONFIG.justMode === 'per-item';
 
-      let html = `<button onclick="peAutoSaveDraft();peRenderManagerEval()" style="display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.08);background:transparent;color:var(--text-muted);font-size:10px;cursor:pointer;font-family:inherit;margin-bottom:12px">← Back (auto-saves draft)</button>
+      let html = `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button onclick="peAutoSaveDraft();peRenderManagerEval()" style="display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.08);background:transparent;color:var(--text-muted);font-size:10px;cursor:pointer;font-family:inherit">← Back (auto-saves draft)</button>
+      <button onclick="peAIReview('${emp.id}','MONITOR_PERFORMANCE')" title="Read connected systems + files and show evidence-based performance for this employee" style="display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:8px;border:1px solid rgba(0,194,224,.35);background:linear-gradient(135deg,rgba(0,194,224,.14),rgba(19,56,176,.1));color:var(--cyan);font-size:10px;font-weight:800;cursor:pointer;font-family:inherit"><i class="ti ti-robot"></i> AI Evidence Review</button></div>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px"><div class="pe-emp-av" style="background:linear-gradient(135deg,var(--cyan),#1338b0);width:44px;height:44px;font-size:14px">${init}</div><div><h2 style="font-size:16px;font-weight:900;color:var(--white)">${emp.name}</h2><p style="font-size:10px;color:var(--text-muted)">${emp.title} · ${emp.dept} · <span style="padding:1px 6px;border-radius:10px;font-size:8px;font-weight:700;background:rgba(0,194,224,.1);color:var(--cyan)">${peGetEmpLevel(emp)}</span></p><p style="font-size:9px;color:var(--text-muted);margin-top:2px">${PE_QUARTERS[openQ].label} · KPIs ${w.objectives || 0}% | INVIEWS ${w.competencies || 0}% | Digital ${w.digitalAdoption || 0}% | Initiatives ${w.initiatives || 0}%</p></div></div>`;
 
       // Build sections
@@ -28118,6 +28216,13 @@
       PE_EMPLOYEES.forEach(emp => { if (!depts[emp.dept]) depts[emp.dept] = { emps: [], evals: [], mgrs: new Set() }; depts[emp.dept].emps.push(emp); depts[emp.dept].mgrs.add(emp.mgrName); const ev = PE_EVALS[`${emp.id}_${openQ || 'Q1'}`]; if (ev) depts[emp.dept].evals.push(ev); });
 
       let html = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding:14px 16px;border-radius:12px;background:linear-gradient(135deg,rgba(0,194,224,.08),rgba(19,56,176,.06));border:1px solid rgba(0,194,224,.2)">
+      <div>
+        <div style="font-size:13px;font-weight:900;color:var(--white);display:flex;align-items:center;gap:7px"><i class="ti ti-robot ti-cyan"></i> AI Organization Monitor</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:3px">Reads connected systems + files + submitted evaluations to show evidence-based performance across departments — advisory, never invents data.</div>
+      </div>
+      <button onclick="kabiRunEvalCopilot({mode:'MONITOR_ORG',period:(window.kabiEvalPeriod?window.kabiEvalPeriod():null)})" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:9px;border:none;background:linear-gradient(135deg,var(--cyan),#1338b0);color:#03122e;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap"><i class="ti ti-sparkles"></i> Monitor whole organization</button>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:10px">
       <div class="pe-stat" style="grid-column:1/3;padding:20px;background:linear-gradient(135deg,rgba(0,194,224,.08),rgba(19,56,176,.08));border:1px solid rgba(0,194,224,.15)">
         <div class="n" style="color:${orgRc.color};font-size:32px">${orgAvg ? orgAvg.toFixed(1) : '-'}</div>
@@ -28183,9 +28288,12 @@
         const mgrProgress = {};
         d.emps.forEach(emp => { if (!mgrProgress[emp.mgrName]) mgrProgress[emp.mgrName] = { total: 0, done: 0 }; mgrProgress[emp.mgrName].total++; if (PE_EVALS[`${emp.id}_${openQ || 'Q1'}`]) mgrProgress[emp.mgrName].done++; });
         return `<div class="pe-dept-card" onclick="peDeptDrill('${dept}')" style="padding:16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:6px">
           <strong style="font-size:12px;color:var(--white)">${dept}</strong>
-          ${dAvg ? `<span class="pe-badge ${drc.cls}">${drc.name}</span>` : ''}
+          <div style="display:flex;align-items:center;gap:6px">
+            ${dAvg ? `<span class="pe-badge ${drc.cls}">${drc.name}</span>` : ''}
+            <button onclick="event.stopPropagation();kabiRunEvalCopilot({mode:'MONITOR_DEPARTMENT',dept:'${dept.replace(/'/g, "\\'")}',period:(window.kabiEvalPeriod?window.kabiEvalPeriod():null)})" title="AI evidence monitor for ${dept}" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;border:1px solid rgba(0,194,224,.3);background:rgba(0,194,224,.1);color:var(--cyan);font-size:11px;cursor:pointer;font-family:inherit"><i class="ti ti-robot"></i></button>
+          </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px">
           <div style="text-align:center"><div style="font-size:14px;font-weight:900;color:var(--cyan)">${d.emps.length}</div><div style="font-size:7px;color:var(--text-muted)">Employees</div></div>
@@ -28211,82 +28319,34 @@
     function genManagerAIAlerts(myEmps, openQ) {
       if (!myEmps || myEmps.length === 0) return '';
 
-      // Simulated AI-inferred alerts (in production: fed by integrations)
+      // v70: REAL, evidence-based insights (no simulation). Delegates to
+      // window.kabiTeamInsights which reads connectors + eval scores + roster.
       const alerts = [];
-
-      // 1. Under-performing employee → suggest 1:1
-      const underPerforming = myEmps.find(e => {
-        const ev = PE_EVALS[`${e.id}_${openQ}`];
-        return ev && ev.totalScore < 3;
-      }) || myEmps[0]; // fallback to first emp for demo
-      if (underPerforming) {
-        const ev = PE_EVALS[`${underPerforming.id}_${openQ}`];
+      const sevMap = {
+        urgent:   { type: 'urgent',   actionStyle: 'primary' },
+        warning:  { type: 'warning',  actionStyle: 'ghost' },
+        positive: { type: 'positive', actionStyle: 'positive' },
+        info:     { type: 'info',     actionStyle: 'ghost' }
+      };
+      let insights = [];
+      try { insights = (typeof window.kabiTeamInsights === 'function') ? window.kabiTeamInsights(me.email) : []; } catch (e) { insights = []; }
+      insights.forEach(ins => {
+        const m = sevMap[ins.severity] || sevMap.info;
         alerts.push({
-          type: ev && ev.totalScore < 3 ? 'urgent' : 'info',
-          icon: '<i class="ti ti-target"></i>',
-          title: `Suggested 1:1 with ${underPerforming.name}`,
-          desc: ev && ev.totalScore < 3
-            ? `Performance score (${ev.totalScore.toFixed(1)}) below team average. AI detected reduced Pipeline activity over the last 2 weeks.`
-            : `AI detected below-baseline activity signals from integrated systems. Consider scheduling a check-in to understand blockers.`,
-          action: 'Schedule 1:1',
-          actionStyle: 'primary'
+          type: m.type, icon: ins.icon || '<i class="ti ti-robot"></i>',
+          title: ins.title, desc: ins.desc, action: ins.action || 'Open',
+          actionStyle: m.actionStyle, _insightType: ins.type, _empId: (ins.empId != null ? ins.empId : '')
         });
-      }
-
-      // 2. Workload pressure → watch out
-      if (myEmps.length > 1) {
-        const pressured = myEmps[1];
-        alerts.push({
-          type: 'warning',
-          icon: '<i class="ti ti-clipboard-list"></i>',
-          title: `${pressured.name} may be under workload pressure`,
-          desc: `AI noticed extended working hours (8+ logins after 9 PM this week) and spike in task volume. Consider load balancing or wellness check-in.`,
-          action: 'View Activity',
-          actionStyle: 'ghost'
-        });
-      }
-
-      // 3. INVIEWS completion reminder
-      const pendingInviews = myEmps.filter(e => !e.inviewsDone);
-      if (pendingInviews.length > 0 && INVIEWS_CONFIG.enabled) {
-        alerts.push({
-          type: 'info',
-          icon: '<i class="ti ti-clipboard-list"></i>',
-          title: `${pendingInviews.length} team member${pendingInviews.length > 1 ? 's' : ''} pending INVIEWS`,
-          desc: `Assessment window ${INVIEWS_CONFIG.closeDate ? 'closes ' + INVIEWS_CONFIG.closeDate : 'is active'}. Remind them to complete before deadline.`,
-          action: 'Send Reminder',
-          actionStyle: 'ghost'
-        });
-      }
-
-      // 4. Positive recognition
-      const topPerformer = myEmps.find(e => {
-        const ev = PE_EVALS[`${e.id}_${openQ}`];
-        return ev && ev.totalScore >= 4.5;
       });
-      if (topPerformer) {
-        const ev = PE_EVALS[`${topPerformer.id}_${openQ}`];
-        alerts.push({
-          type: 'positive',
-          icon: '<i class="ti ti-clipboard-list"></i>',
-          title: `Recognize ${topPerformer.name}`,
-          desc: `Exceptional performance detected (${ev.totalScore.toFixed(1)}/5). Consider a public recognition or nomination for KABi Hero Award.`,
-          action: 'Send Recognition',
-          actionStyle: 'positive'
-        });
-      }
 
-      // 5. Cadence reminder (always show if evals pending)
-      const evalsDone = myEmps.filter(e => PE_EVALS[`${e.id}_${openQ}`] && !PE_EVALS[`${e.id}_${openQ}`].isDraft).length;
-      if (openQ && evalsDone < myEmps.length && myEmps.length > 0) {
-        const pending = myEmps.length - evalsDone;
+      // INVIEWS completion reminder (real signal, not covered by kabiTeamInsights)
+      const pendingInviews = myEmps.filter(e => !e.inviewsDone);
+      if (pendingInviews.length > 0 && typeof INVIEWS_CONFIG !== 'undefined' && INVIEWS_CONFIG.enabled) {
         alerts.push({
-          type: 'info',
-          icon: '<i class="ti ti-alarm"></i>',
-          title: `${pending} evaluation${pending > 1 ? 's' : ''} remaining this cycle`,
-          desc: `Evaluation window (${PE_QUARTERS[openQ]?.label || openQ}) is open. AI recommends completing by end of week for balanced review quality.`,
-          action: 'Start Evaluations',
-          actionStyle: 'primary'
+          type: 'info', icon: '<i class="ti ti-clipboard-list"></i>',
+          title: `${pendingInviews.length} team member${pendingInviews.length > 1 ? 's' : ''} pending INVIEWS`,
+          desc: `Assessment window ${INVIEWS_CONFIG.closeDate ? 'closes ' + INVIEWS_CONFIG.closeDate : 'is active'}. Remind them to complete before the deadline.`,
+          action: 'Send Reminder', actionStyle: 'ghost', _insightType: 'inviews', _empId: ''
         });
       }
 
@@ -28329,7 +28389,7 @@
                 <div style="font-size:10.5px;color:var(--text-muted);line-height:1.55">${a.desc}</div>
               </div>
               <div style="flex-shrink:0;align-self:center">
-                <button onclick="toast('AI Assistant: ${a.action} flow initiated', 'ok')" style="padding:7px 14px;${a.actionStyle === 'primary' ? 'background:linear-gradient(135deg,var(--cyan),#3b72ff);color:#fff;border:none' : a.actionStyle === 'positive' ? 'background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.3)' : 'background:rgba(255,255,255,.05);color:var(--text-primary);border:1px solid rgba(255,255,255,.1)'};border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .2s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">${a.action} →</button>
+                <button onclick="kabiTeamInsightAction('${a._insightType}', '${a._empId}')" style="padding:7px 14px;${a.actionStyle === 'primary' ? 'background:linear-gradient(135deg,var(--cyan),#3b72ff);color:#fff;border:none' : a.actionStyle === 'positive' ? 'background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.3)' : 'background:rgba(255,255,255,.05);color:var(--text-primary);border:1px solid rgba(255,255,255,.1)'};border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .2s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">${a.action} →</button>
               </div>
             </div>`).join('')}
         </div>
@@ -32664,6 +32724,12 @@
       if (freq === 'annual') return 'Full Year 2026 annual';
       return qLabel || freq;
     }
+    // v69: expose the evaluation period + frequency so other script modules
+    // (KPI Library injection in 07) can make the generator period-aware.
+    try {
+      window.kabiEvalPeriod = function () { return _getEvalPeriodLabel(); };
+      window.kabiEvalFreq = function () { return (typeof PE_FREQUENCY !== 'undefined') ? PE_FREQUENCY : 'quarterly'; };
+    } catch (e) {}
 
     function buildGeneratePrompt_System(language) {
       if (language === 'ar') {
@@ -32983,6 +33049,298 @@
       } catch(e){ console.warn('[KPI Gen] _buildKpiConnectorContext failed:', e); }
       return '';
     }
+
+    // ═══ v70: Evaluation-evidence gatherer (Phase 2 — Evaluation Copilot) ═══
+    // Reads connectors as REAL evidence for one employee + their function:
+    //   • Pipedrive deals owned by the employee (by ownerEmail) → per-person outcomes
+    //   • Jira metrics + uploaded files/reports linked to the function → context evidence
+    // Employee-level attribution uses email (reliable). Function-level sources are labelled
+    // as such (not attributed to the individual). Returns a structured object — never invents.
+    // Exposed on window so the EvalCopilot module (10_kabiEvalCopilot.js) can use it.
+    window.kabiGatherEvidence = function (email, fnKey) {
+      email = (email || '').toLowerCase();
+      // fnKey may be a single key or an array of keys (emp.fn is an array)
+      var fnKeys = Array.isArray(fnKey) ? fnKey.slice() : (fnKey ? [fnKey] : []);
+      var ev = { email: email, fnKey: fnKeys.length === 1 ? fnKeys[0] : fnKeys.slice(), sources: [], employee: {}, functionLevel: {}, files: [], limitations: [] };
+      try {
+        // ── Employee-level: Pipedrive deals owned by this person ──
+        if (window.KABiPipedrive && window.KABiPipedrive.isEnabled && window.KABiPipedrive.isEnabled()) {
+          var all = window.KABiPipedrive.getDeals() || [];
+          var mine = all.filter(function (d) { return (d.ownerEmail || '').toLowerCase() === email; });
+          if (mine.length) {
+            var won = mine.filter(function (d) { return (d.status || '') === 'won'; });
+            var lost = mine.filter(function (d) { return (d.status || '') === 'lost'; });
+            var open = mine.filter(function (d) { return (d.status || '') === 'open'; });
+            var rev = won.reduce(function (a, d) { return a + (d.value || 0); }, 0);
+            var pipe = open.reduce(function (a, d) { return a + (d.value || 0); }, 0);
+            var cyc = won.filter(function (d) { return d.cycleDays; }).map(function (d) { return d.cycleDays; });
+            ev.employee.pipedrive = {
+              deals: mine.length, won: won.length, lost: lost.length, open: open.length,
+              winRate: (won.length + lost.length) ? Math.round(won.length / (won.length + lost.length) * 100) : 0,
+              revenue: rev, avgDeal: won.length ? Math.round(rev / won.length) : 0,
+              pipelineValue: pipe,
+              avgCycleDays: cyc.length ? Math.round(cyc.reduce(function (a, b) { return a + b; }, 0) / cyc.length) : null
+            };
+            ev.sources.push('pipedrive (per-employee, ownerEmail)');
+          } else {
+            ev.limitations.push('No Pipedrive deals attributed to ' + email + ' — CRM outcomes not measurable for this person.');
+          }
+        }
+        // ── Function-level + per-employee Jira + files linked to this employee's function(s) ──
+        if (typeof _conns !== 'undefined' && Array.isArray(_conns) && fnKeys.length) {
+          var rel = _conns.filter(function (c) { return c.isConnected && c.fns && c.fns.some(function (k) { return fnKeys.indexOf(k) >= 0; }); });
+          rel.forEach(function (c) {
+            if (c._jiraMetrics && c._jiraMetrics.totalIssues) {
+              // Per-employee Jira attribution (developers/engineers whose output lives in Jira)
+              var je = c._jiraMetrics.byEmployee && c._jiraMetrics.byEmployee[email];
+              if (je && je.total) {
+                ev.employee.jira = {
+                  total: je.total, done: je.done, inProgress: je.inProgress, bugs: je.bugs,
+                  completionRate: je.completionRate, avgResolutionDays: je.avgResolution,
+                  projects: Object.keys(je.projects || {})
+                };
+                if (ev.sources.indexOf('jira (per-employee, assignee)') < 0) ev.sources.push('jira (per-employee, assignee)');
+              } else if (email) {
+                ev.limitations.push('No Jira issues assigned to ' + email + ' in the connected board — task output not measurable for this person from Jira.');
+              }
+              // Function-level Jira (context, not the individual's result)
+              ev.functionLevel.jira = { totalIssues: c._jiraMetrics.totalIssues, byStatus: c._jiraMetrics.byStatus, avgResolution: c._jiraMetrics.avgResolution };
+              if (ev.sources.indexOf('jira (function-level)') < 0) ev.sources.push('jira (function-level)');
+            }
+            (c.files || []).forEach(function (f) {
+              if (f.status === 'ready' && f.extractedText && f.extractedText.length > 50) {
+                ev.files.push({ name: f.name, type: f.fileType || 'generic', words: f.wordCount || 0, text: f.extractedText.slice(0, 4000) });
+              }
+            });
+          });
+          if (ev.files.length && ev.sources.indexOf('files (function-level)') < 0) ev.sources.push('files (function-level)');
+        }
+        if (ev.sources.length === 0) ev.limitations.push('No connected evidence sources for this employee/function — evaluation must rely on manager-provided evidence.');
+      } catch (e) { ev.error = e.message; }
+      return ev;
+    };
+
+    /* ── ORG / DEPARTMENT evidence gatherer (CEO monitoring) ──────────────────
+     * Aggregates connector evidence across the whole organization or one
+     * department, so the CEO can monitor department + org performance from REAL
+     * data. scope: { level:'org' }  OR  { level:'dept', dept:'<dept name>' }.
+     * Never invents — reports only what connectors actually provide.            */
+    window.kabiGatherOrgEvidence = function (scope) {
+      scope = scope || { level: 'org' };
+      var ev = { level: scope.level || 'org', dept: scope.dept || null, sources: [], org: {}, departments: {}, functions: [], limitations: [] };
+      try {
+        var FNS_MAP = (typeof FNS !== 'undefined') ? FNS : {};
+        // helper: does a fn belong to the requested scope?
+        function fnInScope(k) {
+          if (scope.level === 'dept') return FNS_MAP[k] && FNS_MAP[k].dept === scope.dept;
+          return true;
+        }
+        // ── Org-wide Pipedrive (sales outcomes) ──
+        if (window.KABiPipedrive && window.KABiPipedrive.isEnabled && window.KABiPipedrive.isEnabled()) {
+          var deals = window.KABiPipedrive.getDeals() || [];
+          // when scoped to a dept, only count deals owned by employees in that dept
+          if (scope.level === 'dept' && typeof PE_EMPLOYEES !== 'undefined') {
+            var deptEmails = {};
+            PE_EMPLOYEES.filter(function (e) { return e.dept === scope.dept && e.email; }).forEach(function (e) { deptEmails[e.email.toLowerCase()] = 1; });
+            deals = deals.filter(function (d) { return deptEmails[(d.ownerEmail || '').toLowerCase()]; });
+          }
+          if (deals.length) {
+            var w = deals.filter(function (d) { return d.status === 'won'; });
+            var l = deals.filter(function (d) { return d.status === 'lost'; });
+            var o = deals.filter(function (d) { return d.status === 'open'; });
+            var rev = w.reduce(function (a, d) { return a + (d.value || 0); }, 0);
+            ev.org.pipedrive = {
+              deals: deals.length, won: w.length, lost: l.length, open: o.length,
+              winRate: (w.length + l.length) ? Math.round(w.length / (w.length + l.length) * 100) : 0,
+              revenue: rev, avgDeal: w.length ? Math.round(rev / w.length) : 0,
+              pipelineValue: o.reduce(function (a, d) { return a + (d.value || 0); }, 0)
+            };
+            ev.sources.push('pipedrive (org-wide sales)');
+          }
+        }
+        // ── Per-connector Jira + files, rolled up by department + function ──
+        if (typeof _conns !== 'undefined' && Array.isArray(_conns)) {
+          _conns.filter(function (c) { return c.isConnected; }).forEach(function (c) {
+            (c.fns || []).filter(fnInScope).forEach(function (k) {
+              var fmeta = FNS_MAP[k] || {};
+              var dept = fmeta.dept || c.dept || 'Unspecified';
+              if (!ev.departments[dept]) ev.departments[dept] = { functions: [], jiraIssues: 0, jiraDone: 0, files: 0 };
+              var fnRow = { fnKey: k, name: fmeta.name || k, dept: dept, jira: null, files: 0 };
+              if (c._jiraMetrics && c._jiraMetrics.totalIssues) {
+                var jm = c._jiraMetrics;
+                var doneCount = (jm.byStatus && (jm.byStatus.Done || 0) + (jm.byStatus.Closed || 0) + (jm.byStatus.Resolved || 0)) || 0;
+                fnRow.jira = { totalIssues: jm.totalIssues, done: doneCount, avgResolution: jm.avgResolution, peopleMatched: jm.byEmployee ? Object.keys(jm.byEmployee).length : 0 };
+                ev.departments[dept].jiraIssues += jm.totalIssues;
+                ev.departments[dept].jiraDone += doneCount;
+                if (ev.sources.indexOf('jira (per-function)') < 0) ev.sources.push('jira (per-function)');
+              }
+              var fCount = (c.files || []).filter(function (f) { return f.status === 'ready' && f.extractedText; }).length;
+              fnRow.files = fCount; ev.departments[dept].files += fCount;
+              if (fCount && ev.sources.indexOf('files (per-function)') < 0) ev.sources.push('files (per-function)');
+              ev.departments[dept].functions.push(k);
+              ev.functions.push(fnRow);
+            });
+          });
+        }
+        // ── Evaluation rollups (already-submitted scores, HR-side) as context ──
+        if (typeof PE_EVALS !== 'undefined' && typeof PE_EMPLOYEES !== 'undefined') {
+          var submitted = Object.values(PE_EVALS).filter(function (e) { return e && !e.isDraft && typeof e.totalScore === 'number'; });
+          if (scope.level === 'dept') {
+            var ids = {}; PE_EMPLOYEES.filter(function (e) { return e.dept === scope.dept; }).forEach(function (e) { ids[e.id] = 1; });
+            submitted = submitted.filter(function (e) { return ids[e.empId]; });
+          }
+          if (submitted.length) {
+            ev.org.evaluations = { count: submitted.length, avgScore: Math.round(submitted.reduce(function (a, e) { return a + e.totalScore; }, 0) / submitted.length * 100) / 100 };
+            ev.sources.push('performance evaluations (manager-submitted)');
+          }
+        }
+        if (ev.sources.length === 0) ev.limitations.push('No connected evidence sources at ' + (scope.level === 'dept' ? ('department "' + scope.dept + '"') : 'organization') + ' level — connect systems/files to enable monitoring.');
+      } catch (e) { ev.error = e.message; }
+      return ev;
+    };
+
+    /* ── Performance-level evaluator (per-metric colour) ──────────────────────
+     * Returns { level, color, label } for a KPI value so trackers can colour by
+     * actual performance level. Uses an explicit target when provided
+     * (attainment-based, most accurate); otherwise metric-family heuristics;
+     * otherwise 'info' (a volume/context number we won't pass judgement on) or
+     * 'na' (no value). Never fabricates a level it can't justify.               */
+    window.kabiPerfLevel = function (kpiName, rawValue, opts) {
+      opts = opts || {};
+      var LV = {
+        high:  { level: 'high',  color: '#4ade80', label: 'On/above target' },
+        good:  { level: 'good',  color: '#84cc16', label: 'Healthy' },
+        watch: { level: 'watch', color: '#fbbf24', label: 'Watch' },
+        low:   { level: 'low',   color: '#EF4444', label: 'Below expectation' },
+        info:  { level: 'info',  color: '#22d3ee', label: 'Context' },
+        na:    { level: 'na',    color: 'var(--text-dim)', label: 'Not assessable' }
+      };
+      if (rawValue == null || rawValue === '' || rawValue === '—') return LV.na;
+      var num = (typeof rawValue === 'number') ? rawValue : parseFloat(String(rawValue).replace(/[^0-9.\-]/g, ''));
+      if (isNaN(num)) return LV.na;
+      var name = String(kpiName || '').toLowerCase();
+      var lowerBetter = opts.direction === 'lower' || /cycle|resolution|turnaround|\btat\b|\bsla\b|latency|response\s*time|\bdays\b|defect|\bbug|churn|escalation|overdue|backlog|complaint|incident|attrition|cost per/.test(name);
+
+      // 1) explicit target → attainment-based
+      if (opts.target != null && !isNaN(parseFloat(opts.target)) && parseFloat(opts.target) !== 0) {
+        var t = parseFloat(opts.target);
+        var pct = lowerBetter ? (t / num) * 100 : (num / t) * 100;
+        if (!isFinite(pct)) return LV.na;
+        if (pct >= 100) return LV.high;
+        if (pct >= 80) return LV.good;
+        if (pct >= 60) return LV.watch;
+        return LV.low;
+      }
+
+      // 2) metric-family heuristics (no target)
+      if (/win\s*rate|close\s*rate|conversion/.test(name)) return num >= 20 ? LV.high : num >= 10 ? LV.watch : LV.low;
+      if (/coverage|ratio/.test(name)) return num >= 3 ? LV.high : num >= 1.5 ? LV.watch : LV.low;
+      if (/bug|defect|escalation|incident|complaint|overdue/.test(name)) return num <= 2 ? LV.high : num <= 5 ? LV.watch : LV.low;
+      if (/rate|percent|completion|attainment|accuracy|retention|adoption|utiliz|csat|satisfaction|on-?time|quality|score/.test(name) || /%/.test(String(rawValue))) {
+        return num >= 85 ? LV.high : num >= 70 ? LV.good : num >= 50 ? LV.watch : LV.low;
+      }
+      // cycle/time metrics without a target can't be judged → context
+      return LV.info;
+    };
+
+    /* ── Team insights generator (manager) ────────────────────────────────────
+     * Produces REAL, evidence-based insights for a manager's DIRECT reports —
+     * new joiners (welcome), missing KPIs, low/top performance (from eval score
+     * or connector evidence), workload pressure (Jira open load / Pipedrive open
+     * deals), data gaps, and pending evaluations. Deterministic, no invention;
+     * each item carries a suggested action. Returns [] safely on any error.     */
+    window.kabiTeamInsights = function (managerEmail) {
+      var out = [];
+      try {
+        if (typeof peGetDirectReports !== 'function') return out;
+        var directs = peGetDirectReports(managerEmail).filter(function (e) { return !e.isFormer; });
+        var openQ = (typeof peGetOpenQ === 'function') ? peGetOpenQ() : null;
+        var evCache = {};
+        function ev(emp) { if (evCache[emp.id]) return evCache[emp.id]; var r; try { r = window.kabiGatherEvidence(emp.email, emp.fn); } catch (e) { r = { sources: [], employee: {}, limitations: [] }; } return (evCache[emp.id] = r); }
+        function score(emp) { try { return (typeof peGetFinalScore === 'function') ? peGetFinalScore(emp.id) : null; } catch (e) { return null; } }
+        function kpisOf(emp) { try { return (typeof peGetApprovedKPIs === 'function') ? (peGetApprovedKPIs(emp.fn, managerEmail, emp.level) || []) : []; } catch (e) { return []; } }
+
+        // 1) NEW JOINERS (tenure ≤ 30 days)
+        directs.forEach(function (emp) {
+          var td = (typeof peTenureDays === 'function') ? peTenureDays(emp) : null;
+          if (td != null && td <= 30) {
+            var d = Math.round(td);
+            out.push({ type: 'new_joiner', severity: 'positive', icon: '<i class="ti ti-user-plus"></i>', empId: emp.id,
+              title: 'Welcome ' + emp.name,
+              desc: emp.name + ' joined your team ' + d + ' day' + (d === 1 ? '' : 's') + ' ago' + (emp.hireDate ? (' (' + emp.hireDate + ')') : '') + '. Send a welcome, confirm first-cycle KPIs, and schedule a 30-day check-in.',
+              action: 'Onboard' });
+          }
+        });
+
+        // 2) MISSING KPIs
+        directs.forEach(function (emp) {
+          if (kpisOf(emp).length === 0) {
+            out.push({ type: 'missing_kpis', severity: 'warning', icon: '<i class="ti ti-clipboard-x"></i>', empId: emp.id,
+              title: 'No KPIs set for ' + emp.name,
+              desc: emp.name + ' (' + (emp.title || '') + ') has no approved KPIs for their level yet — performance cannot be measured until they are set.',
+              action: 'Assign KPIs' });
+          }
+        });
+
+        // 3) PERFORMANCE — eval score first, else connector evidence
+        directs.forEach(function (emp) {
+          var s = score(emp);
+          if (s != null && s < 60) { out.push({ type: 'low_perf', severity: 'urgent', icon: '<i class="ti ti-trending-down"></i>', empId: emp.id, title: 'Check in with ' + emp.name, desc: 'Latest performance score is ' + Math.round(s) + '% (below 60%). Review the evidence together and agree on support.', action: 'Review with AI' }); return; }
+          if (s != null && s >= 85) { out.push({ type: 'top_perf', severity: 'positive', icon: '<i class="ti ti-trophy"></i>', empId: emp.id, title: 'Recognize ' + emp.name, desc: 'Strong performance score (' + Math.round(s) + '%). Consider public recognition or a KABi Hero nomination.', action: 'Review with AI' }); return; }
+          var e = ev(emp), pd = e.employee && e.employee.pipedrive, jr = e.employee && e.employee.jira;
+          if (pd && (pd.won + pd.lost) >= 3) {
+            if (pd.winRate < 10) out.push({ type: 'low_perf', severity: 'warning', icon: '<i class="ti ti-trending-down"></i>', empId: emp.id, title: 'Sales conversion low — ' + emp.name, desc: 'Win rate ' + pd.winRate + '% across ' + (pd.won + pd.lost) + ' closed deals (CRM). Worth a pipeline-quality 1:1.', action: 'Review with AI' });
+            else if (pd.winRate >= 30) out.push({ type: 'top_perf', severity: 'positive', icon: '<i class="ti ti-trophy"></i>', empId: emp.id, title: 'Strong closer — ' + emp.name, desc: 'Win rate ' + pd.winRate + '% (' + pd.won + ' won). Recognize and capture what works.', action: 'Review with AI' });
+          }
+          if (jr && jr.total >= 5) {
+            if (jr.completionRate < 40) out.push({ type: 'low_perf', severity: 'warning', icon: '<i class="ti ti-trending-down"></i>', empId: emp.id, title: 'Delivery behind — ' + emp.name, desc: 'Jira completion ' + jr.completionRate + '% (' + jr.done + '/' + jr.total + ' done). Check for blockers.', action: 'Review with AI' });
+            else if (jr.completionRate >= 85) out.push({ type: 'top_perf', severity: 'positive', icon: '<i class="ti ti-trophy"></i>', empId: emp.id, title: 'High delivery — ' + emp.name, desc: 'Jira completion ' + jr.completionRate + '% (' + jr.done + '/' + jr.total + '). Strong execution.', action: 'Review with AI' });
+          }
+        });
+
+        // 4) WORKLOAD PRESSURE — highest evidence-based load only
+        var loads = directs.map(function (emp) { var e = ev(emp), jr = e.employee && e.employee.jira, pd = e.employee && e.employee.pipedrive; return { emp: emp, jload: jr ? (jr.total - jr.done) : 0, pdopen: pd ? pd.open : 0 }; });
+        var maxJ = loads.slice().sort(function (a, b) { return b.jload - a.jload; })[0];
+        if (maxJ && maxJ.jload >= 10) out.push({ type: 'workload', severity: 'warning', icon: '<i class="ti ti-urgent"></i>', empId: maxJ.emp.id, title: 'Workload check — ' + maxJ.emp.name, desc: maxJ.emp.name + ' has ' + maxJ.jload + ' open/in-progress Jira items — the highest on the team. Consider rebalancing.', action: 'Review with AI' });
+        var maxP = loads.slice().sort(function (a, b) { return b.pdopen - a.pdopen; })[0];
+        if (maxP && maxP.pdopen >= 8 && (!maxJ || maxP.emp.id !== maxJ.emp.id)) out.push({ type: 'workload', severity: 'info', icon: '<i class="ti ti-briefcase"></i>', empId: maxP.emp.id, title: 'Large open pipeline — ' + maxP.emp.name, desc: maxP.emp.name + ' is managing ' + maxP.pdopen + ' open deals. Make sure priorities are clear.', action: 'Review with AI' });
+
+        // 5) DATA GAP — reports with no connected evidence
+        var noEv = directs.filter(function (emp) { var e = ev(emp); return !e.sources || e.sources.length === 0; });
+        if (noEv.length) out.push({ type: 'data_gap', severity: 'info', icon: '<i class="ti ti-database-off"></i>', title: 'Connect data for ' + noEv.length + ' team member' + (noEv.length > 1 ? 's' : ''), desc: 'No system/file evidence for: ' + noEv.map(function (e) { return e.name; }).slice(0, 4).join(', ') + (noEv.length > 4 ? '…' : '') + '. Their reviews rely on manual input until a connector is linked.', action: 'Connectors' });
+
+        // 6) PENDING EVALUATIONS
+        if (openQ) {
+          var done = directs.filter(function (emp) { var x = PE_EVALS[emp.id + '_' + openQ]; return x && !x.isDraft; }).length;
+          var pending = directs.length - done;
+          if (pending > 0) out.push({ type: 'pending_eval', severity: 'info', icon: '<i class="ti ti-clipboard-list"></i>', title: pending + ' evaluation' + (pending > 1 ? 's' : '') + ' remaining', desc: 'Evaluation window for ' + (PE_QUARTERS[openQ] ? PE_QUARTERS[openQ].label : openQ) + ' is open — ' + done + '/' + directs.length + ' completed.', action: 'Start evaluations' });
+        }
+        // Group a flood of same-type items (e.g. many "missing KPIs") into one
+        // summary so the widget stays readable — keep up to 2 individual, then roll up.
+        ['missing_kpis', 'new_joiner'].forEach(function (gt) {
+          var items = out.filter(function (i) { return i.type === gt; });
+          if (items.length > 2) {
+            var names = items.map(function (i) { var e = directs.filter(function(x){return x.id===i.empId;})[0]; return e ? e.name : ''; }).filter(Boolean);
+            out = out.filter(function (i) { return i.type !== gt; });
+            if (gt === 'missing_kpis') out.push({ type: 'missing_kpis', severity: 'warning', icon: '<i class="ti ti-clipboard-x"></i>', title: names.length + ' team members have no KPIs set', desc: 'No approved KPIs yet for: ' + names.slice(0, 6).join(', ') + (names.length > 6 ? '…' : '') + '. Assign level-specific KPIs so their performance can be measured.', action: 'Assign KPIs' });
+            else out.push({ type: 'new_joiner', severity: 'positive', icon: '<i class="ti ti-user-plus"></i>', title: names.length + ' new team members', desc: 'Recently joined: ' + names.slice(0, 6).join(', ') + (names.length > 6 ? '…' : '') + '. Send welcomes, confirm first-cycle KPIs, and schedule 30-day check-ins.', action: 'Open team' });
+          }
+        });
+      } catch (err) { console.warn('[TeamInsights]', err); }
+      var rank = { urgent: 0, warning: 1, positive: 2, info: 3 };
+      out.sort(function (a, b) { return (rank[a.severity] == null ? 9 : rank[a.severity]) - (rank[b.severity] == null ? 9 : rank[b.severity]); });
+      return out;
+    };
+
+    /* Safe action dispatcher for an insight's suggested action button. Performs
+     * only navigation / opening the evidence copilot — never an auto-send. */
+    window.kabiTeamInsightAction = function (type, empId) {
+      try {
+        if ((type === 'low_perf' || type === 'top_perf' || type === 'workload' || type === 'new_joiner') && empId != null && typeof window.peAIReview === 'function') { window.peAIReview(empId, 'MONITOR_PERFORMANCE'); return; }
+        if (type === 'pending_eval') { if (typeof showPg === 'function') { showPg('pg-eval'); if (typeof peRenderManagerEval === 'function') peRenderManagerEval(); } return; }
+        if (typeof toast === 'function') toast('Open the relevant tab to action: ' + type.replace(/_/g, ' '), 'ok');
+      } catch (e) { if (typeof toast === 'function') toast('Action unavailable', 'err'); }
+    };
 
     function buildGeneratePrompt_User(ctx) {
       var lang = ctx.language;
@@ -39834,6 +40192,12 @@
 
   <!-- v69: Enterprise KPI Library (696 level-specific KPIs; pilot = bd-sales). -->
   <script src="./09_kabiKpiLibrary.js"></script>
+
+  <!-- v70: Performance Evidence & Evaluation Copilot (Phase 2 — reads connectors as evidence). -->
+  <script src="./10_kabiEvalCopilot.js"></script>
+
+  <!-- v70: Evaluation Copilot UI glue (manager per-employee + CEO org/department). -->
+  <script src="./11_kabiEvalCopilotUI.js"></script>
 
 </body>
 
