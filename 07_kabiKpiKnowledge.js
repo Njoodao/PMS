@@ -474,6 +474,29 @@
       }
 
       if (mode === 'generate') {
+        // v70: HARD CONSTRAINTS — the generator must produce a set that ALREADY
+        // passes the final governance/coherence review. It is a contradiction to
+        // generate a KPI that the last check then flags CRITICAL. So every KPI
+        // MUST individually satisfy the same rules the reviewer enforces, and the
+        // 4-KPI set must be internally consistent (no overlap/duplication).
+        H('HARD CONSTRAINTS — GENERATE ONLY KPIs THAT PASS THE FINAL REVIEW',
+          'قيود صارمة — ولّد فقط مؤشرات تجتاز الفحص النهائي');
+        L.push(ar
+          ? '1) النطاق: كل مؤشر يجب أن يكون ضمن نطاق هذه الوظيفة فقط. ممنوع منعًا باتًا أي مؤشر يخص وظيفة أخرى (انظر «خارج النطاق» أعلاه) — سيُرفض كخطأ حرج.'
+          : '1) SCOPE: every KPI MUST be within THIS function\'s scope only. NEVER include a KPI owned by another function (see "OUT OF SCOPE" above) — it will be rejected as a CRITICAL error.');
+        L.push(ar
+          ? '2) نتيجة لا نشاط: لا تصغ المؤشر كعدّ نشاط خام («عقد N اجتماعًا/QBR/مكالمة/عرضًا»). النشاط وسيلة لا هدف — قِس النتيجة التي يحقّقها (مثل: % من الحسابات التي نمت إيراداتها أو انخفض خطرها خلال 60 يومًا)، لا عدد الاجتماعات. المؤشر المبني على عدّ النشاط سيُرفض كخطأ حرج.'
+          : '2) OUTCOME NOT ACTIVITY: never phrase a KPI as a raw activity count ("conduct N QBRs/meetings/calls/demos"). Activity is a means, not the goal — measure the OUTCOME it drives (e.g. % of accounts with revenue growth or risk reduction within 60 days), not the count of meetings. An activity-count KPI will be rejected as a CRITICAL error.');
+        L.push(ar
+          ? '3) لا تكرار ولا تداخل: المؤشرات الأربعة يجب أن تكون متمايزة تمامًا — لا اثنان يقيسان الشيء نفسه أو يشتركان في البسط/المقام نفسه. غطِّ أبعادًا مختلفة (Leading/Process/Lagging/Health).'
+          : '3) NO DUPLICATION / NO OVERLAP: the KPIs must be mutually distinct — no two measure the same thing or share the same numerator/denominator. Cover different dimensions (Leading/Process/Lagging/Health).');
+        L.push(ar
+          ? '4) وضوح خط الأساس: اذكر مصدر خط الأساس/النطاق (مثل: هل الرقم يشمل كل الشرائح أم الحسابات الاستراتيجية فقط) حتى لا يبقى غامضًا.'
+          : '4) BASELINE CLARITY: state the baseline/scope source (e.g. whether a figure covers all tiers or only strategic accounts) so nothing is left ambiguous.');
+        L.push(ar
+          ? '5) الحمل الواقعي: لا تفرض أهدافًا متزامنة تتجاوز طاقة الدور في الفترة؛ وزّع المواعيد إن لزم.'
+          : '5) REALISTIC LOAD: do not stack simultaneous targets beyond the role\'s capacity in the period; stagger deadlines if needed.');
+        L.push('');
         // v69: evaluation cycle + target phasing — make targets/deadlines period-appropriate.
         if (typeof window !== 'undefined' && window.kabiEvalPeriod) {
           var _period = window.kabiEvalPeriod();
@@ -540,6 +563,14 @@
       }
 
       if (mode === 'coherence') {
+        // v70: the set is produced by the generator under hard constraints, so
+        // this final pass focuses on SET-LEVEL issues between the KPIs.
+        H('FINAL SET REVIEW — focus on relationships BETWEEN the KPIs',
+          'المراجعة النهائية للحزمة — ركّز على العلاقات بين المؤشرات');
+        L.push(ar
+          ? 'افحص أساسًا: (أ) التكرار — مؤشران يقيسان الشيء نفسه؛ (ب) التداخل — بسط/مقام مشترك أو ازدواج وزن النشاط؛ (ج) التعارض — هدفان يتنازعان (مثل السرعة مقابل الجودة)؛ (د) توازن التغطية. المؤشرات الفردية وُلّدت ضمن النطاق وكنتائج، فلا تعِد فحص النطاق إلا إن رأيت خرقًا واضحًا.'
+          : 'Check primarily: (a) DUPLICATION — two KPIs measuring the same thing; (b) OVERLAP — shared numerator/denominator or double-counted activity; (c) CONFLICT — two targets that fight each other (e.g. speed vs quality); (d) coverage balance. The individual KPIs were generated in-scope and outcome-based, so do not re-litigate scope unless you see a clear breach.');
+        L.push('');
         if (_isReal(pack.conflictRules)) {
           H('KNOWN CONFLICT / TRADE-OFF RULES', 'قواعد التعارض والمفاضلة المعروفة');
           pack.conflictRules.forEach(function (c) {

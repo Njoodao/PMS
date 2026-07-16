@@ -7501,6 +7501,9 @@
             merged[level] = v.academic + v.general;
           }
         });
+        // v70: drop any leaked legacy level keys (Staff/Management/Top Management)
+        // so only the 5 canonical levels remain.
+        Object.keys(merged).forEach(function (k) { if (_KABI_LEVEL_ORDER.indexOf(k) < 0) delete merged[k]; });
         return merged;
       } catch (e) {
         console.warn('[Initiatives] Failed to load saved targets, using defaults:', e);
@@ -24614,16 +24617,12 @@
     // ═══════════════════════════════════════════════════════
     function renderPEWeights(el) {
       const labels = { objectives: '<i class=\"ti ti-clipboard-list\"></i> KPIs (Objectives)', competencies: '<i class=\"ti ti-brain\"></i> INVIEWS (Competencies)' };
-      const levelIcons = { 'Top Management': '<i class=\"ti ti-crown ti-amber\"></i>', 'Management': '<i class=\"ti ti-briefcase\"></i>', 'Staff Level': '<i class=\"ti ti-user\"></i>' };
-      const levelColors = { 'Top Management': '#fbbf24', 'Management': 'var(--cyan)', 'Staff Level': '#a78bfa' };
-      // v66.8.1: Display labels — keep "Level" suffix consistent across all 3.
-      // The DATA keys (PE_WEIGHTS, INITIATIVE_TARGETS, etc.) stay as-is to
-      // avoid a high-risk migration; only the user-facing labels change.
-      const levelLabels = {
-        'Top Management': 'Top Management Level',
-        'Management':     'Management Level',
-        'Staff Level':    'Staff Level'
-      };
+      // v70: 5-level framework — icon/colour/label from the shared helpers
+      // (kabiLevelIcon/kabiLevelColor). The DATA keys ARE the canonical level
+      // names now (Entry…Executive), so the label is just the key.
+      const levelIcons = (gk) => kabiLevelIcon(gk);
+      const levelColors = (gk) => kabiLevelColor(gk);
+      const levelLabels = (gk) => gk;
 
       // Pending delegation submissions (awaiting Super Admin decision)
       const pendingSubmissions = Object.entries(PE_DELEGATIONS).filter(([e, d]) => d && d.status === 'submitted');
@@ -24667,8 +24666,8 @@
           const splitValid = splitTotal === 100;
           return `<div style="background:rgba(10,31,82,.5);border:1px solid ${valid ? 'rgba(0,194,224,.2)' : 'rgba(248,113,113,.3)'};border-radius:12px;padding:16px;backdrop-filter:blur(12px)">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-              <span style="font-size:20px">${levelIcons[gk]}</span>
-              <h4 style="font-size:13px;font-weight:800;color:${levelColors[gk]}">${levelLabels[gk] || gk}</h4>
+              <span style="font-size:20px">${levelIcons(gk)}</span>
+              <h4 style="font-size:13px;font-weight:800;color:${levelColors(gk)}">${levelLabels(gk)}</h4>
             </div>
             <div style="font-size:10px;color:var(--text-muted);margin-bottom:14px">${g.label}</div>
             ${Object.entries(g.criteria).map(([ck, cv]) => `
@@ -24747,16 +24746,14 @@
     function peRenderExtraDeptMatrix() {
       const dept = peActiveDept || PE_DEPARTMENTS[0];
       peActiveDept = dept;
-      if (!PE_EXTRA_WEIGHTS_MATRIX[dept]) {
-        PE_EXTRA_WEIGHTS_MATRIX[dept] = {
-          'Top Management':    { digitalAdoption: 10, initiatives: 10 },
-          'Management': { digitalAdoption: 10, initiatives: 10 },
-          'Staff Level':       { digitalAdoption: 10, initiatives: 10 }
-        };
-      }
-      const levelIcons = { 'Top Management': '<i class=\"ti ti-crown ti-amber\"></i>', 'Management': '<i class=\"ti ti-briefcase\"></i>', 'Staff Level': '<i class=\"ti ti-user\"></i>' };
-      const levelColors = { 'Top Management': '#fbbf24', 'Management': 'var(--cyan)', 'Staff Level': '#a78bfa' };
-      const levels = ['Top Management', 'Management', 'Staff Level'];
+      // v70: 5-level framework, displayed HIGH→LOW to match the Core cards.
+      const levels = ['Executive', 'Advanced', 'First-level management', 'Intermediate', 'Entry'];
+      if (!PE_EXTRA_WEIGHTS_MATRIX[dept]) PE_EXTRA_WEIGHTS_MATRIX[dept] = {};
+      levels.forEach(function (lvl) {
+        if (!PE_EXTRA_WEIGHTS_MATRIX[dept][lvl]) PE_EXTRA_WEIGHTS_MATRIX[dept][lvl] = { digitalAdoption: 10, initiatives: 10 };
+      });
+      const levelIcons = (lvl) => kabiLevelIcon(lvl);
+      const levelColors = (lvl) => kabiLevelColor(lvl);
 
       return `
       <div style="background:linear-gradient(135deg,rgba(167,139,250,.04),rgba(139,92,246,.01));border:1px solid rgba(167,139,250,.2);border-radius:12px;padding:14px;">
@@ -24772,8 +24769,8 @@
             const initHidden = ext.initiatives === 0;
             return `<div style="background:rgba(10,31,82,.5);border:1px solid ${valid ? 'rgba(167,139,250,.25)' : 'rgba(248,113,113,.35)'};border-radius:10px;padding:12px">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-                <span style="font-size:16px">${levelIcons[lvl]}</span>
-                <strong style="font-size:11px;color:${levelColors[lvl]}">${lvl}</strong>
+                <span style="font-size:16px">${levelIcons(lvl)}</span>
+                <strong style="font-size:11px;color:${levelColors(lvl)}">${lvl}</strong>
               </div>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <div style="flex:1">
@@ -24812,8 +24809,18 @@
         if (!raw) return;
         var parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
-          Object.keys(parsed).forEach(function(k){ PE_EXTRA_WEIGHTS_MATRIX[k] = parsed[k]; });
-          console.info('[PE Matrix] Loaded per-dept×level extras from localStorage');
+          Object.keys(parsed).forEach(function(dept){
+            var src = parsed[dept]; if (!src || typeof src !== 'object') return;
+            var norm = {};
+            // v70: fold legacy level keys (Staff/Management/Top Management) into
+            // the 5 canonical levels; drop anything non-canonical.
+            Object.keys(src).forEach(function(lvl){
+              var canon = kabiNormalizeLevel(lvl);
+              if (!norm[canon]) norm[canon] = src[lvl];
+            });
+            PE_EXTRA_WEIGHTS_MATRIX[dept] = norm;
+          });
+          console.info('[PE Matrix] Loaded per-dept×level extras from localStorage (normalized to 5 levels)');
         }
       } catch(e){ console.warn('[PE Matrix] load failed:', e); }
     }
@@ -26551,7 +26558,7 @@
     // v66.7: Reads TWO inputs per level (academic + general) and saves as object
     // v66.7.3: Persists to localStorage so changes survive logout/refresh
     function peSaveInitiativeTargets() {
-      const levels = ['Top Management', 'Management', 'Staff Level'];
+      const levels = ['Executive', 'Advanced', 'First-level management', 'Intermediate', 'Entry'];
       const newTargets = {};
       levels.forEach(level => {
         const slug = level.replace(/\s/g, '');
@@ -26673,10 +26680,11 @@
           </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px" class="pe-init-targets-grid">
-          ${Object.entries(INITIATIVE_TARGETS).map(([level, target]) => {
-            const levelIcon = level === 'Top Management' ? '<i class=\"ti ti-crown ti-amber\"></i>' : level === 'Management' ? '<i class=\"ti ti-briefcase\"></i>' : '<i class=\"ti ti-user\"></i>';
-            const levelColor = level === 'Top Management' ? '#fbbf24' : level === 'Management' ? 'var(--cyan)' : '#a78bfa';
-            const levelLabel = level === 'Top Management' ? 'Top Management Level' : (level === 'Management' ? 'Management Level' : 'Staff Level');
+          ${['Executive', 'Advanced', 'First-level management', 'Intermediate', 'Entry'].map((level) => {
+            const target = INITIATIVE_TARGETS[level];
+            const levelIcon = kabiLevelIcon(level);
+            const levelColor = kabiLevelColor(level);
+            const levelLabel = level;
             const slug = level.replace(/\s/g, '');
             let total;
             if (typeof target === 'number') total = target;
@@ -26689,7 +26697,7 @@
                 <div style="font-size:10px;color:${levelColor};font-weight:800;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${levelLabel}</div>
                 <div style="font-size:8.5px;color:var(--text-dim);margin-top:1px">initiatives / year</div>
               </div>
-              <input id="init-tgt-${slug}" type="number" min="0" max="50" value="${total}" oninput="peMarkInitTargetsDirty()" style="width:54px;padding:6px 8px;background:rgba(${levelColor === '#fbbf24' ? '251,191,36' : levelColor === 'var(--cyan)' ? '0,194,224' : '167,139,250'},.08);border:1px solid ${levelColor}40;border-radius:6px;color:${levelColor};font-size:14px;font-weight:900;font-family:inherit;outline:none;text-align:center;flex-shrink:0">
+              <input id="init-tgt-${slug}" type="number" min="0" max="50" value="${total}" oninput="peMarkInitTargetsDirty()" style="width:54px;padding:6px 8px;background:${levelColor}14;border:1px solid ${levelColor}40;border-radius:6px;color:${levelColor};font-size:14px;font-weight:900;font-family:inherit;outline:none;text-align:center;flex-shrink:0">
             </div>`;
           }).join('')}
         </div>
@@ -28062,21 +28070,29 @@
       // contributed to the total — user reported this as "20% Digital Adoption
       // doesn't reflect in the evaluation page". Now the two names are bridged
       // correctly: state.digitalAdapt × w.digitalAdoption.
-      // Total = Σ(Score × Weight%)
-      const total = (kAvg * (w.objectives || 0) / 100)
-                  + (compAvg * (w.competencies || 0) / 100)
-                  + ((state.learning || 0) * (w.learning || 0) / 100)
-                  + ((state.clientSat || 0) * (w.clientSat || 0) / 100)
-                  + ((state.digitalAdapt || 0) * (w.digitalAdoption || 0) / 100)
-                  + (initiativesAvg * (w.initiatives || 0) / 100);
-      // Percentage = Σ(pct(Score) × Weight%) using piecewise mapping
-      const totalPct = (pePctExact(kAvg) * (w.objectives || 0) / 100)
-                     + (pePctExact(compAvg) * (w.competencies || 0) / 100)
-                     + (pePctExact(state.learning || 0) * (w.learning || 0) / 100)
-                     + (pePctExact(state.clientSat || 0) * (w.clientSat || 0) / 100)
-                     + (pePctExact(state.digitalAdapt || 0) * (w.digitalAdoption || 0) / 100)
-                     + (pePctExact(initiativesAvg) * (w.initiatives || 0) / 100);
-      return { total, totalPct: Math.round(totalPct * 10) / 10, kAvg, bAvg, lAvg, tAvg, compAvg, initiativesAvg, initInfo, inviewsDone: invInfo.done };
+      // v70 FIX: normalize by the ACTUAL total weight (not a hard 100). Weights
+      // sum to 120 (100% core + 20% extra), so dividing by 100 inflated the
+      // result by 1.2× — a perfect evaluation showed 144% and 6.0/5. Dividing by
+      // the real weight sum makes it a true weighted average: score caps at 5.0
+      // and percentage caps at 120% (pePctExact ceiling), matching PE_RATING.
+      const wTotal = (w.objectives || 0) + (w.competencies || 0) + (w.learning || 0)
+                   + (w.clientSat || 0) + (w.digitalAdoption || 0) + (w.initiatives || 0);
+      const wDiv = wTotal > 0 ? wTotal : 100;
+      // Total (1–5) = Σ(Score × Weight) / ΣWeight
+      const total = ((kAvg * (w.objectives || 0))
+                  + (compAvg * (w.competencies || 0))
+                  + ((state.learning || 0) * (w.learning || 0))
+                  + ((state.clientSat || 0) * (w.clientSat || 0))
+                  + ((state.digitalAdapt || 0) * (w.digitalAdoption || 0))
+                  + (initiativesAvg * (w.initiatives || 0))) / wDiv;
+      // Percentage (70–120%) = Σ(pct(Score) × Weight) / ΣWeight
+      const totalPct = ((pePctExact(kAvg) * (w.objectives || 0))
+                     + (pePctExact(compAvg) * (w.competencies || 0))
+                     + (pePctExact(state.learning || 0) * (w.learning || 0))
+                     + (pePctExact(state.clientSat || 0) * (w.clientSat || 0))
+                     + (pePctExact(state.digitalAdapt || 0) * (w.digitalAdoption || 0))
+                     + (pePctExact(initiativesAvg) * (w.initiatives || 0))) / wDiv;
+      return { total: Math.round(total * 100) / 100, totalPct: Math.round(totalPct * 10) / 10, kAvg, bAvg, lAvg, tAvg, compAvg, initiativesAvg, initInfo, inviewsDone: invInfo.done };
     }
 
     function peCheckComplete(emp) {
