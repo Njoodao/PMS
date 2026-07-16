@@ -22,13 +22,21 @@ JOIN   pg_class c ON a.attrelid = c.oid
 WHERE  c.relname = 'employees' AND a.attname = 'org_level';
 
 
--- ─── STEP 1 — add the 5 new values to the enum.  RUN THIS ALONE, THEN CONTINUE. ──
--- (If STEP 0 returned a different type name, swap "org_level" below for it.)
+-- ════════════════════════════════════════════════════════════════════════════
+-- ██ RUN #1 — SELECT ONLY THESE 5 LINES AND CLICK "RUN", ON THEIR OWN. ██
+-- Postgres will NOT let a brand-new enum value be USED in the same run/transaction
+-- that created it (error 55P04 "unsafe use of new value"). So these MUST be run
+-- and committed BY THEMSELVES first, then RUN #2 below in a SEPARATE click.
+-- ════════════════════════════════════════════════════════════════════════════
 ALTER TYPE org_level ADD VALUE IF NOT EXISTS 'entry';
 ALTER TYPE org_level ADD VALUE IF NOT EXISTS 'intermediate';
 ALTER TYPE org_level ADD VALUE IF NOT EXISTS 'first_level_management';
 ALTER TYPE org_level ADD VALUE IF NOT EXISTS 'advanced';
 ALTER TYPE org_level ADD VALUE IF NOT EXISTS 'executive';
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- ██ RUN #2 — AFTER RUN #1 SUCCEEDS, select EVERYTHING BELOW and click "RUN". ██
+-- ════════════════════════════════════════════════════════════════════════════
 
 
 -- ─── STEP 2 — reclassify employees by email (verified HR-roster classification) ──

@@ -6248,6 +6248,8 @@
       if (/\bspecialist\b|\bengineer\b|\bconsultant\b|\banalyst\b|\bdesigner\b|scientist|architect|\bdeveloper\b|\badministrator\b/.test(t)) return 'Intermediate';
       return null;
     }
+    // Expose level helpers (used by other script modules + tooling/console).
+    try { window.kabiClassifyTitle = kabiClassifyTitle; window.kabiNormalizeLevel = kabiNormalizeLevel; window.kabiLevelIcon = kabiLevelIcon; } catch (e) {}
 
     // ═══════════════════════════════════════════════════════
     // BASE SYSTEM USERS (non-employee accounts)
@@ -18750,7 +18752,7 @@
       if (emp.level) return emp.level;
       // Fallback: infer from group
       if (emp.group && PE_WEIGHTS[emp.group]) return emp.group;
-      return 'Staff Level';
+      return 'Entry';
     }
 
     // Helper: get employee's department (normalized)
@@ -20368,7 +20370,7 @@
         ${currentKey ? '<div style="font-size:10px;color:var(--text-muted);margin-top:6px">Current: <code style="color:var(--cyan)">' + currentKey + '</code></div>' : ''}
         <div style="font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5">
           Anthropic key: <strong style="color:var(--text-muted)">console.anthropic.com → Settings → API Keys</strong> (sk-ant-…).<br>
-          OpenRouter key: <strong style="color:var(--text-muted)">openrouter.ai → Keys</strong> (sk-or-…) — needs account credits; default model anthropic/claude-sonnet-5.<br>
+          OpenRouter key: <strong style="color:var(--text-muted)">openrouter.ai → Keys</strong> (sk-or-…) — needs account credits; default model openai/gpt-5.6-terra.<br>
           The key is stored in your browser only (localStorage) — never sent to KABi servers.
         </div>
       </div>
@@ -22266,13 +22268,14 @@
     // ─── Download employee CSV template ───
     function peDownloadEmpTemplate() {
       const headers = ['Employee ID', 'Full Name', 'Email', 'Job Title', 'Department', 'Functions', 'Manager Email', 'Location', 'Level', 'Hire Date', 'Phone'];
-      const sample = ['E999', 'Ali Ahmad', 'ali@kabi.ai', 'Senior Developer', 'Technology', 'tech-strategy;engineering', 'product@kabi.ai', 'Riyadh (HQ)', 'Staff Level', '2024-06-01', '+966 5X XXX XXXX'];
+      const sample = ['E999', 'Ali Ahmad', 'ali@kabi.ai', 'Senior Developer', 'Technology', 'bd-sales;eng-backend', 'product@kabi.ai', 'Riyadh (HQ)', 'Intermediate', '2024-06-01', '+966 5X XXX XXXX'];
       const instructions = [
         '# KABi Employee Upload Template',
         '# Fill in the rows below with employee data.',
         '# Required: Employee ID, Full Name, Email, Job Title, Manager Email, Level',
-        '# Level must be one of: "Top Management" | "Management" | "Staff Level"',
-        '# Functions: separate multiple functions with semicolon (;)',
+        '# Level must be one of: "Entry" | "Intermediate" | "First-level management" | "Advanced" | "Executive"',
+        '#   (or leave Level blank — it will be auto-derived from the Job Title)',
+        '# Functions: separate multiple functions with semicolon (;) — use fnKeys e.g. bd-sales, eng-backend',
         '# Locations: Riyadh (HQ) | Jordan | Palestine | Dubai',
         ''
       ].join('\n');
@@ -22516,7 +22519,10 @@
     // Convert parsed CSV row into a fresh employee record (for 'new' rows)
     function _reconBuildNewEmployee(parsed) {
       const fns = parsed.fnStr ? parsed.fnStr.split(';').map(function (s) { return s.trim(); }).filter(Boolean) : [];
-      const validLevel = kabiNormalizeLevel(parsed.level); // v69: accepts 5 new levels, normalizes legacy
+      // v69: accept the 5 new levels / normalize legacy; if Level is blank, derive from Job Title.
+      const validLevel = (parsed.level && parsed.level.trim())
+        ? kabiNormalizeLevel(parsed.level.trim())
+        : (kabiClassifyTitle(parsed.title) || 'Entry');
       const validLoc = ['Riyadh (HQ)', 'Jordan', 'Palestine', 'Dubai'].indexOf(parsed.loc) >= 0 ? parsed.loc : 'Riyadh (HQ)';
       return {
         id: parsed.id.trim(),
@@ -22977,12 +22983,23 @@
     };
     function _peMigrateLevels(){
       if (typeof PE_EMPLOYEES === 'undefined') return;
+      // Level RECLASSIFICATION is one-time (converts the legacy roster). After that we
+      // respect any manually-set or bulk-uploaded level (only re-derive legacy/blank values).
+      // non-FTE + CEO flags run EVERY load so newly-added contractors/CEO are caught.
+      var oneTime = !localStorage.getItem('kabi_levels5_migrated_v69');
       var changed = false;
       PE_EMPLOYEES.forEach(function(e){
         if (!e) return;
         var email = (e.email || '').toLowerCase();
-        var target = _PE_LEVEL_MAP_V69[email] || kabiClassifyTitle(e.title) || kabiNormalizeLevel(e.level);
-        if (e.level !== target) { e.level = target; changed = true; }
+        var isNewLevel = _KABI_LEVEL_ORDER.indexOf(e.level) > -1;
+        if (_PE_LEVEL_MAP_V69[email]) {
+          // authoritative roster classification — applied on the one-time pass only
+          if (oneTime && e.level !== _PE_LEVEL_MAP_V69[email]) { e.level = _PE_LEVEL_MAP_V69[email]; changed = true; }
+        } else if (oneTime || !isNewLevel) {
+          // not in roster: derive from title, else normalize a legacy value
+          var target = kabiClassifyTitle(e.title) || kabiNormalizeLevel(e.level);
+          if (e.level !== target) { e.level = target; changed = true; }
+        }
         // CEO only: not evaluated by anyone (evaluates executives/directors).
         var isCEO = email === 'kaloraij@kabi.ai' || (e.title && /\bceo\b/i.test(e.title) && !/deputy/i.test(e.title));
         if (isCEO && !e.notEvaluated) { e.notEvaluated = true; changed = true; }
@@ -22992,7 +23009,8 @@
           if (!e.nonFteCategory) { e.nonFteCategory = _NON_FTE_V69[email]; changed = true; }
         }
       });
-      if (changed) { _peSaveEmployees(); console.info('[PE] v69 level migration applied (5 levels).'); }
+      if (changed) _peSaveEmployees();
+      if (oneTime) { localStorage.setItem('kabi_levels5_migrated_v69', '1'); console.info('[PE] v69 one-time level migration applied (5 levels).'); }
     }
 
     // Load saved employees on startup, then apply the 5-level migration.
@@ -37518,10 +37536,10 @@
 
     /* v68: OpenRouter path (OpenAI-compatible). System prompt is prepended as a
        system message; response is read from choices[0].message.content. Default
-       model is anthropic/claude-sonnet-5 — override via window.KABi_LLM_Config.model
+       model is openai/gpt-5.6-terra — override via window.KABi_LLM_Config.model
        with any OpenRouter slug (must contain a '/'). */
     _callOpenRouter: async function (messages, opts, cfg) {
-      var model = (cfg.model && cfg.model.indexOf('/') !== -1) ? cfg.model : 'anthropic/claude-sonnet-5';
+      var model = (cfg.model && cfg.model.indexOf('/') !== -1) ? cfg.model : 'openai/gpt-5.6-terra';
       var orMessages = Array.isArray(messages) ? messages.slice() : [];
       if (opts.systemPrompt) {
         orMessages = [{ role: 'system', content: opts.systemPrompt }].concat(orMessages);
@@ -37566,7 +37584,7 @@
           throw new Error('COST_LIMIT: OpenRouter account has insufficient credits. Add credits at openrouter.ai → Credits.');
         }
         if (response.status === 400) {
-          throw new Error('BAD_REQUEST: ' + detail + '  (If it mentions the model, set a valid OpenRouter slug in window.KABi_LLM_Config.model — default is anthropic/claude-sonnet-5.)');
+          throw new Error('BAD_REQUEST: ' + detail + '  (If it mentions the model, set a valid OpenRouter slug in window.KABi_LLM_Config.model — default is openai/gpt-5.6-terra.)');
         }
         if (response.status === 429) {
           throw new Error('RATE_LIMIT: Too many requests. Wait a moment and try again.');
