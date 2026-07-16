@@ -18649,6 +18649,10 @@
         const parsed = JSON.parse(raw);
         const merged = JSON.parse(JSON.stringify(_PE_WEIGHTS_DEFAULTS));
         Object.keys(parsed).forEach(function (level) {
+          // v70: ignore leaked legacy level keys (Staff/Management/Top Management)
+          // — they aren't in _PE_WEIGHTS_DEFAULTS, so reading .inviewsSplit on the
+          // (undefined) default threw "Cannot read properties of undefined".
+          if (!_PE_WEIGHTS_DEFAULTS[level]) return;
           const v = parsed[level];
           if (v && v.criteria
               && typeof v.criteria.objectives === 'number'
@@ -22999,15 +23003,20 @@
     //   - Wrong manager email for GDP sales trainees (faljadhi → faljudhei) — FIXED
     //   - Wrong birth dates for Maha & Fay Alyousef — FIXED
     //   - Missing phone numbers and nationality — ADDED
-    const _PE_EMP_LS_KEY = 'kabi_pe_employees_v6715';
+    // v70: use the literal key inside the functions. Previously a `const`
+    // (TDZ-scoped) was read by _peSaveEmployees, but rebuildEmployeeUsers can run
+    // during early init BEFORE this line executes → "Cannot access
+    // '_PE_EMP_LS_KEY' before initialization". Hoisted `var` alias for any other
+    // reference; the functions no longer depend on initialization order.
+    var _PE_EMP_LS_KEY = 'kabi_pe_employees_v6715';
     function _peSaveEmployees(){
-      try{localStorage.setItem(_PE_EMP_LS_KEY,JSON.stringify(PE_EMPLOYEES));}catch(e){console.warn('[PE] Save failed:',e);}
+      try{localStorage.setItem('kabi_pe_employees_v6715',JSON.stringify(PE_EMPLOYEES));}catch(e){console.warn('[PE] Save failed:',e);}
     }
     function _peLoadEmployees(){
       try{
         // Clean up ALL old keys — these are stale and must not load
         ['kabi_pe_employees_v6612','kabi_pe_employees_v6613','kabi_pe_employees_v6614'].forEach(function(k){localStorage.removeItem(k);});
-        var saved=localStorage.getItem(_PE_EMP_LS_KEY);
+        var saved=localStorage.getItem('kabi_pe_employees_v6715');
         if(saved){
           var parsed=JSON.parse(saved);
           if(Array.isArray(parsed)&&parsed.length>0){

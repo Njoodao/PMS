@@ -49,7 +49,8 @@
       'Explain neutrally: "The proposed rating appears higher/lower than the evidence indicates',
       'because ..." — cite the actual number vs target and the evidence confidence.',
       '',
-      'OUTPUT: STRICT JSON only, matching the schema in the user message. No prose outside JSON.'
+      'OUTPUT: STRICT JSON only, matching the schema in the user message. No prose outside JSON.',
+      'BE CONCISE: keep every string field to 1–2 short sentences so the JSON is never truncated. Do not repeat the evidence verbatim.'
     ].join('\n');
     var ar = [
       'أنت مساعد KABi للأدلة والتقييم — وكيل محايد واستشاري.',
@@ -69,7 +70,8 @@
       'أحكام منطقية التقييم: SUPPORTED · SUPPORTED_WITH_CAUTION · POSSIBLY_HIGH · POSSIBLY_LOW · INSUFFICIENT_EVIDENCE · KPI_DESIGN_ISSUE.',
       'اشرح بحياد مع ذكر الرقم الفعلي مقابل الهدف ومستوى ثقة الدليل.',
       '',
-      'المخرج: JSON صارم فقط مطابق للمخطط في رسالة المستخدم. لا نص خارج JSON.'
+      'المخرج: JSON صارم فقط مطابق للمخطط في رسالة المستخدم. لا نص خارج JSON.',
+      'كن موجزًا: اجعل كل حقل نصي جملة أو جملتين قصيرتين حتى لا يُقتطع JSON. لا تكرّر الأدلة حرفيًا.'
     ].join('\n');
     return lang === 'ar' ? ar : en;
   }
@@ -177,6 +179,48 @@
     return lines.join('\n');
   }
 
+  /* Robust JSON parse for LLM output. Handles: ```json fences, leading/trailing
+   * prose, and TRUNCATED responses (the model hit max_tokens mid-string) by
+   * closing any open string + unbalanced brackets, then retrying. Returns the
+   * parsed object, or throws if nothing usable can be recovered. */
+  function _parseModelJson(text) {
+    if (!text) throw new Error('empty model response');
+    var s = String(text).replace(/```json/gi, '').replace(/```/g, '').trim();
+    var start = s.indexOf('{');
+    if (start > 0) s = s.slice(start);
+    // 1) direct
+    try { return JSON.parse(s); } catch (e) { /* continue */ }
+    // 2) repair truncation — close open string + unbalanced {} []
+    var inStr = false, esc = false, stack = [];
+    for (var i = 0; i < s.length; i++) {
+      var c = s[i];
+      if (esc) { esc = false; continue; }
+      if (c === '\\') { esc = true; continue; }
+      if (c === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (c === '{' || c === '[') stack.push(c === '{' ? '}' : ']');
+      else if (c === '}' || c === ']') stack.pop();
+    }
+    var repaired = s + (inStr ? '"' : '');
+    for (var j = stack.length - 1; j >= 0; j--) repaired += stack[j];
+    try { return JSON.parse(repaired); } catch (e) { /* continue */ }
+    // 3) drop a trailing incomplete property, then re-close
+    var cut = s.replace(/,\s*("[^"]*"\s*:?\s*[^,{}\[\]]*)?$/, '');
+    var inStr2 = false, esc2 = false, stack2 = [];
+    for (var k = 0; k < cut.length; k++) {
+      var ch = cut[k];
+      if (esc2) { esc2 = false; continue; }
+      if (ch === '\\') { esc2 = true; continue; }
+      if (ch === '"') { inStr2 = !inStr2; continue; }
+      if (inStr2) continue;
+      if (ch === '{' || ch === '[') stack2.push(ch === '{' ? '}' : ']');
+      else if (ch === '}' || ch === ']') stack2.pop();
+    }
+    var rep2 = cut + (inStr2 ? '"' : '');
+    for (var m = stack2.length - 1; m >= 0; m--) rep2 += stack2[m];
+    return JSON.parse(rep2); // final attempt — throws if still bad
+  }
+
   KABi.EvalCopilot = {
     MODES: ['MONITOR_PERFORMANCE', 'REVIEW_MANAGER_RATING', 'MONITOR_ORG', 'MONITOR_DEPARTMENT'],
 
@@ -203,23 +247,32 @@
 
       var system = buildSystemPrompt(lang);
       var user = buildUserPrompt(payload, lang);
-      var maxTok = (payload.mode === 'MONITOR_ORG' || payload.mode === 'MONITOR_DEPARTMENT') ? 3500 : 2500;
-      var llm, parsed, attempts = 0;
+      // Generous token budget so the JSON isn't cut mid-string (the #1 cause of
+      // "malformed JSON — unterminated string"). Org needs more (many depts).
+      var isOrg = (payload.mode === 'MONITOR_ORG' || payload.mode === 'MONITOR_DEPARTMENT');
+      var maxTok = isOrg ? 4096 : 3200;
+      var llm, parsed, attempts = 0, lastErr = '';
       while (attempts < 2) {
         attempts++;
+        // On a retry after a parse failure, ask for more room + brevity.
+        var tok = attempts === 1 ? maxTok : Math.min(maxTok + 1500, 6000);
         try {
-          llm = await KABi.LLM.call([{ role: 'user', content: user }], { systemPrompt: system, maxTokens: maxTok, temperature: 0.3 });
+          llm = await KABi.LLM.call([{ role: 'user', content: user }], { systemPrompt: system, maxTokens: tok, temperature: 0.3 });
         } catch (e) {
           var m = String(e.message || e);
           if ((m.indexOf('AUTH_ERROR') > -1 || m.indexOf('COST_LIMIT') > -1 || m.indexOf('SESSION_LIMIT') > -1)) {
             try { if (m.indexOf('AUTH_ERROR') > -1 && KABi.LLM.clearApiKey) KABi.LLM.clearApiKey(); } catch (_) {}
-            llm = await KABi.LLM.call([{ role: 'user', content: user }], { systemPrompt: system, maxTokens: maxTok, temperature: 0.3 });
+            llm = await KABi.LLM.call([{ role: 'user', content: user }], { systemPrompt: system, maxTokens: tok, temperature: 0.3 });
           } else { throw new Error('EvalCopilot: LLM call failed — ' + m); }
         }
         try {
-          var txt = (typeof parseLLMJsonResponse === 'function') ? parseLLMJsonResponse(llm.text) : JSON.parse(llm.text.replace(/```json|```/g, '').trim());
-          parsed = txt; break;
-        } catch (e) { if (attempts >= 2) throw new Error('EvalCopilot: malformed JSON — ' + e.message); }
+          parsed = (typeof parseLLMJsonResponse === 'function') ? parseLLMJsonResponse(llm.text) : _parseModelJson(llm.text);
+          break;
+        } catch (e) {
+          lastErr = e.message;
+          try { parsed = _parseModelJson(llm.text); break; } catch (e2) { lastErr = e2.message; }
+          if (attempts >= 2) throw new Error('EvalCopilot: could not parse the model response (it may have been cut off). ' + lastErr);
+        }
       }
       parsed._evidence = payload.evidence;   // attach raw evidence for the audit trail
       parsed._model = llm.model;
