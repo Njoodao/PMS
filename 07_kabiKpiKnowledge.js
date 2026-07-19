@@ -571,6 +571,18 @@
           ? 'افحص أساسًا: (أ) التكرار — مؤشران يقيسان الشيء نفسه؛ (ب) التداخل — بسط/مقام مشترك أو ازدواج وزن النشاط؛ (ج) التعارض — هدفان يتنازعان (مثل السرعة مقابل الجودة)؛ (د) توازن التغطية. المؤشرات الفردية وُلّدت ضمن النطاق وكنتائج، فلا تعِد فحص النطاق إلا إن رأيت خرقًا واضحًا.'
           : 'Check primarily: (a) DUPLICATION — two KPIs measuring the same thing; (b) OVERLAP — shared numerator/denominator or double-counted activity; (c) CONFLICT — two targets that fight each other (e.g. speed vs quality); (d) coverage balance. The individual KPIs were generated in-scope and outcome-based, so do not re-litigate scope unless you see a clear breach.');
         L.push('');
+        // v70: period-appropriateness — the judge must flag targets sized to the
+        // wrong horizon (e.g. an annual number on a quarterly cycle).
+        if (typeof window !== 'undefined' && window.kabiEvalPeriod) {
+          var _cp = window.kabiEvalPeriod();
+          var _cf = window.kabiEvalFreq ? window.kabiEvalFreq() : '';
+          H('EVALUATION PERIOD CHECK', 'فحص فترة التقييم');
+          L.push((ar ? 'الفترة الحالية: ' : 'Current period: ') + _cp + (_cf ? ' (' + _cf + ')' : ''));
+          L.push(ar
+            ? 'تحقّق أن أهداف/مواعيد كل مؤشر مقيسة لهذه الفترة: المقاييس التراكمية (إيراد، عدد، pipeline) يجب أن تكون لهذه الفترة فقط (هدف ربعي ≠ سنوي)؛ النِّسب/المعدلات يبقى حدّها ثابتًا. علّم أي هدف يستخدم أفقًا خاطئًا (رقم سنوي على دورة ربعية) كتحذير.'
+            : 'Verify each KPI\'s target/deadline is sized to THIS period: cumulative metrics (revenue, counts, pipeline) must be for this period only (a quarterly target ≠ annual); rate/ratio thresholds stay constant. Flag any target using the wrong horizon (an annual number on a quarterly cycle) as a warning.');
+          L.push('');
+        }
         if (_isReal(pack.conflictRules)) {
           H('KNOWN CONFLICT / TRADE-OFF RULES', 'قواعد التعارض والمفاضلة المعروفة');
           pack.conflictRules.forEach(function (c) {
