@@ -210,6 +210,16 @@
     .wb-mood-btn .m-ic{font-size:19px;line-height:1}
     .wb-mood-btn .m-lb{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px}
     .wb-mood-btn.sel{color:var(--text-primary)}
+    /* v75: one shared table look for the whole system (matches People & Access › Employees).
+       Apply class="kabi-table" to any <table>; wrap in .kabi-table-wrap for horizontal scroll. */
+    .kabi-table-wrap{overflow-x:auto}
+    .kabi-table{width:100%;border-collapse:collapse;font-family:var(--font)}
+    .kabi-table th{text-align:left;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-dim);padding:8px 10px;border-bottom:1px solid var(--glass-border,rgba(255,255,255,.06));white-space:nowrap}
+    .kabi-table td{padding:11px 10px;font-size:12px;color:var(--text-primary);border-bottom:1px solid var(--glass-border,rgba(255,255,255,.05));vertical-align:middle}
+    .kabi-table tbody tr:hover{background:rgba(127,140,170,.05)}
+    .kabi-table .kt-name{font-size:13px;font-weight:700;color:var(--text-primary)}
+    .kabi-table .kt-r{text-align:right}
+    .kabi-table .kt-mono{font-family:var(--mono)}
     @keyframes bgOrbFloat {
       0%, 100% { transform: translate(0, 0) scale(1); opacity: 1; }
       25%      { transform: translate(30px, -25px) scale(1.05); opacity: .8; }
@@ -8925,7 +8935,7 @@
               <div style="width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#00c2e0,#2557e8);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:20px"><i class="ti ti-heart"></i></div>
               <div style="flex:1;min-width:0">
                 <h4 style="font-size:14px;font-weight:800;color:var(--text-primary);margin:0">Well-being check-in</h4>
-                <p style="font-size:10.5px;color:var(--text-muted);margin:2px 0 0">A quick pulse before your week — private; helps your manager support you.</p>
+                <p style="font-size:10.5px;color:var(--text-muted);margin:2px 0 0">A quick pulse before your week</p>
               </div>
               ${_todayMood ? '<span style="padding:4px 10px;border-radius:20px;background:rgba(18,161,122,.12);color:#12a17a;font-size:9px;font-weight:800;white-space:nowrap"><i class="ti ti-check ti-green"></i> Logged today</span>' : ''}
             </div>
@@ -8934,7 +8944,6 @@
                 var sel = _todayMood === m.label;
                 return '<button class="ai-mood-btn wb-mood-btn' + (sel ? ' sel' : '') + '" onclick="empAIRespondMood(\'' + m.label + '\',event)" title="' + m.label + '"' + (sel ? ' style="border-color:' + m.color + ';background:' + m.color + '1a"' : '') + '><span class="m-ic" style="color:' + m.color + '"><i class="ti ' + m.ic + '"></i></span><span class="m-lb">' + m.label + '</span></button>';
               }).join('')}
-              <button onclick="empAIOpenChat()" style="margin-left:auto;padding:7px 14px;border-radius:20px;border:1px solid rgba(0,194,224,.3);background:rgba(0,194,224,.08);color:#0891a8;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px"><i class="ti ti-message-circle"></i> Chat with AI</button>
             </div>
             <div id="ai-mood-response" style="display:none;margin-top:12px;padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border,#e5eaf3);background:var(--surface-2,#eef2f9);font-size:11px;color:var(--text-primary);line-height:1.55"></div>
           </div>
@@ -28659,8 +28668,10 @@
         ? '<span style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:999px;background:rgba(18,161,122,.12);color:#12a17a;font-size:11px;font-weight:800"><i class="ti ti-lock-open"></i> Released</span>'
         : '<span style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:999px;background:rgba(194,130,11,.12);color:#c2820b;font-size:11px;font-weight:800"><i class="ti ti-lock"></i> Locked</span>';
       const GRID = 'grid-template-columns:2.2fr 1.5fr 1fr .7fr .6fr 1.2fr auto';
+      // v75: header matches the People & Access › Employees table (tiny 8px faint
+      // uppercase) so every table in the system shares one look.
       const head = ['Employee', 'Function', 'Level', 'Score', '%', 'Rating', ''].map((c, i) =>
-        `<div style="padding:12px 16px;font-size:9.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;${(i === 3 || i === 4) ? 'text-align:right' : ''}">${c}</div>`).join('');
+        `<div style="padding:8px 16px;font-size:8px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;${(i === 3 || i === 4) ? 'text-align:right' : ''}">${c}</div>`).join('');
       const _det = (l, v) => `<div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em">${l}</div><div style="font-size:12.5px;font-weight:700;color:var(--text-primary);margin-top:2px">${v || '—'}</div></div>`;
       const _comp = (l, v, w) => `<div style="flex:1;min-width:150px;background:var(--glass,rgba(255,255,255,.03));border:1px solid var(--glass-border,rgba(255,255,255,.08));border-radius:10px;padding:12px 14px">
         <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">${l}</div>
@@ -28721,7 +28732,7 @@
           </select>
           <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;font-family:var(--mono)">${emps.length} shown</span>
         </div>
-        ${emps.length ? `<div style="overflow-x:auto"><div style="min-width:760px"><div style="display:grid;${GRID}">${head}</div>${rows}</div></div>` : `<div style="text-align:center;padding:34px;color:var(--text-muted);font-size:12px">${_q ? 'No employees match “' + _evalSearch + '”.' : 'No employees in the current cycle.'}</div>`}`;
+        ${emps.length ? `<div style="overflow-x:auto"><div style="min-width:760px"><div style="display:grid;${GRID};border-bottom:1px solid var(--glass-border,rgba(255,255,255,.06))">${head}</div>${rows}</div></div>` : `<div style="text-align:center;padding:34px;color:var(--text-muted);font-size:12px">${_q ? 'No employees match “' + _evalSearch + '”.' : 'No employees in the current cycle.'}</div>`}`;
     }
     function peExportCSV() { const evals = Object.entries(PE_EVALS); if (!evals.length) { toast('No data', 'err'); return; } let csv = 'Employee ID,Name,Department,Title,Level,Group,Quarter,Evaluator,Total Score,Percentage,Rating'; const mK = Math.max(...evals.map(([, v]) => v.kpiScores?.length || 0), 0); for (let i = 0; i < mK; i++)csv += `,KPI${i + 1},Score${i + 1}`; csv += ',Behavioral Avg,Technical Avg,Client Sat,Digital Adapt,Learning\n'; evals.forEach(([, v]) => { const e = PE_EMPLOYEES.find(x => x.id === v.empId); const r = [e?.id, `"${e?.name}"`, `"${e?.dept}"`, `"${e?.title}"`, e?.level, e?.group, v.quarter, v.evaluator, v.totalScore.toFixed(2), pePct(v.totalScore) + '%', peRating(v.totalScore).name]; for (let i = 0; i < mK; i++) { const ks = v.kpiScores?.[i]; r.push(ks ? `"${ks.name}"` : '', ks?.score || ''); } r.push(v.bAvg?.toFixed(2) || '', v.tAvg?.toFixed(2) || '', v.clientSat || '', v.digitalAdapt || '', v.learning || ''); csv += r.join(',') + '\n'; }); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `KABi_PE_${new Date().toISOString().slice(0, 10)}.csv`; a.click(); toast('Downloaded'); }
     function renderPEAllEvals(el) { const evals = Object.entries(PE_EVALS).filter(([, v]) => v && !v.isDraft && v.totalScore != null); el.innerHTML = `<h3 style="font-size:14px;font-weight:700;color:var(--white);margin-bottom:10px">All Evaluations (${evals.length})</h3>${evals.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><tr>${['Employee', 'Dept', 'Qtr', 'Evaluator', 'Score', '%', 'Class'].map(h => `<th style="text-align:left;font-size:8px;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,.3);padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.05)">${h}</th>`).join('')}</tr>${evals.map(([, v]) => { const emp = PE_EMPLOYEES.find(e => e.id === v.empId); const rc = peRating(v.totalScore); return `<tr style="border-bottom:1px solid rgba(255,255,255,.02)"><td style="padding:6px 8px;font-size:11px;font-weight:600;color:var(--white)">${emp?.name || '?'}</td><td style="padding:6px 8px;font-size:9px;color:var(--text-muted)">${emp?.dept}</td><td style="padding:6px 8px"><span style="padding:1px 6px;border-radius:10px;font-size:8px;font-weight:700;background:rgba(0,194,224,.1);color:var(--cyan)">${v.quarter}</span></td><td style="padding:6px 8px;font-size:9px;color:var(--text-muted)">${v.evaluator}</td><td style="padding:6px 8px;font-size:11px;font-weight:700;color:${rc.color}">${v.totalScore.toFixed(2)}</td><td style="padding:6px 8px;font-size:10px">${pePct(v.totalScore)}%</td><td style="padding:6px 8px"><span class="pe-badge ${rc.cls}">${rc.name}</span></td></tr>`; }).join('')}</table></div>` : '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:11px">No evaluations yet</div>'}`; }
