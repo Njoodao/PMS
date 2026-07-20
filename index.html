@@ -204,6 +204,12 @@
     .kpi-ov-stat.on .kpi-ov-chev{transform:rotate(90deg)}
     .kpi-ov-hint{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--sc);opacity:.6;transition:opacity .15s;margin-top:5px}
     .kpi-ov-stat:hover .kpi-ov-hint,.kpi-ov-stat.on .kpi-ov-hint{opacity:1}
+    /* v75: Well-being mood-pulse buttons */
+    .wb-mood-btn{min-width:60px;padding:9px 8px 7px;border-radius:12px;border:1.5px solid var(--glass-border,#e5eaf3);background:var(--surface-2,#eef2f9);display:inline-flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;transition:transform .16s,border-color .16s,background .16s;font-family:inherit;color:var(--text-muted)}
+    .wb-mood-btn:hover{transform:translateY(-2px)}
+    .wb-mood-btn .m-ic{font-size:19px;line-height:1}
+    .wb-mood-btn .m-lb{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px}
+    .wb-mood-btn.sel{color:var(--text-primary)}
     @keyframes bgOrbFloat {
       0%, 100% { transform: translate(0, 0) scale(1); opacity: 1; }
       25%      { transform: translate(30px, -25px) scale(1.05); opacity: .8; }
@@ -6189,8 +6195,8 @@
         } else if (role === 'ceo' || role === 'ceo_exec') {
           insights.push(
             { label: 'Executive', text: '<i class=\"ti ti-target\"></i> New strategic initiatives awaiting review — check the Initiatives view.' },
-            { label: 'Analytics', text: '<i class=\"ti ti-trending-up ti-green\"></i> Q2 performance reports available in your CEO dashboard.' },
-            { label: 'Insight', text: '<i class=\"ti ti-bulb ti-amber\"></i> Top-performing pillars drive 70% of strategic outcomes — stay focused.' }
+            { label: 'Analytics', text: '<i class=\"ti ti-trending-up ti-green\"></i> Performance reports for the active cycle are in your CEO dashboard.' },
+            { label: 'Insight', text: '<i class=\"ti ti-bulb ti-amber\"></i> Focus where the connected data shows real risk or opportunity.' }
           );
         } else if (isManager) {
           insights.push(
@@ -8174,10 +8180,10 @@
       if (!rows.length || !btn) return;
       const anyHidden = [...rows].some(r => r.style.display === 'none');
       if (anyHidden) {
-        rows.forEach(r => r.style.display = 'grid');
+        rows.forEach(r => r.style.display = 'flex');
         btn.textContent = '▲ Show less';
       } else {
-        rows.forEach((r, i) => { r.style.display = i < 4 ? 'grid' : 'none'; });
+        rows.forEach((r, i) => { r.style.display = i < 4 ? 'flex' : 'none'; });
         const total = rows.length;
         btn.textContent = `▼ Show all ${total} KPIs (${total - 4} more)`;
       }
@@ -8899,37 +8905,52 @@
       }
 
 
-      // AI Wellbeing card
-      if (nudge) {
-        const trendColor = '#60a5fa';
+      // v75: Well-being check-in (interactive mood pulse) + separate AI Nudge.
+      // The pulse records the user's feeling (kabiWellbeingSignal) so the AI
+      // agents can read the team's mood indirectly. Gated by peWellbeingVisible.
+      var _wbShow = (typeof peWellbeingVisible !== 'function') || peWellbeingVisible(me.email);
+      if (_wbShow) {
+        var _todayMood = (typeof _wbTodayMood === 'function') ? _wbTodayMood(me.email) : null;
+        var _moods = [
+          { ic: 'ti-mood-happy',    label: 'Great',    color: '#12a17a' },
+          { ic: 'ti-mood-smile',    label: 'Good',     color: '#216ab1' },
+          { ic: 'ti-mood-neutral',  label: 'Okay',     color: '#c2820b' },
+          { ic: 'ti-mood-sad',      label: 'Low',      color: '#6d5bd0' },
+          { ic: 'ti-mood-confuzed', label: 'Stressed', color: '#dc4b57' }
+        ];
         html += `
-        <div class="ai-wellbeing-card" style="margin-bottom:24px;position:relative;overflow:visible">
-          <div style="position:relative;background:linear-gradient(135deg,rgba(0,194,224,.1) 0%,rgba(37,87,232,.06) 50%,rgba(167,139,250,.08) 100%);border:1px solid rgba(0,194,224,.25);padding:18px 22px;border-radius:22px;backdrop-filter:blur(16px);box-shadow:0 8px 32px rgba(0,194,224,.08)">
-            <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:14px">
-              <div style="width:46px;height:46px;border-radius:50%;background:#ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(0,194,224,.35);flex-shrink:0">
-                <svg viewBox="0 0 86 75" xmlns="http://www.w3.org/2000/svg" style="width:24px;height:21px" aria-label="KABi" role="img">
-                  <defs>
-                    <linearGradient id="wbK1a" gradientUnits="userSpaceOnUse" x1="26.2481" y1="50.3613" x2="0" y2="50.3613"><stop offset="0" style="stop-color:#3F77B8"/><stop offset="1" style="stop-color:#17579D"/></linearGradient>
-                    <linearGradient id="wbK2a" gradientUnits="userSpaceOnUse" x1="26.2481" y1="16.7871" x2="76.8081" y2="16.7871"><stop offset="0" style="stop-color:#3F77B8"/><stop offset="1" style="stop-color:#17579D"/></linearGradient>
-                  </defs>
-                  <path fill="#62C6D3" d="M26.25,33.57l-20.4-5.82C2.39,26.77,0,23.62,0,20.04V8.03C0,3.59,3.62,0,8.08,0h10.09c4.46,0,8.08,3.59,8.08,8.03V33.57z"/>
-                  <path fill="url(#wbK1a)" d="M18.17,67.15H8.08C3.62,67.15,0,63.55,0,59.12V47.11c0-3.58,2.39-6.73,5.85-7.72l20.4-5.82v25.55C26.25,63.55,22.63,67.15,18.17,67.15z"/>
-                  <path fill="url(#wbK2a)" d="M69.92,27.11l-43.67,6.47L48.14,3.34C49.66,1.24,52.1,0,54.7,0h14.03c4.46,0,8.08,3.59,8.08,8.03v11.14C76.81,23.15,73.88,26.52,69.92,27.11z"/>
-                  <path fill="#3CA77D" d="M77.12,74.42H62.85c-2.46,0-4.79-1.12-6.32-3.03L26.25,33.57L79.09,46.8c3.59,0.9,6.1,4.11,6.1,7.79v11.8C85.2,70.82,81.58,74.42,77.12,74.42z"/>
-                </svg>
-              </div>
+        <div class="ai-wellbeing-card" style="margin-bottom:16px">
+          <div style="border-radius:16px;padding:18px 20px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+              <div style="width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#00c2e0,#2557e8);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:20px"><i class="ti ti-heart"></i></div>
               <div style="flex:1;min-width:0">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
-                  <h4 style="font-size:13px;font-weight:800;color:var(--white);margin:0">Well-being Check-in</h4>
-                  <span style="padding:2px 8px;border-radius:12px;background:${trendColor}20;color:${trendColor};font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">${nudge.trend}</span>
-                </div>
-                <p style="font-size:9px;color:var(--cyan);text-transform:uppercase;letter-spacing:.5px;margin:0">${nudge.month} · KABi AI companion</p>
+                <h4 style="font-size:14px;font-weight:800;color:var(--text-primary);margin:0">Well-being check-in</h4>
+                <p style="font-size:10.5px;color:var(--text-muted);margin:2px 0 0">A quick pulse before your week — private; helps your manager support you.</p>
               </div>
+              ${_todayMood ? '<span style="padding:4px 10px;border-radius:20px;background:rgba(18,161,122,.12);color:#12a17a;font-size:9px;font-weight:800;white-space:nowrap"><i class="ti ti-check ti-green"></i> Logged today</span>' : ''}
             </div>
-            <div style="background:rgba(10,31,82,.4);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:13px 16px;position:relative">
-              <p style="font-size:12.5px;line-height:1.65;color:var(--text-primary);margin:0;font-style:italic">"${nudge.text}"</p>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              ${_moods.map(function (m) {
+                var sel = _todayMood === m.label;
+                return '<button class="ai-mood-btn wb-mood-btn' + (sel ? ' sel' : '') + '" onclick="empAIRespondMood(\'' + m.label + '\',event)" title="' + m.label + '"' + (sel ? ' style="border-color:' + m.color + ';background:' + m.color + '1a"' : '') + '><span class="m-ic" style="color:' + m.color + '"><i class="ti ' + m.ic + '"></i></span><span class="m-lb">' + m.label + '</span></button>';
+              }).join('')}
+              <button onclick="empAIOpenChat()" style="margin-left:auto;padding:7px 14px;border-radius:20px;border:1px solid rgba(0,194,224,.3);background:rgba(0,194,224,.08);color:#0891a8;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px"><i class="ti ti-message-circle"></i> Chat with AI</button>
             </div>
+            <div id="ai-mood-response" style="display:none;margin-top:12px;padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border,#e5eaf3);background:var(--surface-2,#eef2f9);font-size:11px;color:var(--text-primary);line-height:1.55"></div>
           </div>
+        </div>`;
+      }
+      // AI Nudge — separate card (the advisory line)
+      if (nudge) {
+        html += `
+        <div style="margin-bottom:24px;background:linear-gradient(135deg,rgba(0,194,224,.09),rgba(109,91,208,.06));border:1px solid rgba(0,194,224,.25);border-radius:16px;padding:16px 20px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c2e0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z"/></svg>
+            <strong style="font-size:12px;color:var(--text-primary)">AI Nudge</strong>
+            ${nudge.trend ? '<span style="padding:2px 8px;border-radius:12px;background:rgba(59,114,255,.14);color:#3b72ff;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">' + nudge.trend + '</span>' : ''}
+            <span style="margin-left:auto;font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">${nudge.month ? nudge.month + ' · ' : ''}KABi AI</span>
+          </div>
+          <p style="font-size:12.5px;line-height:1.6;color:var(--text-primary);margin:0;font-style:italic">"${nudge.text}"</p>
         </div>`;
       }
 
@@ -9027,24 +9048,29 @@
         if (kpiCount > 0) {
           const showMax = 4;
           const needsCollapse = kpiCount > showMax;
-          kpiSectionHtml += `<div id="my-kpis-box" style="background:rgba(10,31,82,.5);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:0;overflow:hidden;backdrop-filter:blur(12px);margin-bottom:8px">`;
+          // v75: clean KPI cards (prototype style) — number + KPI text + a
+          // reassurance line that results stay hidden until HC releases them.
+          kpiSectionHtml += `<div id="my-kpis-box" style="display:flex;flex-direction:column;gap:10px;margin-bottom:8px">`;
           approvedKPIs.forEach((kpi, i) => {
             const hidden = needsCollapse && i >= showMax;
             kpiSectionHtml += `
-            <div class="my-kpi-row" data-idx="${i}" style="display:${hidden ? 'none' : 'grid'};grid-template-columns:auto 1fr;gap:12px;padding:14px 18px;border-bottom:${i === kpiCount - 1 ? 'none' : '1px solid rgba(255,255,255,.03)'};font-size:12px;align-items:center">
-              <span style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:rgba(74,222,128,.12);color:#4ade80;font-size:10px;font-weight:800;flex-shrink:0">${i + 1}</span>
-              <span style="color:var(--text-primary);line-height:1.5">${kpi}</span>
+            <div class="my-kpi-row" data-idx="${i}" style="display:${hidden ? 'none' : 'flex'};gap:13px;padding:15px 18px;align-items:flex-start;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:12px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 8px 22px -18px rgba(10,31,82,.22))">
+              <span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9px;background:rgba(0,194,224,.12);color:#0891a8;font-size:12px;font-weight:900;font-family:var(--mono);flex-shrink:0">${i + 1}</span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12.5px;color:var(--text-primary);line-height:1.55;font-weight:600">${kpi}</div>
+                <div style="font-size:9.5px;color:var(--text-dim);margin-top:7px;display:inline-flex;align-items:center;gap:5px"><i class="ti ti-lock"></i> Target set with your manager · numeric results stay hidden until HC releases them</div>
+              </div>
             </div>`;
           });
           kpiSectionHtml += `</div>`;
           if (needsCollapse) {
-            kpiSectionHtml += `<button id="my-kpis-toggle" onclick="empToggleMyKPIs()" style="margin-top:6px;padding:8px 14px;border-radius:8px;border:1px dashed rgba(0,194,224,.3);background:rgba(0,194,224,.04);color:var(--cyan);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;width:100%">▼ Show all ${kpiCount} KPIs (${kpiCount - showMax} more)</button>`;
+            kpiSectionHtml += `<button id="my-kpis-toggle" onclick="empToggleMyKPIs()" style="margin-top:2px;padding:9px 14px;border-radius:9px;border:1px dashed rgba(0,194,224,.35);background:rgba(0,194,224,.05);color:#0891a8;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;width:100%">▼ Show all ${kpiCount} KPIs (${kpiCount - showMax} more)</button>`;
           }
         } else {
-          kpiSectionHtml += `<div style="background:rgba(251,191,36,.04);border:1px dashed rgba(251,191,36,.25);border-radius:14px;padding:24px;text-align:center;color:var(--text-muted);font-size:12px">
-            <div style="font-size:28px;margin-bottom:8px;opacity:.6"><i class="ti ti-hourglass"></i></div>
-            <strong style="color:#fbbf24;font-size:13px;display:block;margin-bottom:4px">No approved KPIs yet</strong>
-            <div style="font-size:10px;color:var(--text-muted);line-height:1.5">Your KPIs will appear here once your <strong style="color:var(--cyan)">manager submits</strong> them and <strong style="color:var(--cyan)">HC gives final approval</strong>.</div>
+          kpiSectionHtml += `<div style="background:var(--glass,#fff);border:1px dashed var(--glass-border,#e5eaf3);border-radius:14px;padding:26px;text-align:center;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 8px 22px -18px rgba(10,31,82,.22))">
+            <div style="font-size:26px;margin-bottom:8px;color:#c2820b"><i class="ti ti-hourglass"></i></div>
+            <strong style="color:var(--text-primary);font-size:13px;display:block;margin-bottom:4px">No approved KPIs yet</strong>
+            <div style="font-size:10.5px;color:var(--text-muted);line-height:1.5">Your KPIs will appear here once your <strong style="color:#0891a8">manager submits</strong> them and <strong style="color:#0891a8">HC gives final approval</strong>.</div>
           </div>`;
         }
       }  // end if(!isCEO) — KPI section
@@ -9804,18 +9830,18 @@
           }
         } catch(e){}
 
-        h += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:14px">';
+        h += '<div style="background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:12px;padding:16px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 8px 22px -16px rgba(10,31,82,.2))">';
 
         // Header: avatar + name + score
-        h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">';
-        h += '<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#216AB1,#3D3185);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0">'+initials+'</div>';
+        h += '<div style="display:flex;align-items:center;gap:11px;margin-bottom:13px">';
+        h += '<div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#216AB1,#3D3185);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0">'+initials+'</div>';
         h += '<div style="flex:1;min-width:0">';
-        h += '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:12px;font-weight:700;color:var(--white)">'+emp.name+'</span>';
-        h += '<span style="font-size:7px;padding:1px 4px;border-radius:3px;background:'+(isFTE?'rgba(30,175,217,.1)':'rgba(155,129,188,.15)')+';color:'+(isFTE?'var(--cyan)':'#9B81BC')+';font-weight:700">'+(isFTE?'FTE':'Non-FTE')+'</span></div>';
-        h += '<div style="font-size:8px;color:var(--text-dim)">'+emp.title+'</div>';
+        h += '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:800;color:var(--text-primary)">'+emp.name+'</span>';
+        h += '<span style="font-size:7.5px;padding:2px 6px;border-radius:20px;background:'+(isFTE?'rgba(30,175,217,.12)':'rgba(155,129,188,.16)')+';color:'+(isFTE?'#1EAFD9':'#9B81BC')+';font-weight:800;letter-spacing:.3px">'+(isFTE?'FTE':'NON-FTE')+'</span></div>';
+        h += '<div style="font-size:9.5px;color:var(--text-muted);margin-top:1px">'+emp.title+'</div>';
         h += '</div>';
         // Score badge
-        h += '<div style="text-align:center;flex-shrink:0"><div style="font-size:16px;font-weight:900;color:'+scoreColor+'">'+scoreText+'</div><div style="font-size:6px;color:var(--text-dim);text-transform:uppercase">Score</div></div>';
+        h += '<div style="text-align:center;flex-shrink:0"><div style="font-size:17px;font-weight:900;font-family:var(--mono);color:'+scoreColor+';line-height:1">'+scoreText+'</div><div style="font-size:7px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">Score</div></div>';
         // v70: AI evidence compare (per employee, vs their KPIs)
         h += '<button onclick="event.stopPropagation();peAIReview(\''+emp.id+'\',\'MONITOR_PERFORMANCE\')" title="AI: compare '+(emp.name||'').replace(/"/g,'&quot;')+'’s actual evidence vs their KPIs" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;border:1px solid rgba(0,194,224,.3);background:rgba(0,194,224,.1);color:var(--cyan);font-size:12px;cursor:pointer;font-family:inherit"><i class="ti ti-robot"></i></button>';
         h += '</div>';
@@ -9826,8 +9852,8 @@
         var jiraEmpData = null;
         try { if(typeof _conns!=='undefined'){_conns.forEach(function(cn){if(cn._jiraMetrics&&cn._jiraMetrics.byEmployee&&cn._jiraMetrics.byEmployee[emp.email])jiraEmpData=cn._jiraMetrics.byEmployee[emp.email];});} } catch(e){}
 
-        // KPI boxes (4) — fill from system data if available
-        h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px">';
+        // KPI boxes (4) — fill from system data if available; 2×2 grid
+        h += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">';
         for (var ki = 0; ki < 4; ki++) {
           var kpi = kpis[ki] || null;
           var kpiShort = '—';
@@ -9837,8 +9863,8 @@
 
           if (kpi) {
             var words = kpi.split(/\s+/);
-            kpiShort = words.length <= 2 ? kpi : words.slice(0,2).join(' ');
-            if (kpiShort.length > 16) kpiShort = kpiShort.substring(0,14)+'..';
+            kpiShort = words.length <= 3 ? kpi : words.slice(0,3).join(' ');
+            if (kpiShort.length > 24) kpiShort = kpiShort.substring(0,22)+'…';
             kpiTooltip = kpi;
             // Try to match KPI with system data
             var kl = kpi.toLowerCase();
@@ -9862,13 +9888,19 @@
           var _pl = (kpi && kpiValue !== '—' && typeof window.kabiPerfLevel === 'function') ? window.kabiPerfLevel(kpi, kpiValue) : null;
           if (_pl && _pl.level !== 'na') { kpiColor = _pl.color; }
           if (_pl && _pl.level !== 'na') kpiTooltip += ' — ' + _pl.label;
-          var _plBar = (_pl && (_pl.level === 'high' || _pl.level === 'good' || _pl.level === 'watch' || _pl.level === 'low'))
-            ? '<div style="height:3px;border-radius:2px;margin-top:4px;background:' + _pl.color + '"></div>'
-            : '<div style="height:3px;border-radius:2px;margin-top:4px;background:rgba(255,255,255,.06)"></div>';
-          h += '<div style="text-align:center;padding:6px 3px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);border-radius:6px;cursor:default" title="'+kpiTooltip.replace(/"/g,'&quot;')+'">';
-          h += '<div style="font-size:6px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.2px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+kpiShort+'</div>';
-          h += '<div style="font-size:13px;font-weight:800;color:'+kpiColor+'">'+kpiValue+'</div>';
-          h += _plBar;
+          // v75: attainment bar — width from a % value when present, else a subtle
+          // full track for a raw value, empty when there's no connected data.
+          var _hasVal = (kpiValue !== '—');
+          var _barPct = 0;
+          if (_hasVal) { var _pv = parseFloat(String(kpiValue).replace(/[^0-9.\-]/g, '')); if (String(kpiValue).indexOf('%') >= 0 && !isNaN(_pv)) _barPct = Math.max(0, Math.min(100, _pv)); }
+          var _barCol = (_pl && _pl.color) ? _pl.color : (kpiColor && kpiColor.indexOf('var') < 0 ? kpiColor : '#94a3b8');
+          var _fill = _barPct > 0
+            ? '<div style="height:100%;width:' + _barPct + '%;background:' + _barCol + ';border-radius:20px;transition:width .6s cubic-bezier(.22,1,.36,1)"></div>'
+            : (_hasVal ? '<div style="height:100%;width:100%;background:' + _barCol + ';opacity:.32;border-radius:20px"></div>' : '');
+          h += '<div style="padding:10px 11px;background:var(--surface-2,#eef2f9);border:1px solid var(--glass-border,#e5eaf3);border-radius:9px;cursor:default" title="' + kpiTooltip.replace(/"/g, '&quot;') + '">';
+          h += '<div style="font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700">' + kpiShort + '</div>';
+          h += '<div style="font-size:17px;font-weight:900;font-family:var(--mono);color:' + (_hasVal ? kpiColor : 'var(--text-dim)') + ';line-height:1">' + kpiValue + '</div>';
+          h += '<div style="height:5px;border-radius:20px;margin-top:8px;overflow:hidden;background:rgba(127,140,170,.16)">' + _fill + '</div>';
           h += '</div>';
         }
         h += '</div>';
@@ -12383,11 +12415,11 @@
           if(pdFns.indexOf(fk)>=0){try{if(KABiPipedrive.isActuallyConnected())fnConnected=true;}catch(e){}}
           var hasValues = Object.keys(vals).some(function(k){return k[0]!=='_'&&vals[k]!==undefined&&vals[k]!==null&&vals[k]!==''&&vals[k]!=='—';});
 
-          h += '<div style="margin-bottom:16px;background:rgba(255,255,255,.01);border:1px solid rgba(255,255,255,.04);border-radius:10px;padding:14px 16px">';
+          h += '<div style="margin-bottom:14px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:12px;padding:16px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 8px 22px -16px rgba(10,31,82,.2))">';
           // Function header
-          h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">';
-          h += '<span style="font-size:16px">'+fm.icon+'</span>';
-          h += '<strong style="font-size:12px;color:var(--white)">'+fm.name+'</strong>';
+          h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">';
+          h += '<span style="font-size:17px">'+fm.icon+'</span>';
+          h += '<strong style="font-size:12.5px;color:var(--text-primary)">'+fm.name+'</strong>';
           // Employee count badge with FTE/Non-FTE — v67.8: exclude deactivated Pipedrive accounts from FTE
           var fnEmps = PE_EMPLOYEES.filter(function(e){return !e.isFormer && e.fn && _normFn(e.fn)===fk;});
           if(empCount > 0) {
@@ -12456,11 +12488,15 @@
             var _dpl = (hasVal && typeof window.kabiPerfLevel === 'function') ? window.kabiPerfLevel(k.name, displayVal, { direction: (k.dir === 'lower' || k.lowerBetter ? 'lower' : undefined), target: k.target }) : null;
             var _valColor = hasVal ? ((_dpl && _dpl.level !== 'na' && _dpl.level !== 'info') ? _dpl.color : (dept.color || '#216AB1')) : 'var(--text-dim)';
             var _dTip = tooltipText + (_dpl && _dpl.level !== 'na' && _dpl.level !== 'info' ? (' — ' + _dpl.label) : '');
-            var _dBar = (_dpl && (_dpl.level === 'high' || _dpl.level === 'good' || _dpl.level === 'watch' || _dpl.level === 'low')) ? '<div style="height:3px;border-radius:2px;margin-top:5px;background:' + _dpl.color + '"></div>' : '';
-            h += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px" title="'+String(_dTip).replace(/"/g,'&quot;')+'">';
-            h += '<div style="font-size:7px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">'+k.name+'</div>';
-            h += '<div style="font-size:16px;font-weight:800;color:'+_valColor+'">'+displayVal+aiBadge+'</div>';
-            h += _dBar;
+            // v75: attainment bar — width from a % value; subtle track for a raw value; empty when no connected data
+            var _dPct = 0;
+            if (hasVal) { var _dv = parseFloat(String(displayVal).replace(/[^0-9.\-]/g, '')); if (String(displayVal).indexOf('%') >= 0 && !isNaN(_dv)) _dPct = Math.max(0, Math.min(100, _dv)); }
+            var _dCol = (_dpl && _dpl.color) ? _dpl.color : (dept.color || '#216AB1');
+            var _dFill = _dPct > 0 ? '<div style="height:100%;width:' + _dPct + '%;background:' + _dCol + ';border-radius:20px;transition:width .6s cubic-bezier(.22,1,.36,1)"></div>' : (hasVal ? '<div style="height:100%;width:100%;background:' + _dCol + ';opacity:.32;border-radius:20px"></div>' : '');
+            h += '<div style="background:var(--surface-2,#eef2f9);border:1px solid var(--glass-border,#e5eaf3);border-radius:9px;padding:11px 12px" title="'+String(_dTip).replace(/"/g,'&quot;')+'">';
+            h += '<div style="font-size:8px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+k.name+'</div>';
+            h += '<div style="font-size:16px;font-weight:900;font-family:var(--mono);color:'+_valColor+';line-height:1">'+displayVal+aiBadge+'</div>';
+            h += '<div style="height:5px;border-radius:20px;margin-top:8px;overflow:hidden;background:rgba(127,140,170,.16)">'+_dFill+'</div>';
             h += '</div>';
           });
           h += '</div>';
@@ -14405,7 +14441,59 @@
     }
 
     // AI mood response — encouraging message based on selected mood
+    // ═══ v75: Well-being signal store ═══════════════════════════════════
+    // Mood check-ins are recorded per-user in localStorage so the AI agents
+    // (team insights + nudge) can read the team's feeling INDIRECTLY — this is
+    // the "link wellbeing/feeling check-ins with team insights" wiring. Nothing
+    // is sent anywhere; it stays in the browser and is exposed as a summary.
+    var _WB_LS_KEY = 'kabi_wellbeing_v75';
+    var _WB_SCORE = { 'Great': 5, 'Good': 4, 'Okay': 3, 'Low': 2, 'Stressed': 1 };
+    function _wbGetLog() { try { return JSON.parse(localStorage.getItem(_WB_LS_KEY) || '{}'); } catch (e) { return {}; } }
+    function _wbSaveLog(o) { try { localStorage.setItem(_WB_LS_KEY, JSON.stringify(o)); } catch (e) {} }
+    function _wbRecord(email, mood) {
+      if (!email || !mood) return;
+      email = email.toLowerCase();
+      var o = _wbGetLog();
+      if (!o[email]) o[email] = [];
+      o[email].push({ mood: mood, score: _WB_SCORE[mood] || 3, ts: Date.now() });
+      if (o[email].length > 60) o[email] = o[email].slice(-60);
+      _wbSaveLog(o);
+    }
+    function _wbTodayMood(email) {
+      if (!email) return null;
+      var arr = _wbGetLog()[email.toLowerCase()] || [];
+      if (!arr.length) return null;
+      var last = arr[arr.length - 1];
+      return (new Date(last.ts).toDateString() === new Date().toDateString()) ? last.mood : null;
+    }
+    // AI-readable: per-user feeling summary (last 14 check-ins) — used by insights/nudge.
+    window.kabiWellbeingSignal = function (email) {
+      if (!email) return null;
+      var arr = (_wbGetLog()[email.toLowerCase()] || []).slice(-14);
+      if (!arr.length) return null;
+      var avg = arr.reduce(function (a, b) { return a + (b.score || 3); }, 0) / arr.length;
+      return {
+        entries: arr.length,
+        avgScore: Math.round(avg * 10) / 10,
+        latest: arr[arr.length - 1].mood,
+        recent: arr.slice(-3).map(function (x) { return x.mood; }),
+        trend: avg >= 4 ? 'positive' : avg >= 3 ? 'steady' : 'watch'
+      };
+    };
+    // AI-readable: team roll-up for a manager (indirect — names + trend, no raw log).
+    window.kabiWellbeingTeamSignal = function (managerEmail) {
+      var team = (typeof peGetAllReports === 'function') ? peGetAllReports(managerEmail) : [];
+      var out = [];
+      team.forEach(function (e) {
+        var s = window.kabiWellbeingSignal(e.email);
+        if (s) out.push({ name: e.name, trend: s.trend, avgScore: s.avgScore, latest: s.latest });
+      });
+      return out;
+    };
+
     function empAIRespondMood(mood, evt) {
+      // v75: record the check-in so the AI agents can read the signal indirectly
+      try { if (typeof me !== 'undefined' && me && me.email) _wbRecord(me.email, mood); } catch (e) {}
       const resp = document.getElementById('ai-mood-response');
       if (!resp) return;
       const messages = {
@@ -14420,11 +14508,12 @@
       resp.style.background = `linear-gradient(135deg,${m.color}10,${m.color}04)`;
       resp.innerHTML = `<div style="display:flex;gap:10px;align-items:flex-start"><span style="font-size:18px">${m.icon}</span><div><strong style="color:${m.color};font-size:11px;display:block;margin-bottom:3px">AI Response · Mood: ${mood}</strong><span>${m.text}</span></div></div>`;
       resp.style.display = 'block';
-      // Highlight selected mood button
+      // Highlight selected mood button (theme-agnostic: reset to CSS defaults)
       if (evt && evt.currentTarget) {
-        document.querySelectorAll('.ai-mood-btn').forEach(b => { b.style.background = 'rgba(10,31,82,.5)'; b.style.borderColor = 'rgba(255,255,255,.08)'; });
-        evt.currentTarget.style.background = m.color + '20';
+        document.querySelectorAll('.ai-mood-btn').forEach(b => { b.style.background = ''; b.style.borderColor = ''; b.classList.remove('sel'); });
+        evt.currentTarget.style.background = m.color + '1a';
         evt.currentTarget.style.borderColor = m.color;
+        evt.currentTarget.classList.add('sel');
       }
     }
 
@@ -19567,15 +19656,20 @@
       // Each link is shared by all employees IN that level, regardless of job title.
       // The rationale: technical thinking depth varies by level (strategic/tactical/operational),
       // not by job domain. Domain knowledge is assessed separately by managers.
+      // v75: Technical links are now keyed by the 5 CANONICAL levels (Entry…
+      // Executive), matching peGetEmpLevel — one link per level, shared by all
+      // job titles within that level.
       technicalLinks: {
-        'Top Management': '',   // e.g. https://app.inviews.io/tech-leadership
-        'Management':     '',   // e.g. https://app.inviews.io/tech-mid-mgmt
-        'Staff Level':    ''    // e.g. https://app.inviews.io/tech-staff
+        'Entry':                  'https://inviews.kabi.ai/tech/entry',
+        'Intermediate':           'https://inviews.kabi.ai/tech/intermediate',
+        'First-level management': 'https://inviews.kabi.ai/tech/first-level',
+        'Advanced':               'https://inviews.kabi.ai/tech/advanced',
+        'Executive':              'https://inviews.kabi.ai/tech/executive'
       },
       // v66.8: Single unified Behavioral link — shared by all employees.
       // Rationale: behavioral competencies (collaboration, communication, integrity)
       // are universal and don't vary by level.
-      behavioralLink: '',
+      behavioralLink: 'https://inviews.kabi.ai/behavioral',
       // Legacy field — retained for backward compat but unused as of v66.8.
       // Deprecated in favor of the split links above.
       externalUrl: 'https://app.inviews.io/assessment',
@@ -19583,18 +19677,21 @@
     };
 
     // v66.8: Persist INVIEWS_CONFIG (the split links) to localStorage
-    const _INVIEWS_CONFIG_LS_KEY = 'kabi_inviews_config_v668';
+    const _INVIEWS_CONFIG_LS_KEY = 'kabi_inviews_config_v75';  // v75: bumped — migrates 3-tier links → 5 canonical levels
     function _loadInviewsConfig() {
       try {
         const raw = localStorage.getItem(_INVIEWS_CONFIG_LS_KEY);
         if (!raw) return null;
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== 'object') return null;
-        // Validate the technicalLinks shape — must be object with all 3 levels (or merge defaults)
+        // v75: Validate the technicalLinks shape — the 5 canonical levels (defaults
+        // are the kabi.ai links; a saved value overrides its level).
         const techLinks = {
-          'Top Management': '',
-          'Management':     '',
-          'Staff Level':    ''
+          'Entry':                  'https://inviews.kabi.ai/tech/entry',
+          'Intermediate':           'https://inviews.kabi.ai/tech/intermediate',
+          'First-level management': 'https://inviews.kabi.ai/tech/first-level',
+          'Advanced':               'https://inviews.kabi.ai/tech/advanced',
+          'Executive':              'https://inviews.kabi.ai/tech/executive'
         };
         if (parsed.technicalLinks && typeof parsed.technicalLinks === 'object') {
           Object.keys(techLinks).forEach(function (lvl) {
@@ -19605,7 +19702,7 @@
         }
         return {
           technicalLinks: techLinks,
-          behavioralLink: typeof parsed.behavioralLink === 'string' ? parsed.behavioralLink : '',
+          behavioralLink: typeof parsed.behavioralLink === 'string' ? parsed.behavioralLink : 'https://inviews.kabi.ai/behavioral',
           enabled:        typeof parsed.enabled === 'boolean' ? parsed.enabled : false,
           openDate:       parsed.openDate || '',
           closeDate:      parsed.closeDate || '',
@@ -20183,6 +20280,17 @@
           insights.push({ text: `${firstName} joined recently (${Math.round(tenureDays)} days ago). A welcome check-in helps ${p.object} settle in and ensures ${p.possessive} onboarding goes smoothly.`, trend: 'New joiner', target: r.name, targetEmail: r.email, icon: '<i class="ti ti-clipboard-list"></i>', color: '#4ade80', type: 'new_joiner',
             actions: [{ label: '<i class=\"ti ti-calendar\"></i> Schedule 1:1', type: 'schedule', priority: 'primary' }, { label: '<i class=\"ti ti-message-circle\"></i> Send Welcome Note', type: 'message', priority: 'secondary' }] });
         }
+
+        // ═══ v75: Well-being signal — from THIS report's own mood check-ins ═══
+        // Links the well-being/feeling check-ins to team insights (indirectly):
+        // if their recent pulse trends low, surface a private, supportive nudge.
+        try {
+          var _wb = (typeof window.kabiWellbeingSignal === 'function') ? window.kabiWellbeingSignal(r.email) : null;
+          if (_wb && _wb.trend === 'watch' && !insights.find(i => i.targetEmail === r.email && i.type === 'wellbeing')) {
+            insights.push({ text: `${firstName}'s recent well-being check-ins are trending low (avg ${_wb.avgScore}/5, latest "${_wb.latest}"). A supportive, private 1:1 may help — no numbers shared, just reach out.`, trend: 'Well-being — check in', target: r.name, targetEmail: r.email, icon: '<i class="ti ti-heart"></i>', color: '#a78bfa', type: 'wellbeing',
+              actions: [{ label: '<i class=\"ti ti-calendar\"></i> Schedule 1:1', type: 'schedule', priority: 'primary' }, { label: '<i class=\"ti ti-message-circle\"></i> Send Note', type: 'message', priority: 'secondary' }] });
+          }
+        } catch(e) {}
 
         // ═══ REAL: Long tenure recognition (5+ years) ═══
         if (tenureDays > 1825) {
@@ -22209,14 +22317,35 @@
       if(domain.indexOf('http://')===0)domain=domain.replace('http://','');
       if(domain.indexOf('.atlassian.net')<0&&domain.indexOf('.')<0)domain=domain+'.atlassian.net';
 
-      toast('<i class="ti ti-info-circle ti-cyan"></i> Jira live-connect is not available. Please upload your Jira issues.json file instead (Jira → Filters → Export as JSON).','ok');
-      // v67.29 (JSON-only): Live proxy-based connect was removed. KABi is a pure
-      // static app — there is no /api/proxy endpoint. Users export their Jira
-      // filter as JSON and upload the file through the connector's file input.
-      // The token/apiKey field is preserved on stored connectors for backward
-      // compatibility, but it is no longer used for any network call.
-      conn.isConnected=false;conn.open=true;_svConn();
-      var el2=document.getElementById('pe-admin-body');if(el2)renderPEConnectors(el2);
+      // v75: LIVE connect via the KABi Integration Proxy (backend/). When the
+      // proxy is running with Jira creds in its .env, this is a real server-side
+      // fetch (no browser CORS). If the proxy is unreachable or Jira isn't
+      // configured there, fall back to the JSON-upload path exactly as before.
+      // The proxy holds the Jira credentials — the app's token field is not sent.
+      var _proxy = (window.KABI_PROXY_URL || 'http://localhost:8100').replace(/\/+$/, '');
+      var _jql = conn.jiraJql || 'ORDER BY updated DESC';
+      toast('<i class="ti ti-loader ti-cyan"></i> Connecting to Jira via proxy…', 'ok');
+      fetch(_proxy + '/connectors/jira/search?jql=' + encodeURIComponent(_jql) + '&max_results=100')
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); })
+        .then(function (res) {
+          if (res.ok && res.body && Array.isArray(res.body.issues)) {
+            conn._jiraData = res.body;
+            _processJiraData(conn);
+            conn.isConnected = true; conn.open = true; _svConn();
+            toast('<i class="ti ti-circle-check ti-green"></i> Jira connected — ' + res.body.issues.length + ' issues fetched live via proxy.', 'ok');
+          } else {
+            var d = res.body && res.body.detail;
+            var why = d ? ' (' + (typeof d === 'string' ? d : JSON.stringify(d)) + ')' : '';
+            conn.isConnected = false; conn.open = true; _svConn();
+            toast('<i class="ti ti-info-circle ti-cyan"></i> Live Jira not available' + why + '. Upload your Jira issues.json instead (Jira → Filters → Export as JSON).', 'ok');
+          }
+          var e1 = document.getElementById('pe-admin-body'); if (e1) renderPEConnectors(e1);
+        })
+        .catch(function () {
+          conn.isConnected = false; conn.open = true; _svConn();
+          toast('<i class="ti ti-info-circle ti-cyan"></i> Jira proxy not reachable — start the backend (backend/, ' + _proxy + ') for live connect, or upload your Jira issues.json instead.', 'ok');
+          var e2 = document.getElementById('pe-admin-body'); if (e2) renderPEConnectors(e2);
+        });
     }
 
     // ═══ v67.18 FIX: Reusable Jira metrics calculator ═══
@@ -22557,7 +22686,30 @@
           if(btn){btn.disabled=false;btn.innerHTML='<i class=\"ti ti-bolt ti-amber\"></i> Connect';}
         });
       }
-      fetchPage();
+      // v75: prefer the KABi Integration Proxy (backend/) when reachable — it keeps
+      // the Pipedrive token server-side (out of the browser URL / history). If the
+      // proxy is down or Pipedrive isn't configured there, fall back to the direct
+      // api.pipedrive.com call (fetchPage) — the behaviour that works today.
+      var _pdProxy = (window.KABI_PROXY_URL || 'http://localhost:8100').replace(/\/+$/, '');
+      fetch(_pdProxy + '/connectors/pipedrive/deals?status=all_not_deleted&limit=500')
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+        .then(function (res) {
+          if (res.ok && res.body && Array.isArray(res.body.data)) {
+            var result = KABiPipedrive.importJSON(JSON.stringify({ success: true, data: res.body.data }));
+            if (result.ok) {
+              var c = _conns.find(function (x) { return x.id === connId; });
+              if (c) { c.isConnected = true; c.open = true; _svConn(); }
+              try { pipedriveAudit('proxy_import', { deals: result.stats.importedCount, reps: result.stats.repCount }); } catch (e) {}
+              _lastSyncTs = Date.now(); _syncStart();
+              toast('<i class="ti ti-circle-check ti-green"></i> Pipedrive synced via proxy — ' + result.stats.importedCount + ' deals · ' + result.stats.repCount + ' reps', 'ok');
+              var pb = document.getElementById('pe-admin-body'); if (pb) renderPEConnectors(pb);
+              if (typeof renderSalesPerformance === 'function') { try { renderSalesPerformance(); } catch (e) {} }
+              return;
+            }
+          }
+          fetchPage(); // proxy reachable but no usable data / not configured → direct
+        })
+        .catch(function () { fetchPage(); }); // proxy unreachable → direct (works today)
     }
     function _connDis(id){var c=_conns.find(function(x){return x.id===id;});if(!c)return;c.isConnected=false;c.manualDisconnect=true;_svConn();
       // v67 Sprint 7: stop auto-sync only if NO other connectors are syncing
@@ -25071,7 +25223,7 @@
       const isWindowActive = openQ && cfg.openDate && cfg.closeDate &&
                              today >= cfg.openDate && today <= cfg.closeDate;
       const targets = Array.isArray(cfg.targetAudiences) ? cfg.targetAudiences : ['all'];
-      const targetLabels = { 'all': 'All Employees', 'staff': 'Staff Level', 'mid-management': 'Management', 'top-management': 'Top Management' };
+      const targetLabels = (function () { var m = { 'all': 'All Employees', 'staff': 'Staff Level', 'mid-management': 'Management', 'top-management': 'Top Management' }; _KABI_LEVEL_ORDER.forEach(function (lvl) { m[_peAudienceKey(lvl)] = lvl; }); return m; })();
       const targetDisplay = targets.includes('all') ? 'All Employees' : targets.map(t => targetLabels[t]).join(' + ');
 
       el.innerHTML = `
@@ -25133,12 +25285,7 @@
           <div style="grid-column:1/-1">
             <label style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px"><i class=\"ti ti-target\"></i> Target Audience (select one or more)</label>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
-              ${[
-                { v: 'all',            l: 'All Employees',     i: '<i class=\"ti ti-users\"></i>' },
-                { v: 'top-management', l: 'Top Management',    i: '<i class=\"ti ti-crown ti-amber\"></i>' },
-                { v: 'mid-management', l: 'Management', i: '<i class=\"ti ti-briefcase\"></i>' },
-                { v: 'staff',          l: 'Staff Level',       i: '<i class=\"ti ti-user\"></i>' }
-              ].map(opt => {
+              ${_peAudienceOptions().map(opt => {
                 const checked = targets.includes(opt.v);
                 return `<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${checked ? 'rgba(0,194,224,.12)' : 'rgba(255,255,255,.03)'};border:1px solid ${checked ? 'var(--cyan)' : 'rgba(255,255,255,.08)'};border-radius:8px;cursor:pointer;transition:all .2s">
                   <input type="checkbox" ${checked ? 'checked' : ''} onchange="pePeToggleTarget('${opt.v}')" style="accent-color:var(--cyan);cursor:pointer">
@@ -25203,14 +25350,28 @@
       }).join('')}</div>`;
     }
 
+    // ═══ v75: Target Audience is now driven by the canonical 5-level model ═══
+    // Audience keys are derived from the level name (Entry…Executive) so the
+    // selector is perfectly linked to peGetEmpLevel. Legacy 3-tier keys
+    // (top-management/mid-management/staff) still resolve for old saved configs.
+    function _peAudienceKey(lvl) { return String(lvl || '').toLowerCase().replace(/[^a-z]/g, ''); }
+    function _peAudienceOptions() {
+      var opts = [{ v: 'all', l: 'All Employees', i: '<i class="ti ti-users"></i>' }];
+      // high → low, matching the level hierarchy
+      _KABI_LEVEL_ORDER.slice().reverse().forEach(function (lvl) {
+        opts.push({ v: _peAudienceKey(lvl), l: lvl, i: (typeof kabiLevelIcon === 'function' ? kabiLevelIcon(lvl) : '<i class="ti ti-user"></i>') });
+      });
+      return opts;
+    }
     // Count employees matching target audience
-    // Check if employee matches a single target identifier (based on employee level, new 3-tier system)
+    // Check if an employee falls in a target audience (by canonical 5-level).
     function peEmpMatchesTarget(emp, target) {
       if (!emp || !target || target === 'all') return true;
       const level = peGetEmpLevel(emp);
-      if (target === 'top-management') return level === 'Top Management';
-      if (target === 'mid-management') return level === 'Management';
-      if (target === 'staff')          return level === 'Staff Level';
+      if (_peAudienceKey(level) === target) return true;                                       // 5-level canonical
+      if (target === 'top-management') return level === 'Executive' || level === 'Advanced';   // legacy back-compat
+      if (target === 'mid-management') return level === 'First-level management';
+      if (target === 'staff')          return level === 'Entry' || level === 'Intermediate';
       return false;
     }
 
@@ -25401,12 +25562,7 @@
         <div>
           <label style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px"><i class=\"ti ti-target\"></i> Target Audience (select one or more)</label>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
-            ${[
-              { v: 'all',            l: 'All Employees',     i: '<i class=\"ti ti-users\"></i>' },
-              { v: 'top-management', l: 'Top Management',    i: '<i class=\"ti ti-crown ti-amber\"></i>' },
-              { v: 'mid-management', l: 'Management', i: '<i class=\"ti ti-briefcase\"></i>' },
-              { v: 'staff',          l: 'Staff Level',       i: '<i class=\"ti ti-user\"></i>' }
-            ].map(opt => {
+            ${_peAudienceOptions().map(opt => {
               const targets = Array.isArray(cfg.targetAudiences) ? cfg.targetAudiences : ['all'];
               const checked = targets.includes(opt.v);
               return `<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${checked ? 'rgba(34,197,94,.12)' : 'rgba(255,255,255,.03)'};border:1px solid ${checked ? '#22c55e' : 'rgba(255,255,255,.08)'};border-radius:8px;cursor:pointer;transition:all .2s">
@@ -25452,51 +25608,28 @@
         `}
       </div>
 
-      <!-- v66.8: Assessment Links — 3 Technical (per level) + 1 Behavioral (unified) -->
-      <div style="background:rgba(10,31,82,.5);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px;margin-bottom:20px;backdrop-filter:blur(12px)">
-        <h4 style="font-size:13px;font-weight:800;color:var(--white);margin-bottom:6px"><i class=\"ti ti-link\"></i> Assessment Links</h4>
-        <p style="font-size:10px;color:var(--text-muted);margin-bottom:14px">
-          <strong style="color:#216AB1">Technical INVIEWS:</strong> 3 links — one per management level. Each link is shared by all job titles within that level.<br>
-          <strong style="color:#3BB691">Behavioral INVIEWS:</strong> 1 unified link for all employees regardless of level.
-        </p>
-
-        <!-- Technical links section -->
-        <div style="background:rgba(33,106,177,.04);border:1px solid rgba(33,106,177,.2);border-radius:10px;padding:14px;margin-bottom:12px">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <span style="font-size:16px"><i class=\"ti ti-brain\"></i></span>
-            <strong style="font-size:12px;color:#216AB1">Technical INVIEWS — per Level</strong>
-          </div>
-          ${[
-            { level: 'Top Management', icon: '<i class="ti ti-crown"></i>', color: '#fbbf24' },
-            { level: 'Management',     icon: '<i class="ti ti-briefcase"></i>', color: 'var(--cyan)' },
-            { level: 'Staff Level',    icon: '<i class="ti ti-clipboard-list"></i>', color: '#a78bfa' }
-          ].map(lv => {
-            const url = (cfg.technicalLinks && cfg.technicalLinks[lv.level]) || '';
-            const slug = lv.level.replace(/\s/g, '');
-            return `
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-              <span style="display:flex;align-items:center;gap:5px;min-width:160px;font-size:11px;color:${lv.color};font-weight:700">${lv.icon} ${lv.level}</span>
-              <input type="url" id="inviews-tech-${slug}" value="${url}" placeholder="https://app.inviews.io/tech-${lv.level.toLowerCase().replace(/\s/g,'-')}" onchange="peSaveInviewsTechLink('${lv.level}', this.value)" style="flex:1;min-width:220px;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--white);font-size:10.5px;font-family:'SF Mono',Consolas,monospace;outline:none">
-              ${url ? `<button onclick="window.open('${url.replace(/'/g, "\\'")}','_blank')" style="padding:7px 12px;background:rgba(33,106,177,.12);color:#216AB1;border:1px solid rgba(33,106,177,.3);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit"><i class=\"ti ti-flask\"></i> Test</button>` : ''}
-            </div>`;
-          }).join('')}
+      <!-- v75: Assessment Links — 5 Technical (per canonical level) + 1 Behavioral (unified) -->
+      <div style="background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 8px 22px -16px rgba(10,31,82,.2))">
+        <h4 style="font-size:14px;font-weight:800;color:var(--text-primary);margin-bottom:4px;display:flex;align-items:center;gap:7px"><i class=\"ti ti-link\"></i> Assessment links</h4>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:16px">Technical links vary by level; the behavioural link is unified for all employees.</p>
+        ${(function () {
+          var _slug = { 'Entry': 'entry', 'Intermediate': 'intermediate', 'First-level management': 'first-level', 'Advanced': 'advanced', 'Executive': 'executive' };
+          return _KABI_LEVEL_ORDER.map(function (level) {
+            var url = (cfg.technicalLinks && cfg.technicalLinks[level]) || '';
+            var s = _slug[level] || level.toLowerCase().replace(/[^a-z]+/g, '-');
+            return '<div style="margin-bottom:14px">'
+              + '<label style="display:block;font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:6px">Technical — ' + level + '</label>'
+              + '<input type="url" id="inviews-tech-' + s + '" value="' + String(url).replace(/"/g, '&quot;') + '" placeholder="https://inviews.kabi.ai/tech/' + s + '" onchange="peSaveInviewsTechLink(\'' + level.replace(/'/g, "\\'") + '\', this.value)" style="width:100%;padding:11px 13px;background:var(--surface-2,#eef2f9);border:1px solid var(--glass-border,#e5eaf3);border-radius:9px;color:var(--text-primary);font-size:12px;font-family:var(--mono);outline:none;box-sizing:border-box">'
+              + '</div>';
+          }).join('');
+        })()}
+        <div style="margin-bottom:4px">
+          <label style="display:block;font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:6px">Behavioural — all employees (unified)</label>
+          <input type="url" id="inviews-behav" value="${String(cfg.behavioralLink || '').replace(/"/g, '&quot;')}" placeholder="https://inviews.kabi.ai/behavioral" onchange="peSaveInviewsBehavLink(this.value)" style="width:100%;padding:11px 13px;background:var(--surface-2,#eef2f9);border:1px solid var(--glass-border,#e5eaf3);border-radius:9px;color:var(--text-primary);font-size:12px;font-family:var(--mono);outline:none;box-sizing:border-box">
         </div>
-
-        <!-- Behavioral link section -->
-        <div style="background:rgba(59,182,145,.04);border:1px solid rgba(59,182,145,.2);border-radius:10px;padding:14px">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <span style="font-size:16px"><i class=\"ti ti-heart ti-green\"></i></span>
-            <strong style="font-size:12px;color:#3BB691">Behavioral INVIEWS — Unified</strong>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <span style="display:flex;align-items:center;gap:5px;min-width:160px;font-size:11px;color:#3BB691;font-weight:700"><i class=\"ti ti-world\"></i> All Employees</span>
-            <input type="url" id="inviews-behav" value="${cfg.behavioralLink || ''}" placeholder="https://app.inviews.io/behavioral" onchange="peSaveInviewsBehavLink(this.value)" style="flex:1;min-width:220px;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--white);font-size:10.5px;font-family:'SF Mono',Consolas,monospace;outline:none">
-            ${cfg.behavioralLink ? `<button onclick="window.open('${(cfg.behavioralLink || '').replace(/'/g, "\\'")}','_blank')" style="padding:7px 12px;background:rgba(59,182,145,.12);color:#3BB691;border:1px solid rgba(59,182,145,.3);border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit"><i class=\"ti ti-flask\"></i> Test</button>` : ''}
-          </div>
-        </div>
-
-        <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-          <button onclick="inviewsNotifyAll()" style="padding:9px 16px;background:rgba(0,194,224,.12);color:var(--cyan);border:1px solid rgba(0,194,224,.3);border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit"><i class=\"ti ti-mail\"></i> Send Notifications to All Employees</button>
+        <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+          <button onclick="inviewsNotifyAll()" style="padding:9px 16px;background:rgba(0,194,224,.1);color:#0891a8;border:1px solid rgba(0,194,224,.3);border-radius:9px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit"><i class=\"ti ti-mail\"></i> Notify all employees</button>
+          <button onclick="peSaveInviewsSettings()" style="padding:9px 18px;background:linear-gradient(135deg,#0a1f52,#173a86);color:#fff;border:none;border-radius:9px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit"><i class=\"ti ti-device-floppy\"></i> Save settings</button>
         </div>
       </div>
 
@@ -25545,6 +25678,29 @@
       _persistInviewsConfig();
       toast('Behavioral link saved',  'ok');
     }
+
+    // v75: "Save settings" — read all 5 technical inputs + the behavioural input
+    // from the DOM, validate, persist in one shot, and toast.
+    function peSaveInviewsSettings() {
+      try {
+        var _slug = { 'Entry': 'entry', 'Intermediate': 'intermediate', 'First-level management': 'first-level', 'Advanced': 'advanced', 'Executive': 'executive' };
+        INVIEWS_CONFIG.technicalLinks = INVIEWS_CONFIG.technicalLinks || {};
+        var bad = false;
+        _KABI_LEVEL_ORDER.forEach(function (level) {
+          var el = document.getElementById('inviews-tech-' + (_slug[level] || level.toLowerCase().replace(/[^a-z]+/g, '-')));
+          if (!el) return;
+          var v = (el.value || '').trim();
+          if (v && !/^https?:\/\//i.test(v)) { bad = true; return; }
+          INVIEWS_CONFIG.technicalLinks[level] = v;
+        });
+        var beh = document.getElementById('inviews-behav');
+        if (beh) { var bv = (beh.value || '').trim(); if (bv && !/^https?:\/\//i.test(bv)) bad = true; else INVIEWS_CONFIG.behavioralLink = bv; }
+        if (bad) { toast('Some links are invalid — URLs must start with http:// or https://', 'err'); return; }
+        _persistInviewsConfig();
+        toast('<i class="ti ti-circle-check ti-green"></i> INVIEWS settings saved', 'ok');
+      } catch (e) { toast('Save failed: ' + e.message, 'err'); }
+    }
+    window.peSaveInviewsSettings = peSaveInviewsSettings;
 
     function inviewsNotifyAll() {
       if (!INVIEWS_CONFIG.enabled) { toast('Enable INVIEWS first',  'err'); return; }
@@ -28980,10 +29136,14 @@
       const body = document.getElementById('eval-body');
       const init = emp.name.split(' ').map(w2 => w2[0]).join('').slice(0, 2);
       const isJustPerItem = PE_CONFIG.justMode === 'per-item';
+      // v75: level-colored pill (consistent with the Employee Card)
+      const _elvl = peGetEmpLevel(emp);
+      const _elc = (typeof getLevelStyle === 'function' ? (getLevelStyle(_elvl) || {}).color : null) || '#00c2e0';
+      const _elIcon = (typeof kabiLevelIcon === 'function') ? kabiLevelIcon(_elvl) : '';
 
       let html = `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button onclick="peAutoSaveDraft();peRenderManagerEval()" style="display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.08);background:transparent;color:var(--text-muted);font-size:10px;cursor:pointer;font-family:inherit">← Back (auto-saves draft)</button>
       <button onclick="peAIReview('${emp.id}','MONITOR_PERFORMANCE')" title="Read connected systems + files and show evidence-based performance for this employee" style="display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:8px;border:1px solid rgba(0,194,224,.35);background:linear-gradient(135deg,rgba(0,194,224,.14),rgba(19,56,176,.1));color:var(--cyan);font-size:10px;font-weight:800;cursor:pointer;font-family:inherit"><i class="ti ti-robot"></i> AI Evidence Review</button></div>
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px"><div class="pe-emp-av" style="background:linear-gradient(135deg,var(--cyan),#1338b0);width:44px;height:44px;font-size:14px">${init}</div><div><h2 style="font-size:16px;font-weight:900;color:var(--white)">${emp.name}</h2><p style="font-size:10px;color:var(--text-muted)">${emp.title} · ${emp.dept} · <span style="padding:1px 6px;border-radius:10px;font-size:8px;font-weight:700;background:rgba(0,194,224,.1);color:var(--cyan)">${peGetEmpLevel(emp)}</span></p><p style="font-size:9px;color:var(--text-muted);margin-top:2px">${PE_QUARTERS[openQ].label} · KPIs ${w.objectives || 0}% | INVIEWS ${w.competencies || 0}% | Digital ${w.digitalAdoption || 0}% | Initiatives ${w.initiatives || 0}%</p></div></div>`;
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px"><div class="pe-emp-av" style="background:linear-gradient(135deg,var(--cyan),#1338b0);width:44px;height:44px;font-size:14px">${init}</div><div><h2 style="font-size:16px;font-weight:900;color:var(--white)">${emp.name}</h2><p style="font-size:10px;color:var(--text-muted)">${emp.title} · ${emp.dept} · <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:20px;font-size:8.5px;font-weight:800;background:${_elc}1f;color:${_elc};border:1px solid ${_elc}55">${_elIcon} ${_elvl}</span></p><p style="font-size:9px;color:var(--text-muted);margin-top:2px">${PE_QUARTERS[openQ].label} · KPIs ${w.objectives || 0}% | INVIEWS ${w.competencies || 0}% | Digital ${w.digitalAdoption || 0}% | Initiatives ${w.initiatives || 0}%</p></div></div>`;
 
       // Build sections
       function buildSection(id, icon, title, items, type, expanded, readonly) {
@@ -30042,13 +30202,13 @@
         ],
         responses: {
           health: { q: "Give me an organizational health snapshot.",
-                    r: "Across all 28 functions, here's the picture: evaluation completion is on track, eNPS is trending up quarter-over-quarter, and Tech & Commercial show the strongest KPI alignment. The areas needing attention are: HC operations (calibration variance) and BD-Sales (target hit rate below 65%). I can drill into any of these — just ask." },
+                    r: "I read organizational health only from your connected, authorized sources — evaluation completion, KPI alignment by pillar, and the areas needing attention. I won't quote a figure that isn't backed by a live source; a function with no connected data shows as “—”. Ask me to open any pillar or department and I'll pull its real numbers." },
           risks:  { q: "What are the top risks this quarter?",
-                    r: "Three risks stand out: (1) burnout pattern in 4 employees flagged by the Insight Analyzer — concentrated in Tech; (2) calibration drift between two HC managers — Evaluation Calibrator suggests a 1:1 sync; (3) one critical KPI miss in Account Management. Want me to draft a board summary?" },
+                    r: "I surface risks only from real signals — burnout patterns from the wellbeing check-ins, calibration drift from submitted ratings, and KPI misses against approved targets. I compute these live from what your data actually shows; nothing here is pre-scripted. Want a board summary built from the real findings?" },
           departments: { q: "Compare our departments.",
-                         r: "Tech leads in KPI completion (98%) but has the highest workload variance. Commercial has strong outcomes but inconsistent leading indicators. HC is balanced. Operations is recovering. I can pull the full table with each department's score, headcount, and quarterly trend if you want it." },
+                         r: "I compare departments on their real KPI outcomes, normalized where possible for level, target difficulty and data coverage — from connected sources only. Any department without a connected source shows as “—” rather than an estimate. Want the live comparison table?" },
           trends: { q: "What performance trends should I watch?",
-                    r: "Three trends I'm tracking: (1) consistent quarter-over-quarter improvement in product delivery cycles, (2) plateau in client-success scores — worth investigating, (3) growing collaboration breadth across functions — the network graph shows 23% more cross-functional ties versus last quarter." }
+                    r: "I track trends only where a source backs them — delivery cycles, client-success scores, and cross-functional collaboration from connector metadata. I'll pull the current live values on request; I never present a trend without a real, authorized source." }
         },
         fallback: "I can help with company-wide performance, department comparisons, risk signals, or strategic trends. Try one of the suggestions above, or ask me anything specific."
       },
@@ -30064,11 +30224,11 @@
         ],
         responses: {
           calibration: { q: "Are there any calibration issues this cycle?",
-                         r: "The Evaluation Calibrator detected 2 patterns to review: (1) one manager rates consistently 0.4 above the company average — possible halo effect, (2) one team has narrow rating distribution (all 3.8–4.2) suggesting central tendency bias. Both are advisory, not auto-flagged. Want me to draft a 1:1 conversation for either?" },
+                         r: "The Evaluation Calibrator reviews the actual submitted ratings this cycle for patterns — possible leniency or central tendency — normalized for level, function and target difficulty. It's advisory and flags nothing without evidence. Want me to run it on the current submissions and show only what the data supports?" },
           cycle: { q: "What's our evaluation cycle progress?",
-                   r: "Q-cycle status: managers have completed 64% of evaluations. 12 are still pending. Average completion time per evaluation is trending down (good). The longest-pending one is 8 days old — worth a nudge." },
+                   r: "I'll pull live cycle progress — evaluations submitted vs pending and the oldest outstanding one — from the current cycle records. I only report counts that come from real submissions; if the cycle isn't open yet I'll say so rather than estimate." },
           pending: { q: "What needs my attention?",
-                     r: "Three things on your plate: (1) 2 edit requests pending HC approval, (2) 1 calibration variance flag, (3) 4 employees with no manager assigned — likely after recent restructure. I can guide you through each." },
+                     r: "I'll read what actually needs you now — pending edit requests, calibration flags, and any active accounts without a manager mapping — live from the system. Nothing here is a placeholder; each item links to the real record." },
           weights: { q: "Remind me about the evaluation weights.",
                      r: "Distribution weights are configured in Super Admin → Weights and become active when the evaluation cycle opens. I'll only share specific numbers once the cycle is active. Any component with 0% is excluded automatically. Final results display as Class + % out of 120%." }
         },
@@ -30134,6 +30294,243 @@
         if (reports.length > 0) return AI_PERSONAS.manager;
       }
       return AI_PERSONAS.employee;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       v75 — COPILOT AUTHORIZATION LAYER (Phase 2 of the governance spec)
+       ───────────────────────────────────────────────────────────────────
+       PERSONA (getActivePersona) controls TONE/UI only.
+       AUTHORIZATION (this layer) controls DATA/TOOLS — derived from role +
+       real flags, NOT from job title or the shown persona. Default-deny.
+       NOTE: this is a client-side guardrail. The real security boundary is
+       the proxy (Phase 3) — never rely on client JS alone for enforcement.
+       ═══════════════════════════════════════════════════════════════════ */
+    // Full capability keyset (default-deny — everything false unless granted).
+    var _KABI_CAP_KEYS = [
+      'view_self_profile','view_self_assigned_kpis','view_self_final_result',
+      'view_direct_reports','view_indirect_reports','view_team_kpi_progress',
+      'view_department_aggregates','view_org_aggregates','view_org_individual_results',
+      'generate_kpis','validate_kpis','submit_kpis','review_kpi_submissions','approve_kpi_submissions',
+      'evaluate_direct_reports','submit_evaluations','review_all_evaluations','approve_evaluations',
+      'request_score_edit','approve_score_edit','manage_evaluation_cycles','manage_weights_and_scoring',
+      'manage_inviews','manage_connectors','manage_people_and_access','release_results',
+      'export_team_data','export_org_data','send_notifications',
+      'view_team_performance_tracker','view_department_insights','view_calibration_insights'
+    ];
+    function _kabiEmptyCaps() { var c = {}; _KABI_CAP_KEYS.forEach(function (k) { c[k] = false; }); return c; }
+
+    // Build the immutable AUTH_CONTEXT for a user from role + real flags.
+    function kabiBuildAuthContext(user) {
+      user = user || (typeof me !== 'undefined' ? me : null);
+      if (!user || !user.email) return null;
+      var email = String(user.email).toLowerCase();
+      var u = (typeof USERS !== 'undefined' && USERS[email]) ? USERS[email] : user;
+      var emp = (typeof PE_EMPLOYEES !== 'undefined') ? PE_EMPLOYEES.find(function (e) { return (e.email || '').toLowerCase() === email; }) : null;
+      var role = String(u.role || user.role || '').toLowerCase();
+      var isCEO = !!(u.isCEO || role === 'ceo');
+      var isFormer = !!(emp && emp.isFormer);
+      var isFTE = !emp || !emp.employmentType || emp.employmentType === 'fte';
+      var isSuper = role === 'pm_super_admin';
+      var isHCAdmin = role === 'hc' || role === 'hc_admin';
+      var scopedAdminRoles = ['product_admin', 'tech_admin', 'commercial_admin', 'ops_admin', 'finance_admin'];
+      var isScopedAdmin = scopedAdminRoles.indexOf(role) >= 0;
+      var directs = (emp && typeof peGetDirectReports === 'function') ? peGetDirectReports(email).filter(function (e) { return !e.isFormer; }) : [];
+      var directIds = directs.map(function (e) { return e.id; });
+      var allRep = (typeof peGetAllReports === 'function') ? peGetAllReports(email).filter(function (e) { return !e.isFormer; }) : directs;
+      var indirectIds = allRep.map(function (e) { return e.id; }).filter(function (id) { return directIds.indexOf(id) < 0; });
+      var hasMgrPortal = !!(u.hasManagerPortal);
+      var isManager = hasMgrPortal || directs.length > 0;
+      var kpiAccess = !!(u.kpiAccess || (emp && emp.kpiAccess));
+      var permittedFns = (u.fnAccess && u.fnAccess.length) ? u.fnAccess.slice() : (emp && emp.fnAccess ? emp.fnAccess.slice() : (emp && emp.fn ? (Array.isArray(emp.fn) ? emp.fn.slice() : [emp.fn]) : []));
+      var permittedDepts = emp && emp.dept ? [emp.dept] : [];
+      var resultsReleased = !!(typeof PE_CONFIG !== 'undefined' && PE_CONFIG.resultsVisible);
+      var portalMode = (typeof window !== 'undefined' && window.__copilotPortalMode)
+        || (isFormer ? 'former' : isCEO ? 'executive' : (isSuper || isHCAdmin || isScopedAdmin) ? 'admin' : isManager ? 'manager' : 'employee');
+
+      var caps = _kabiEmptyCaps();
+      // Everyone active gets self-service
+      if (!isFormer) {
+        caps.view_self_profile = true;
+        caps.view_self_assigned_kpis = true;
+        caps.view_self_final_result = resultsReleased;
+      }
+      // Manager scope (FTE only for formal evaluation)
+      if (isManager && !isFormer) {
+        caps.view_direct_reports = true;
+        caps.view_indirect_reports = !!(u.viewIndirect || (emp && emp.viewIndirect));
+        caps.view_team_kpi_progress = !!(emp && emp.teamTracker);
+        caps.view_team_performance_tracker = !!(emp && emp.teamTracker);
+        caps.view_department_insights = !!(emp && emp.deptInsight);
+        caps.evaluate_direct_reports = true;
+        caps.submit_evaluations = true;
+        caps.request_score_edit = true;
+        caps.export_team_data = true;
+        caps.send_notifications = true;
+        if (kpiAccess) { caps.generate_kpis = true; caps.validate_kpis = true; caps.submit_kpis = true; }
+      }
+      // Scoped function admin — KPI framework within permitted functions only
+      if (isScopedAdmin && !isFormer) {
+        caps.generate_kpis = true; caps.validate_kpis = true;
+        caps.review_kpi_submissions = true; caps.view_department_aggregates = true;
+      }
+      // Scoped HC admin — subset governed by explicit flags
+      if (isHCAdmin && !isFormer) {
+        caps.review_kpi_submissions = true; caps.review_all_evaluations = true;
+        caps.view_calibration_insights = true; caps.view_department_aggregates = true;
+        caps.send_notifications = true;
+        if (u.viewOrg) caps.view_org_aggregates = true;
+      }
+      // HC Super Admin — full org governance
+      if (isSuper) {
+        _KABI_CAP_KEYS.forEach(function (k) { caps[k] = true; });
+      }
+      // CEO — org-wide VIEW + strategic, but NOT HC admin actions unless flagged
+      if (isCEO) {
+        caps.view_org_aggregates = true; caps.view_department_aggregates = true;
+        caps.view_org_individual_results = true; caps.view_calibration_insights = true;
+        caps.review_kpi_submissions = true; caps.export_org_data = true;
+        // explicitly NOT granted by title: release_results, manage_*, approve_* — need a flag
+        if (u.hcActions) { caps.manage_weights_and_scoring = true; caps.manage_evaluation_cycles = true; caps.release_results = true; }
+      }
+      // Former employee — everything denied (self-service too)
+      if (isFormer) { caps = _kabiEmptyCaps(); }
+      // Non-FTE — never evaluable / never generates formal KPI weight
+      if (!isFTE) {
+        caps.evaluate_direct_reports = caps.submit_evaluations = false;
+        caps.generate_kpis = caps.validate_kpis = caps.submit_kpis = false;
+      }
+
+      return {
+        user_id: user.email, employee_id: emp ? emp.id : null, corporate_email: email,
+        role: role, portal_mode: portalMode, is_fte: isFTE, is_former: isFormer,
+        is_ceo: isCEO, is_super_admin: isSuper,
+        direct_report_ids: directIds, indirect_report_ids: indirectIds,
+        permitted_function_ids: permittedFns, permitted_department_ids: permittedDepts,
+        results_released: resultsReleased, capabilities: caps
+      };
+    }
+
+    // Capability check (default-deny).
+    function kabiCan(ctx, cap) {
+      ctx = ctx || kabiBuildAuthContext();
+      return !!(ctx && ctx.capabilities && ctx.capabilities[cap] === true);
+    }
+
+    // Resolve the MINIMUM Copilot policy for a request (orchestrator). Authorization,
+    // not title: a Deputy CEO/COO gets an executive PERSONA (tone) but only
+    // 'executive_non_ceo' authorization unless role === 'ceo'.
+    function kabiResolveCopilotPolicy(ctx, opts) {
+      ctx = ctx || kabiBuildAuthContext();
+      opts = opts || {};
+      if (!ctx) return 'employee';
+      if (ctx.is_former) return 'former';
+      if (!ctx.is_fte) return 'non_fte';
+      // Portal mode wins for self-service (a manager/CEO in employee mode is an employee)
+      if (opts.portalMode === 'employee' || ctx.portal_mode === 'employee') {
+        if (opts.dataScope === 'team' || opts.dataScope === 'org') { /* fall through to real policy */ }
+        else return 'employee';
+      }
+      if (ctx.role === 'pm_super_admin') return 'hc_super_admin';
+      if (ctx.role === 'hc' || ctx.role === 'hc_admin') return 'hc_scoped';
+      if (['product_admin', 'tech_admin', 'commercial_admin', 'ops_admin', 'finance_admin'].indexOf(ctx.role) >= 0) return 'scoped_admin';
+      if (ctx.role === 'ceo' || ctx.is_ceo) return 'ceo';
+      if (ctx.direct_report_ids.length > 0 || ctx.role === 'manager') return 'manager';
+      return 'employee';
+    }
+
+    // Is a given employee inside the requester's authorized scope?
+    function kabiEmpInScope(ctx, empId) {
+      ctx = ctx || kabiBuildAuthContext();
+      if (!ctx) return false;
+      if (ctx.is_super_admin || kabiCan(ctx, 'view_org_individual_results')) return true;
+      if (String(ctx.employee_id) === String(empId)) return true; // self
+      if (ctx.direct_report_ids.map(String).indexOf(String(empId)) >= 0) return true;
+      if (kabiCan(ctx, 'view_indirect_reports') && ctx.indirect_report_ids.map(String).indexOf(String(empId)) >= 0) return true;
+      return false;
+    }
+
+    // Which capability each Copilot suggestion requires (null = always allowed /
+    // informational). Used to gate suggestions by AUTHORIZATION, not persona tone —
+    // so e.g. a COO (executive persona) without org access won't be offered
+    // org-wide suggestions. Spec: "no button/suggestion the user cannot perform".
+    var _SUG_CAP = {
+      health: 'view_org_aggregates', risks: 'view_org_aggregates', departments: 'view_department_aggregates', trends: 'view_org_aggregates',
+      calibration: 'view_calibration_insights', cycle: 'review_all_evaluations', pending: 'review_all_evaluations', weights: null,
+      team_list: 'view_direct_reports', kpi: null, feedback: null, '1on1': null,
+      growth: null, understand: null, goals: null, wellbeing: null
+    };
+    // Map the orchestrator policy → which persona's suggestion set to show.
+    // (Persona tone/welcome still comes from getActivePersona; suggestions come
+    //  from AUTHORIZATION policy, so tone and authorization stay separate.)
+    function _kabiSugSetForPolicy(policy) {
+      var m = { hc_super_admin: 'hc', hc_scoped: 'hc', ceo: 'ceo', manager: 'manager', scoped_admin: 'manager', employee: 'employee', non_fte: 'employee', former: null };
+      var key = m[policy];
+      return key ? AI_PERSONAS[key] : null;
+    }
+
+    // Compact governance preamble for LLM calls — the master rules + this user's
+    // AUTH_CONTEXT, so any model call is authorization-aware and grounded (P4).
+    function kabiCopilotGovernancePreamble(ctx) {
+      ctx = ctx || kabiBuildAuthContext();
+      if (!ctx) return '';
+      var caps = Object.keys(ctx.capabilities).filter(function (k) { return ctx.capabilities[k]; });
+      return [
+        'KABi ROLE-AWARE COPILOT — AUTHORIZATION & GROUNDING (immutable).',
+        'Authorization comes ONLY from AUTH_CONTEXT below — never from job title, seniority, or the shown persona. Default-deny: if a capability is not listed, it is denied.',
+        'Never invent numbers, names, scores, targets, counts, risks or trends. Use only real, authorized source data; if none exist, say so. Never reveal data outside scope, unreleased results, wellbeing data in a performance context, Non-FTE in formal evaluation, former employees in manager scope, or credentials.',
+        'You are advisory: never approve/submit/release/rate/change configuration on your own; those require explicit user confirmation.',
+        'AUTH_CONTEXT: role=' + ctx.role + '; portal=' + ctx.portal_mode + '; fte=' + ctx.is_fte + '; former=' + ctx.is_former + '; results_released=' + ctx.results_released + '; direct_reports=' + ctx.direct_report_ids.length + '; indirect=' + ctx.indirect_report_ids.length + '; permitted_functions=' + JSON.stringify(ctx.permitted_function_ids) + '; capabilities=[' + caps.join(', ') + '].'
+      ].join('\n');
+    }
+
+    // Export the org roster the PROXY needs for server-side enforcement (P3):
+    // the source of truth for capability/scope resolution. Downloads kabi_roster.json
+    // → point the proxy's KABI_ROSTER_PATH at it (or feed your HRIS/DB in production).
+    // Levels are resolved canonically via peGetEmpLevel. Call with (false) to get the
+    // object without downloading.
+    function kabiExportRoster(download) {
+      var roster = { config: { resultsVisible: !!(typeof PE_CONFIG !== 'undefined' && PE_CONFIG.resultsVisible) }, users: {}, employees: [] };
+      if (typeof USERS !== 'undefined') {
+        Object.keys(USERS).forEach(function (email) {
+          var u = USERS[email] || {};
+          roster.users[String(email).toLowerCase()] = {
+            role: u.role || '', isCEO: !!u.isCEO, hasManagerPortal: !!u.hasManagerPortal,
+            kpiAccess: !!u.kpiAccess, fnAccess: u.fnAccess || [],
+            viewIndirect: !!u.viewIndirect, viewOrg: !!u.viewOrg, hcActions: !!u.hcActions
+          };
+        });
+      }
+      if (typeof PE_EMPLOYEES !== 'undefined') {
+        PE_EMPLOYEES.forEach(function (e) {
+          roster.employees.push({
+            id: e.id, email: String(e.email || '').toLowerCase(), name: e.name, title: e.title,
+            dept: e.dept, level: (typeof peGetEmpLevel === 'function') ? peGetEmpLevel(e) : e.level,
+            mgr: String(e.mgr || '').toLowerCase(), mgrName: e.mgrName,
+            employmentType: e.employmentType || 'fte', isFormer: !!e.isFormer,
+            teamTracker: !!e.teamTracker, deptInsight: !!e.deptInsight, kpiAccess: !!e.kpiAccess,
+            fn: e.fn, fnAccess: e.fnAccess || []
+          });
+        });
+      }
+      if (download !== false && typeof document !== 'undefined') {
+        try {
+          var blob = new Blob([JSON.stringify(roster, null, 2)], { type: 'application/json' });
+          var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+          a.download = 'kabi_roster.json'; document.body.appendChild(a); a.click(); a.remove();
+          if (typeof toast === 'function') toast('Exported kabi_roster.json (' + roster.employees.length + ' employees) — point the proxy KABI_ROSTER_PATH at it', 'ok');
+        } catch (e) { console.warn('[roster export]', e); }
+      }
+      return roster;
+    }
+
+    // Expose for the Copilot / future proxy handshake.
+    if (typeof window !== 'undefined') {
+      window.kabiBuildAuthContext = kabiBuildAuthContext;
+      window.kabiCan = kabiCan;
+      window.kabiResolveCopilotPolicy = kabiResolveCopilotPolicy;
+      window.kabiEmpInScope = kabiEmpInScope;
+      window.kabiCopilotGovernancePreamble = kabiCopilotGovernancePreamble;
+      window.kabiExportRoster = kabiExportRoster;
     }
 
     /* AI COPILOT LOGIC */
@@ -30211,7 +30608,23 @@
       }
 
       if (sugContainer) {
-        sugContainer.innerHTML = persona.sugs.map(s =>
+        // v75 (P4): suggestions come from the AUTHORIZATION policy, not the persona
+        // tone — and each is gated by capability. So a COO with an executive persona
+        // but manager-only authorization is offered manager suggestions, never org ones.
+        var _ctx = (typeof kabiBuildAuthContext === 'function') ? kabiBuildAuthContext() : null;
+        var _sugSource = persona;
+        if (_ctx && typeof kabiResolveCopilotPolicy === 'function') {
+          var _pol = kabiResolveCopilotPolicy(_ctx);
+          var _byPolicy = _kabiSugSetForPolicy(_pol);
+          if (_byPolicy) _sugSource = _byPolicy;
+          else if (_pol === 'former') _sugSource = { sugs: [] };
+        }
+        var _sugs = (_sugSource.sugs || []).filter(function (s) {
+          if (!_ctx) return true;
+          var cap = _SUG_CAP[s.id];
+          return !cap || kabiCan(_ctx, cap);
+        });
+        sugContainer.innerHTML = _sugs.map(s =>
           `<button class="sug-btn" onclick="handleAISug('${s.id}')">${s.icon} ${s.label}</button>`
         ).join('');
       }
@@ -30239,8 +30652,22 @@
     }
 
     function handleAISug(type) {
+      // v75 (P4): resolve the response from the AUTHORIZATION policy set (same
+      // source as the shown suggestions) and capability-gate the action, so a
+      // suggestion the user isn't authorized for returns a clean access-denied.
+      var _ctx = (typeof kabiBuildAuthContext === 'function') ? kabiBuildAuthContext() : null;
       const persona = getActivePersona();
-      const entry = persona.responses && persona.responses[type];
+      var _polPersona = persona;
+      if (_ctx && typeof kabiResolveCopilotPolicy === 'function') {
+        var _p = _kabiSugSetForPolicy(kabiResolveCopilotPolicy(_ctx));
+        if (_p) _polPersona = _p;
+      }
+      var _cap = _SUG_CAP[type];
+      if (_ctx && _cap && !kabiCan(_ctx, _cap)) {
+        addAIChat("I can’t access that under your current permissions. I can help with what your account allows — try one of the suggestions shown.", 'ai');
+        return;
+      }
+      const entry = (_polPersona.responses && _polPersona.responses[type]) || (persona.responses && persona.responses[type]);
       if (!entry) {
         addAIChat("I'm not sure how to handle that — try another suggestion.", 'ai');
         return;
@@ -40513,44 +40940,57 @@
     var rtl = isRtl();
     var light = isLightMode();
 
-    var cardBg = light ? '#F8FBFF' : 'rgba(255,255,255,.03)';
-    var cardBorder = light ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,.08)';
+    var cardBg = light ? '#ffffff' : 'rgba(255,255,255,.03)';
+    var cardBorder = light ? 'rgba(15,23,42,0.09)' : 'rgba(255,255,255,.08)';
+    var whyBg = light ? 'rgba(33,106,177,.05)' : 'rgba(255,255,255,.04)';
+    var mutedCol = light ? '#48566b' : '#94A3B8';
     var scoreColors = ['#EF4444', '#F59E0B', '#F59E0B', '#3BB691', '#216AB1', '#216AB1'];
+    // v75: coverage-dimension chip (Leading/Process/Lagging/Health), when the model tags it
+    var covColors = { Leading: '#00c2e0', Process: '#216ab1', Lagging: '#6d5bd0', Health: '#12a17a' };
 
     var html = '<div style="display:flex;flex-direction:column;gap:12px">';
     result.kpis.forEach(function (kpi, idx) {
       var scoreColor = scoreColors[kpi.expectedScore] || '#216AB1';
+      var cov = kpi.coverage || kpi.dimension || kpi.category || kpi.cat || '';
+      var covKey = cov ? (cov.charAt(0).toUpperCase() + cov.slice(1).toLowerCase()) : '';
+      var covChip = (covKey && covColors[covKey])
+        ? '<span style="flex-shrink:0;padding:3px 10px;border-radius:20px;font-size:9.5px;font-weight:800;background:' + covColors[covKey] + '1a;color:' + covColors[covKey] + ';border:1px solid ' + covColors[covKey] + '44">' + covKey + '</span>'
+        : '';
       html += [
         '<div style="',
-          'padding:14px 16px;border-radius:10px;',
+          'padding:15px 16px;border-radius:12px;',
           'background:' + cardBg + ';',
           'border:1px solid ' + cardBorder + ';',
+          (light ? 'box-shadow:0 1px 2px rgba(10,31,82,.05),0 8px 22px -18px rgba(10,31,82,.25);' : ''),
         '">',
-          '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:8px">',
+          '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:10px">',
             '<div style="',
-              'flex-shrink:0;width:34px;height:34px;border-radius:8px;',
-              'background:' + scoreColor + '22;color:' + scoreColor + ';',
+              'flex-shrink:0;width:36px;height:36px;border-radius:10px;',
+              'background:' + scoreColor + '1f;color:' + scoreColor + ';',
               'display:flex;align-items:center;justify-content:center;',
-              'font-weight:800;font-size:13px;border:1.5px solid ' + scoreColor + '55',
-            '">' + kpi.expectedScore + '/5</div>',
+              'font-weight:900;font-size:12px;font-family:var(--mono);border:1.5px solid ' + scoreColor + '55',
+            '" title="AI quality estimate">' + kpi.expectedScore + '/5</div>',
             '<div style="flex:1;min-width:0">',
-              '<div style="font-size:13px;font-weight:600;line-height:1.5;margin-bottom:6px;' + (rtl ? 'direction:rtl;text-align:right' : '') + '">',
-                escapeHtml(kpi.text),
-              '</div>',
-              '<div style="font-size:11px;opacity:.7;line-height:1.55;font-style:italic;white-space:pre-line;' + (rtl ? 'direction:rtl;text-align:right' : '') + '">',
-                (rtl ? '<i class=\"ti ti-bulb ti-amber\"></i> ' : '<i class=\"ti ti-bulb ti-amber\"></i> ') + escapeHtml(kpi.reasoning),
+              '<div style="display:flex;align-items:flex-start;gap:8px;justify-content:space-between">',
+                '<div style="font-size:13.5px;font-weight:700;line-height:1.5;' + (rtl ? 'direction:rtl;text-align:right' : '') + '">',
+                  escapeHtml(kpi.text),
+                '</div>',
+                covChip,
               '</div>',
             '</div>',
           '</div>',
-          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">',
+          '<div style="font-size:11px;color:' + mutedCol + ';line-height:1.55;white-space:pre-line;background:' + whyBg + ';border-radius:8px;padding:9px 11px;' + (rtl ? 'direction:rtl;text-align:right' : '') + '">',
+            '<strong style="color:' + scoreColor + ';font-weight:800">' + (rtl ? 'السبب: ' : 'Why: ') + '</strong>' + escapeHtml(kpi.reasoning),
+          '</div>',
+          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:11px">',
             '<button data-kpi-idx="' + idx + '" data-action="dismiss" style="',
-              'padding:5px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;',
-              'border:1px solid ' + cardBorder + ';background:transparent;color:inherit;opacity:.7',
+              'padding:6px 13px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;',
+              'border:1px solid ' + cardBorder + ';background:transparent;color:inherit;opacity:.7;font-family:inherit',
             '">' + (rtl ? 'تجاهل' : 'Dismiss') + '</button>',
             '<button data-kpi-idx="' + idx + '" data-action="use" style="',
-              'padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;',
-              'border:none;background:#216AB1;color:#fff',
-            '">' + (rtl ? 'استخدم هذا' : 'Use this') + '</button>',
+              'padding:6px 16px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:800;font-family:inherit;',
+              'border:none;background:linear-gradient(135deg,#216AB1,#3D3185);color:#fff;box-shadow:0 2px 8px rgba(33,106,177,.25)',
+            '">' + (rtl ? 'استخدم هذا' : '✓ Use this') + '</button>',
           '</div>',
         '</div>'
       ].join('');
@@ -40569,7 +41009,8 @@
           btn.innerHTML = rtl ? '<i class="ti ti-check ti-green"></i> تم الإدراج' : '<i class="ti ti-check ti-green"></i> Inserted';
           btn.style.background = '#3BB691';
         } else if (action === 'dismiss') {
-          btn.closest('div[style*="border-radius:10px"]').style.opacity = '0.4';
+          var _card = btn.closest('div[style*="border-radius:12px"]') || (btn.parentNode && btn.parentNode.parentNode);
+          if (_card) _card.style.opacity = '0.4';
           btn.style.pointerEvents = 'none';
           var sib = btn.previousElementSibling || btn.nextElementSibling;
           // disable sibling too
