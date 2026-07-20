@@ -21488,13 +21488,22 @@
       var currentKey = '';
       var providerName = 'mock';
       var isConnected = false;
+      var providerLabel = 'Basic';
       try {
         if (KABi.LLM) {
           if (!KABi.LLM.activeProvider) KABi.LLM.autoSelectProvider();
           providerName = KABi.LLM.activeProvider ? KABi.LLM.activeProvider.name : 'mock';
-          isConnected = providerName === 'real';
-          var stored = localStorage.getItem('kabi_llm_apiKey') || '';
+          // v75: connected = a valid key is set (was `providerName === 'real'`, which
+          // never matched the real name 'real-claude-direct' → status always wrong).
+          isConnected = !!(KABi.LLM.hasApiKey && KABi.LLM.hasApiKey());
+          // v75: read the correct localStorage key ('KABi_LLM_apiKey', was lowercase → always empty)
+          var stored = localStorage.getItem('KABi_LLM_apiKey') || '';
           if (stored) currentKey = stored.slice(0, 12) + '...' + stored.slice(-4);
+          // v75: label the actual backend from the key prefix
+          if (stored.indexOf('sk-ant-') === 0) providerLabel = 'Claude';
+          else if (stored.indexOf('sk-or-') === 0) providerLabel = 'OpenRouter';
+          else if (stored.indexOf('gsk_') === 0) providerLabel = 'Groq';
+          else if (stored.indexOf('sk-') === 0) providerLabel = 'Kimi';
         }
       } catch(e) {}
       var usage = (KABi.LLM && KABi.LLM.getUsage) ? KABi.LLM.getUsage() : {};
@@ -21510,7 +21519,7 @@
       <!-- Status cards -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:18px">
         <div style="padding:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;text-align:center">
-          <div style="font-size:20px;font-weight:900;color:${isConnected ? '#3BB691' : 'var(--text-muted)'}">${isConnected ? 'Claude' : 'Basic'}</div>
+          <div style="font-size:20px;font-weight:900;color:${isConnected ? '#3BB691' : 'var(--text-muted)'}">${providerLabel}</div>
           <div style="font-size:9px;color:var(--text-dim);margin-top:4px">Active Provider</div>
         </div>
         <div style="padding:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;text-align:center">
@@ -21525,9 +21534,9 @@
 
       <!-- API Key Input -->
       <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;margin-bottom:18px">
-        <div style="font-size:12px;font-weight:800;color:var(--white);margin-bottom:10px"><i class="ti ti-key" style="color:rgba(155,129,188,.85)"></i> Anthropic / OpenRouter / Groq API Key</div>
+        <div style="font-size:12px;font-weight:800;color:var(--white);margin-bottom:10px"><i class="ti ti-key" style="color:rgba(155,129,188,.85)"></i> Anthropic · OpenRouter · Groq · Kimi API Key</div>
         <div style="display:flex;gap:8px;align-items:center">
-          <input type="password" id="pe-ai-apikey" placeholder="sk-ant-… (Anthropic) · sk-or-… (OpenRouter) · gsk_… (Groq)" value="" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--white);font-family:'SF Mono',Consolas,monospace;font-size:11px;outline:none" />
+          <input type="password" id="pe-ai-apikey" placeholder="sk-ant-… (Anthropic) · sk-or-… (OpenRouter) · gsk_… (Groq) · sk-… (Kimi)" value="" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--white);font-family:'SF Mono',Consolas,monospace;font-size:11px;outline:none" />
           <button onclick="_peAISaveKey()" style="padding:10px 18px;background:linear-gradient(135deg,#9B81BC,#675EAA);color:white;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap"><i class="ti ti-device-floppy"></i> Save</button>
           ${isConnected ? '<button onclick="_peAIRemoveKey()" style="padding:10px 14px;background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-trash"></i></button>' : ''}
         </div>
@@ -21536,6 +21545,7 @@
           Anthropic key: <strong style="color:var(--text-muted)">console.anthropic.com → Settings → API Keys</strong> (sk-ant-…).<br>
           OpenRouter key: <strong style="color:var(--text-muted)">openrouter.ai → Keys</strong> (sk-or-…) — needs account credits; default model openai/gpt-5.6-terra.<br>
           Groq key: <strong style="color:var(--text-muted)">console.groq.com → API Keys</strong> (gsk_…) — fast &amp; free tier; default model llama-3.3-70b-versatile.<br>
+          Kimi key: <strong style="color:var(--text-muted)">platform.moonshot.ai → API Keys</strong> (sk-…) — Moonshot AI; default model moonshot-v1-auto (or kimi-latest).<br>
           The key is stored in your browser only (localStorage) — never sent to KABi servers.
         </div>
       </div>
@@ -21573,8 +21583,8 @@
       if (!input) return;
       var key = (input.value || '').trim();
       if (!key) { toast('Please enter an API key', 'err'); return; }
-      if (key.indexOf('sk-ant-') !== 0 && key.indexOf('sk-or-') !== 0 && key.indexOf('gsk_') !== 0) {
-        toast('Key must start with sk-ant- (Anthropic), sk-or- (OpenRouter), or gsk_ (Groq)', 'err'); return;
+      if (key.indexOf('sk-') !== 0 && key.indexOf('gsk_') !== 0) {
+        toast('Key must start with sk-ant- (Anthropic), sk-or- (OpenRouter), gsk_ (Groq), or sk- (Kimi/Moonshot)', 'err'); return;
       }
       try {
         KABi.LLM.setApiKey(key);
@@ -39174,7 +39184,11 @@
               console.log('[KABi.LLM] Migrated API key from sessionStorage → localStorage');
             }
           }
-          if (stored && (stored.indexOf('sk-ant-') === 0 || stored.indexOf('sk-or-') === 0)) {
+          // v75: accept every supported key shape so it re-loads after a browser
+          // restart — Anthropic (sk-ant-), OpenRouter (sk-or-), Groq (gsk_), and
+          // Kimi/Moonshot (sk-...). Previously only sk-ant-/sk-or- were re-loaded,
+          // which silently dropped Groq/Kimi keys on reload.
+          if (stored && (stored.indexOf('sk-') === 0 || stored.indexOf('gsk_') === 0)) {
             cfg = Object.assign({}, cfg, { apiKey: stored });
           }
         } catch (e) { /* storage may be blocked */ }
@@ -39194,7 +39208,7 @@
       var cfg = this.getConfig();
       return !!(cfg.apiKey
         && cfg.apiKey !== 'YOUR_ANTHROPIC_API_KEY_HERE'
-        && (cfg.apiKey.indexOf('sk-ant-') === 0 || cfg.apiKey.indexOf('sk-or-') === 0 || cfg.apiKey.indexOf('gsk_') === 0));
+        && (cfg.apiKey.indexOf('sk-') === 0 || cfg.apiKey.indexOf('gsk_') === 0));
     },
 
     call: async function (messages, options) {
@@ -39223,6 +39237,12 @@
       // v73d: Groq (OpenAI-compatible) — key starts with gsk_
       if (cfg.apiKey.indexOf('gsk_') === 0) {
         return await this._callGroq(messages, opts, cfg);
+      }
+      // v75: Kimi / Moonshot AI (OpenAI-compatible). Its keys are sk-... — at this
+      // point sk-or- (OpenRouter) and gsk_ (Groq) have already been routed, so any
+      // remaining key that is NOT sk-ant- (Anthropic) is treated as Kimi/Moonshot.
+      if (cfg.apiKey.indexOf('sk-ant-') !== 0) {
+        return await this._callMoonshot(messages, opts, cfg);
       }
 
       var requestBody = {
@@ -39439,6 +39459,61 @@
       usageTracker.totalOutputTokens += outputTokens;
       usageTracker.totalCostUSD += callCost;
       if (cfg.enableUsageTracking !== false) { console.log('[KABi.LLM] Groq call complete', { model: model, tokens: { in: inputTokens, out: outputTokens }, elapsedMs: elapsedMs }); }
+      return {
+        text: fullText,
+        usage: { inputTokens: inputTokens, outputTokens: outputTokens, costUSD: callCost },
+        model: data.model || model,
+        stopReason: (data.choices && data.choices[0] && data.choices[0].finish_reason) || 'stop',
+        elapsedMs: elapsedMs
+      };
+    },
+
+    /* v75: Kimi / Moonshot AI path (OpenAI-compatible chat/completions). Keys are
+       sk-... Default model moonshot-v1-auto (auto context window); override in the
+       AI Engine with any Kimi/Moonshot model (moonshot-v1-8k / -32k / -128k,
+       moonshot-v1-auto, kimi-latest, kimi-k2-0711-preview). Global endpoint
+       api.moonshot.ai; override with window.KABi_LLM_Config.moonshotBaseUrl
+       (e.g. https://api.moonshot.cn/v1 for the China platform, or a backend proxy). */
+    _callMoonshot: async function (messages, opts, cfg) {
+      var model = (cfg.model && /moonshot|kimi/i.test(cfg.model)) ? cfg.model : 'moonshot-v1-auto';
+      var base = (cfg.moonshotBaseUrl && typeof cfg.moonshotBaseUrl === 'string') ? cfg.moonshotBaseUrl.replace(/\/+$/, '') : 'https://api.moonshot.ai/v1';
+      var mMessages = Array.isArray(messages) ? messages.slice() : [];
+      if (opts.systemPrompt) { mMessages = [{ role: 'system', content: opts.systemPrompt }].concat(mMessages); }
+      var requestBody = { model: model, messages: mMessages, max_tokens: Math.min(opts.maxTokens || 1500, cfg.maxTokensPerCall || 8192) };
+      if (opts.temperature !== undefined) requestBody.temperature = opts.temperature;
+      var startTime = Date.now();
+      var response;
+      try {
+        response = await fetch(base + '/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.apiKey },
+          body: JSON.stringify(requestBody)
+        });
+      } catch (e) {
+        usageTracker.lastError = 'NETWORK: ' + e.message;
+        throw new Error('NETWORK_ERROR: Could not reach Kimi (Moonshot). If the browser blocked it as CORS, route through a small backend proxy and set window.KABi_LLM_Config.moonshotBaseUrl to it.');
+      }
+      var elapsedMs = Date.now() - startTime;
+      if (!response.ok) {
+        var errBody = null, errText;
+        try { errBody = await response.json(); errText = JSON.stringify(errBody); } catch (e) { errText = response.statusText; }
+        usageTracker.lastError = 'HTTP_' + response.status + ': ' + errText;
+        var detail = (errBody && errBody.error && (errBody.error.message || errBody.error)) || errText;
+        if (response.status === 401 || response.status === 403) throw new Error('AUTH_ERROR: Kimi (Moonshot) rejected the API key. Verify it at platform.moonshot.ai → API Keys.');
+        if (response.status === 400) throw new Error('BAD_REQUEST: ' + detail + '  (If it mentions the model, set a valid Kimi model in the AI Engine — default moonshot-v1-auto; e.g. moonshot-v1-8k / -32k / -128k / kimi-latest.)');
+        if (response.status === 429) throw new Error('RATE_LIMIT: Too many requests to Kimi. Wait a moment and try again.');
+        throw new Error('API_ERROR: ' + response.status + ' — ' + errText);
+      }
+      var data = await response.json();
+      var fullText = ((data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '').trim();
+      var inputTokens = (data.usage && data.usage.prompt_tokens) || 0;
+      var outputTokens = (data.usage && data.usage.completion_tokens) || 0;
+      var callCost = estimateCost(inputTokens, outputTokens);
+      usageTracker.callCount++;
+      usageTracker.totalInputTokens += inputTokens;
+      usageTracker.totalOutputTokens += outputTokens;
+      usageTracker.totalCostUSD += callCost;
+      if (cfg.enableUsageTracking !== false) { console.log('[KABi.LLM] Kimi (Moonshot) call complete', { model: model, tokens: { in: inputTokens, out: outputTokens }, elapsedMs: elapsedMs }); }
       return {
         text: fullText,
         usage: { inputTokens: inputTokens, outputTokens: outputTokens, costUSD: callCost },
@@ -40115,12 +40190,13 @@
       var _isAnt = cleaned.indexOf('sk-ant-') === 0;
       var _isOR = cleaned.indexOf('sk-or-') === 0;
       var _isGroq = cleaned.indexOf('gsk_') === 0;   // v73d: Groq keys start with gsk_
-      if (!_isAnt && !_isOR && !_isGroq) {
-        throw new Error('Invalid API key format. Expected sk-ant-... (Anthropic), sk-or-... (OpenRouter), or gsk_... (Groq). Got: '
+      var _isMoonshot = cleaned.indexOf('sk-') === 0 && !_isAnt && !_isOR;  // v75: Kimi/Moonshot keys are sk-...
+      if (!_isAnt && !_isOR && !_isGroq && !_isMoonshot) {
+        throw new Error('Invalid API key format. Expected sk-ant-... (Anthropic), sk-or-... (OpenRouter), gsk_... (Groq), or sk-... (Kimi/Moonshot). Got: '
           + cleaned.substring(0, 12) + '...');
       }
-      // Anthropic keys are ~108 chars; OpenRouter ~73; Groq ~56. Reject obvious truncation.
-      var _minLen = (_isOR || _isGroq) ? 40 : 80;
+      // Anthropic keys are ~108 chars; OpenRouter ~73; Groq ~56; Kimi/Moonshot ~50. Reject obvious truncation.
+      var _minLen = (_isOR || _isGroq || _isMoonshot) ? 40 : 80;
       if (cleaned.length < _minLen) {
         throw new Error('API key looks truncated (length=' + cleaned.length
           + '). Paste the FULL key (Anthropic ~108 chars from console.anthropic.com, OpenRouter ~73 chars from openrouter.ai).');
