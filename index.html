@@ -9766,13 +9766,15 @@
       });
       h += '</div></div>';
 
-      // v70: performance-level colour legend
-      h += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;font-size:8px;color:var(--text-dim)">'
-        + '<span><i class="ti ti-robot ti-cyan"></i> AI compares each metric vs the KPI:</span>'
-        + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#4ade80;display:inline-block"></span> On/above target</span>'
-        + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#fbbf24;display:inline-block"></span> Watch</span>'
-        + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#EF4444;display:inline-block"></span> Below</span>'
-        + '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:#22d3ee;display:inline-block"></span> Context (volume)</span>'
+      // v75: performance-band legend (clean chips, prototype-style ranges)
+      var _lg = function(c, t){ return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:9px;font-weight:600;color:var(--text-muted)"><span style="width:9px;height:9px;border-radius:3px;background:'+c+';display:inline-block"></span>'+t+'</span>'; };
+      h += '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;padding:9px 12px;background:var(--surface-2,#eef2f9);border:1px solid var(--glass-border,#e5eaf3);border-radius:10px">'
+        + '<span style="font-size:9px;font-weight:700;color:var(--text-dim)"><i class="ti ti-robot ti-cyan"></i> Each metric vs its KPI target:</span>'
+        + _lg('#12a17a','On / above')
+        + _lg('#84cc16','Healthy 80–99%')
+        + _lg('#c2820b','Watch 60–79%')
+        + _lg('#dc4b57','Below &lt;60%')
+        + _lg('#22d3ee','Context (volume)')
         + '</div>';
 
       // Employee cards
