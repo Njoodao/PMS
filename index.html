@@ -8864,6 +8864,7 @@
         sent:      `<i class="ti ti-mail" style="font-size:20px;color:rgba(59,182,145,.85)"></i>`,
         kpiSub:    `<i class="ti ti-chart-bar" style="font-size:16px;color:rgba(29,87,163,.7)"></i>`,
         evalSub:   `<i class="ti ti-star" style="font-size:16px;color:rgba(155,129,188,.7)"></i>`,
+        map:       `<i class="ti ti-map-pin" style="font-size:20px;color:rgba(37,87,232,.9)"></i>`,
       };
 
       const navItems = [
@@ -8872,6 +8873,7 @@
 
       if (isCEO) {
         navItems.push({ key: 'team',    icon: sideIcons.team, label: 'My Team' });
+        navItems.push({ key: 'whereami', icon: sideIcons.map, label: 'Where Are You?' });
         navItems.push({
           key: 'kpis_parent', icon: sideIcons.kpi, label: 'KPIs', isParent: 'kpis',
           subItems: [
@@ -8891,6 +8893,7 @@
         navItems.push({ key: 'sent',    icon: sideIcons.sent, label: 'Sent Notifications' });
       } else if (isMgr) {
         navItems.push({ key: 'team', icon: sideIcons.team, label: 'My Team' });
+        navItems.push({ key: 'whereami', icon: sideIcons.map, label: 'Where Are You?' });
         if (u.kpiAccess) {
           navItems.push({ key: 'kpi', icon: sideIcons.kpi, label: 'KPI Framework' });
           navItems.push({ key: 'kpi_architect', icon: sideIcons.kpi, label: 'KPI Architect' });
@@ -8906,13 +8909,12 @@
         navItems.push({ key: 'sent', icon: sideIcons.sent, label: 'Sent Notifications' });
       }
 
-      // For staff (no team, no CEO privileges) — skip sidebar entirely and render dashboard directly.
-      // v66.1: CEO always gets a sidebar even if not technically a manager.
+      // v78: Staff (no team, no CEO privileges) now also get a minimal sidebar —
+      // Dashboard + "Where Are You?" — so the org map is available to EVERY user.
+      // (Previously staff had no sidebar and were rendered straight to dashboard.)
       if (!isMgr && !isCEO) {
-        container.innerHTML = `<div id="emp-side-body"></div>`;
-        empSideTab = 'dashboard';
-        empRenderTabContent();
-        return;
+        navItems.push({ key: 'whereami', icon: sideIcons.map, label: 'Where Are You?' });
+        if (empSideTab !== 'whereami') empSideTab = 'dashboard';
       }
 
       container.innerHTML = `
@@ -8979,6 +8981,8 @@
     function empSwitchTab(tab) {
       // v66.11.0: Auto-save eval draft when switching tabs
       if (typeof peAutoSaveDraft === 'function') peAutoSaveDraft();
+      // v78: always open the "Where Are You?" map at the top-level pillar view
+      if (tab === 'whereami') { try { _whereState.pillar = null; } catch (e) {} }
       empSideTab = tab;
       renderEmployeeDashboard();
     }
@@ -9060,10 +9064,68 @@
         + '<div id="kpi-arch-results"></div>';
       kpiArchRenderResults();
     }
-    function kpiArchGenerate() {
-      _kpiArchState.set = _kpiArchBuildSet(_kpiArchState.fnKey, _kpiArchState.level);
-      var fnName = (FNS[_kpiArchState.fnKey] && FNS[_kpiArchState.fnKey].name) || _kpiArchState.fnKey;
-      toast('<i class="ti ti-circle-check ti-green"></i> KPI Architect drafted ' + _kpiArchState.set.length + ' KPIs for ' + fnName + ' · ' + _kpiArchState.level, 'ok');
+    // Split the agent's rich `reasoning` into a Source line + the Why body.
+    function _kpiArchParseReasoning(reasoning, dataSource) {
+      var r = String(reasoning || '').trim();
+      var source = '', why = r;
+      var m = r.match(/^\s*Source\s*:\s*(.+?)(?:\r?\n|$)/i);
+      if (m) { source = m[1].trim(); why = r.slice(m[0].length).trim(); }
+      if (!source) {
+        source = (dataSource === 'library') ? 'KABi Approved KPIs Library'
+               : (dataSource === 'llm' || dataSource === 'ai') ? 'AI-generated (advisory)'
+               : (dataSource ? String(dataSource) : 'KABi library');
+      }
+      return { source: source, why: why || r };
+    }
+    // Map the rich agent output → the Architect card shape.
+    function _kpiArchMapResult(kpis, level) {
+      return (kpis || []).map(function (k) {
+        var text = k.text || k.statement || String(k || '');
+        var cat = String(k.category || 'process').toLowerCase();
+        if (!_KPI_ARCH_CATS[cat]) cat = 'process';
+        var pr = _kpiArchParseReasoning(k.reasoning, k.dataSource);
+        return {
+          title: _kpiArchMetricTitle(text),
+          statement: text,
+          category: cat,
+          target: _kpiArchTargetGuess(text),
+          unit: '',
+          source: pr.source,
+          why: pr.why || _kpiArchWhy(cat, level),
+          score: k.expectedScore || null,
+          edited: '',
+          validated: false
+        };
+      });
+    }
+    // Uses the SAME rich AI generator as the KPI Framework "AI Generate" modal
+    // (KABi.Agents.kpiArchitect.generate → SMART statements with real numbers,
+    // categories and a "Why"). Async: shows a spinner while the agent runs.
+    async function kpiArchGenerate() {
+      var fnKey = _kpiArchState.fnKey, level = _kpiArchState.level;
+      var fnName = (FNS[fnKey] && FNS[fnKey].name) || fnKey;
+      var box = document.getElementById('kpi-arch-results');
+      if (box) {
+        box.innerHTML = '<div style="text-align:center;padding:44px 20px;color:var(--text-muted)">'
+          + '<style>@keyframes kpiArchSpin{to{transform:rotate(360deg)}}</style>'
+          + '<div style="width:34px;height:34px;border-radius:50%;border:3px solid rgba(0,194,224,.2);border-top-color:var(--cyan);margin:0 auto 14px;animation:kpiArchSpin .8s linear infinite"></div>'
+          + 'AI is drafting a balanced KPI set for <strong style="color:var(--text-primary)">' + fnName + ' · ' + level + '</strong>…</div>';
+      }
+      try {
+        if (!window.KABi || !KABi.Agents || !KABi.Agents.kpiArchitect || typeof KABi.Agents.kpiArchitect.generate !== 'function') {
+          throw new Error('KPI Architect agent not available — please refresh');
+        }
+        var result = await KABi.Agents.kpiArchitect.generate(fnKey);
+        var kpis = (result && Array.isArray(result.kpis)) ? result.kpis : (Array.isArray(result) ? result : []);
+        if (!kpis.length) throw new Error('the generator returned no KPIs for this function');
+        _kpiArchState.set = _kpiArchMapResult(kpis, level);
+        _kpiArchState.submitted = false;   // fresh set → allow submit again
+        toast('<i class="ti ti-circle-check ti-green"></i> KPI Architect drafted ' + _kpiArchState.set.length + ' KPIs for ' + fnName + ' · ' + level, 'ok');
+      } catch (e) {
+        console.error('[KABi] kpiArchGenerate', e);
+        if (box) box.innerHTML = '<div style="text-align:center;padding:40px 20px"><i class="ti ti-alert-triangle" style="font-size:22px;color:var(--bad,#dc4b57)"></i><p style="margin:10px 0 0;color:var(--text-muted)">Generation failed — ' + (e.message || e) + '</p></div>';
+        return;
+      }
       kpiArchRenderResults();
     }
     function kpiArchRenderResults() {
@@ -9080,7 +9142,7 @@
         var cat = _KPI_ARCH_CATS[k.category] || _KPI_ARCH_CATS.process;
         var stmt = k.edited || k.statement;
         return '<div style="background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 10px 26px -16px rgba(10,31,82,.22))">'
-          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><strong style="font-size:14px;color:var(--text-primary)">' + k.title + '</strong><span style="flex-shrink:0;font-size:9px;font-weight:800;padding:3px 10px;border-radius:20px;background:' + cat.bg + ';color:' + cat.color + ';border:1px solid ' + cat.color + '33">' + cat.name + '</span></div>'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><strong style="font-size:14px;color:var(--text-primary)">' + k.title + '</strong><div style="flex-shrink:0;display:inline-flex;gap:6px;align-items:center">' + (k.score ? '<span style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px;background:rgba(18,161,122,.1);color:#12a17a;border:1px solid rgba(18,161,122,.3)">' + k.score + '/5</span>' : '') + '<span style="font-size:9px;font-weight:800;padding:3px 10px;border-radius:20px;background:' + cat.bg + ';color:' + cat.color + ';border:1px solid ' + cat.color + '33">' + cat.name + '</span></div></div>'
           + '<p style="font-size:12.5px;color:var(--text-muted);line-height:1.55;margin:6px 0 12px">' + stmt + (period && stmt.indexOf(period) < 0 ? ' <span style="color:var(--cyan)">· within ' + period + '</span>' : '') + '</p>'
           + '<div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">'
           +   '<div><label style="font-size:10px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Target' + (k.unit || '') + ' — you set this</label><input placeholder="set a target" value="' + String(k.target || '').replace(/"/g, '&quot;') + '" oninput="_kpiArchState.set[' + i + '].target=this.value" style="width:150px;padding:8px 12px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:8px;color:var(--text-primary);font-size:14px;font-weight:700;font-family:inherit;outline:none"></div>'
@@ -9096,7 +9158,18 @@
           + '</div>';
       }).join('');
       var note = '<div style="margin-top:6px;padding:12px 16px;border-radius:10px;background:rgba(127,140,170,.05);border:1px dashed var(--glass-border,rgba(127,140,170,.22));font-size:11px;color:var(--text-muted);line-height:1.55"><i class="ti ti-info-circle"></i> <strong style="color:var(--text-primary)">Advisory</strong> — sources shown above; the AI did not invent data. You own the target and the final set.</div>';
-      box.innerHTML = head + cards + note;
+      var submitBar;
+      if (_kpiArchState.submitted) {
+        submitBar = '<div style="margin-top:16px;padding:15px 18px;border-radius:12px;background:rgba(18,161,122,.08);border:1px solid rgba(18,161,122,.28);display:flex;align-items:center;gap:12px">'
+          + '<i class="ti ti-circle-check" style="color:#12a17a;font-size:22px"></i>'
+          + '<div><strong style="font-size:13px;color:var(--text-primary)">Submitted to HC — awaiting approval</strong>'
+          + '<div style="font-size:11px;color:var(--text-muted);margin-top:1px">Your KPI set for ' + fnName + ' · ' + _kpiArchState.level + ' is now in the HC review queue. HC approval makes it the official basis for the cycle.</div></div></div>';
+      } else {
+        submitBar = '<div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'
+          + '<span style="font-size:11px;color:var(--text-muted)"><i class="ti ti-shield-check" style="color:#12a17a"></i> On submit, an AI coherence check runs — then HC reviews &amp; approves.</span>'
+          + '<button onclick="kpiArchSubmit()" style="padding:12px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#0d9960,#12a17a);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:8px;box-shadow:0 6px 18px -6px rgba(18,161,122,.6)"><i class="ti ti-send"></i> Submit to HC →</button></div>';
+      }
+      box.innerHTML = head + cards + note + submitBar;
     }
     function kpiArchEditToggle(i) {
       var el = document.getElementById('kpi-arch-edit-' + i); if (!el) return;
@@ -9117,10 +9190,184 @@
       KABi.UI.openKpiValidateModal({ fnKey: _kpiArchState.fnKey, si: 0, li: i, kpiText: text, result: result });
       k.validated = true;
     }
+    // ── Submit the Architect set to HC — reuses the CANONICAL submission path ──
+    // Runs the SAME AI pre-submit coherence check the KPI Framework runs, then
+    // persists via the SAME _commitKpiSubmission (supersede + push + save + email).
+    function kpiArchSubmit() {
+      var fnKey = _kpiArchState.fnKey, level = _kpiArchState.level;
+      var f = FNS[fnKey];
+      var set = _kpiArchState.set || [];
+      if (!f) { toast('Pick a function first', 'err'); return; }
+      if (set.length !== 4) { toast('Generate a set of 4 KPIs before submitting', 'err'); return; }
+      var finalTexts = set.map(function (k) { return (k.edited || k.statement || '').trim(); });
+      if (finalTexts.some(function (t) { return !t; })) { toast('Every KPI needs text before submitting', 'err'); return; }
+      if (set.some(function (k) { return !String(k.target || '').trim(); })) { toast('Set a target for each KPI before submitting', 'err'); return; }
+      // Guard against duplicates: an active (non-rejected, non-superseded) submission
+      // already exists for this function + level.
+      var active = subs.find(function (s) {
+        return s.email === me.email && s.fnKey === fnKey && (s.level || 'Entry') === (level || 'Entry') && s.status !== 'rejected' && !s.superseded;
+      });
+      if (active) { toast('<i class="ti ti-info-circle"></i> Already submitted for ' + f.name + ' · ' + level + ' — awaiting HC review', 'err'); return; }
+
+      var proceed = function (aiIssues) { _kpiArchFinalizeSubmit(fnKey, f, level, finalTexts, aiIssues || []); };
+      if (window.KABi && KABi.UI && KABi.UI.kpiPreSubmitReview && typeof KABi.UI.kpiPreSubmitReview.run === 'function') {
+        KABi.UI.kpiPreSubmitReview.run(fnKey, finalTexts, proceed);   // AI coherence check (same modal as Framework)
+      } else {
+        console.warn('[kpiArchSubmit] kpiPreSubmitReview not loaded — submitting without coherence check');
+        proceed([]);
+      }
+    }
+    function _kpiArchFinalizeSubmit(fnKey, f, level, finalTexts, aiIssues) {
+      var ts = new Date().toLocaleString('en-SA', { timeZone: 'Asia/Riyadh' });
+      // Map the 4 Architect KPIs into the function's primary section (li 0..3).
+      // Each function's primary section carries exactly 4 KPI placeholders, so the
+      // resulting selKPIs shape is IDENTICAL to what the KPI Framework grid produces —
+      // HC approval and the connector-based evaluation read it the same way.
+      var sec0 = (f.sections && f.sections[0]) ? f.sections[0] : { title: f.name, kpis: ['', '', '', ''] };
+      var selKPIs = finalTexts.map(function (text, i) {
+        var k = _kpiArchState.set[i] || {};
+        return {
+          si: 0, li: i, secTitle: sec0.title,
+          orig: (sec0.kpis && sec0.kpis[i]) || '',
+          edited: text, final: text,
+          // Architect extras (non-breaking) — richer HC context + traceability
+          category: k.category || '', target: k.target || '', kpiSource: k.source || ''
+        };
+      });
+      var submission = {
+        id: Date.now(),
+        fnKey: fnKey,
+        fnName: f.name,
+        email: me.email, name: me.name,
+        dept: f.dept, ts: ts,
+        sel: [0, 1, 2, 3],
+        level: level || 'Entry',
+        _levelKey: fnKey + '::' + (level || 'Staff Level'),
+        secSels: { 0: [0, 1, 2, 3] },
+        selKPIs: selKPIs,
+        status: 'pending',
+        source: 'architect',
+        ceoOwned: me.role === 'ceo' && (typeof CEO_OWNED_FNS !== 'undefined' && CEO_OWNED_FNS.includes(fnKey))
+      };
+      // AI Overrides audit trail — same normalization as the Framework path.
+      if (Array.isArray(aiIssues) && aiIssues.length) {
+        var _normalized = aiIssues
+          .filter(function (x) { return x && (x.severity === 'warning' || x.severity === 'critical'); })
+          .map(function (x) {
+            var idx = Array.isArray(x.kpisInvolved) && x.kpisInvolved.length ? Number(x.kpisInvolved[0]) : -1;
+            return {
+              kpiIndex: (idx >= 0 && idx < selKPIs.length) ? idx : -1,
+              severity: x.severity,
+              title: String(x.title || '').slice(0, 120),
+              description: String(x.description || '').slice(0, 400),
+              suggestion: String(x.suggestion || '').slice(0, 300)
+            };
+          });
+        if (_normalized.length) submission.aiOverrides = _normalized;
+      }
+      _commitKpiSubmission(submission, f);
+      _kpiArchState.submitted = true;
+      toast('<i class="ti ti-circle-check ti-green"></i> Submitted to HC — ' + f.name + (level ? ' (' + level + ')' : ''), 'ok');
+      kpiArchRenderResults();
+    }
+
     window.renderKpiArchitectPage = renderKpiArchitectPage;
     window.kpiArchGenerate = kpiArchGenerate;
     window.kpiArchEditToggle = kpiArchEditToggle;
     window.kpiArchValidate = kpiArchValidate;
+    window.kpiArchSubmit = kpiArchSubmit;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // WHERE ARE YOU? (v78) — a clickable pillar → department → function map
+    // of the whole organization, shown to EVERY user. NO KPIs — pure
+    // orientation, with a "You are here" marker on the viewer's own
+    // pillar / department / function. (KPI setting stays in KPI Architect.)
+    // ═══════════════════════════════════════════════════════════════════
+    var _whereState = { pillar: null };
+    function _whereMyContext() {
+      var fns = Array.isArray(me && me.fn) ? me.fn.slice() : (me && me.fn ? [me.fn] : []);
+      if (!fns.length) {
+        try { var r = (PE_EMPLOYEES || []).find(function (e) { return e.email === me.email; }); if (r && r.fn) fns = Array.isArray(r.fn) ? r.fn.slice() : [r.fn]; } catch (e) {}
+      }
+      fns = fns.filter(function (k) { return FNS[k]; });
+      var pillarSet = {}, deptSet = {}, fnSet = {};
+      fns.forEach(function (k) { pillarSet[FNS[k].pillar] = 1; deptSet[FNS[k].dept] = 1; fnSet[k] = 1; });
+      return { fns: fns, fnSet: fnSet, pillarSet: pillarSet, deptSet: deptSet };
+    }
+    function empRenderWhereAmIPage(container) {
+      if (!container) return;
+      var u = me && USERS[me.email];
+      var isCEOv = !!(u && u.isCEO);
+      var ctx = _whereMyContext();
+      var _cardSh = 'var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 10px 26px -16px rgba(10,31,82,.22))';
+
+      // ── Header + "You are here" summary ──
+      var youChip;
+      if (ctx.fns.length) {
+        var firstFn = ctx.fns[0], p0 = PILLARS[FNS[firstFn].pillar] || {};
+        var myFnNames = ctx.fns.map(function (k) { return FNS[k].name; }).join(', ');
+        youChip = '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px;font-size:12px">'
+          + '<span style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;background:rgba(37,87,232,.12);color:#2557e8;border:1px solid rgba(37,87,232,.32);font-weight:800"><i class="ti ti-map-pin"></i> You are here</span>'
+          + '<span style="color:var(--text-muted)">' + (p0.name || FNS[firstFn].pillar) + ' <span style="opacity:.5">›</span> ' + FNS[firstFn].dept + ' <span style="opacity:.5">›</span> <strong style="color:var(--text-primary)">' + myFnNames + '</strong></span>'
+          + '</div>';
+      } else {
+        youChip = '<div style="margin-top:12px;font-size:11.5px;color:var(--text-muted)"><i class="ti ti-info-circle"></i> Your function isn’t mapped to you yet — explore the organization below.</div>';
+      }
+      var html = '<div style="background:linear-gradient(135deg,rgba(37,87,232,.06),rgba(0,194,224,.03));border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:18px 20px;margin-bottom:18px">'
+        + '<div style="display:flex;align-items:center;gap:9px"><i class="ti ti-map-2" style="color:#2557e8;font-size:20px"></i><strong style="font-size:16px;color:var(--text-primary)">Where Are You?</strong></div>'
+        + '<p style="font-size:12px;color:var(--text-muted);margin:5px 0 0">Explore every pillar, department and function — and see where you fit in the organization.</p>'
+        + youChip + '</div>';
+
+      if (!_whereState.pillar) {
+        // ── Level 0: pillar grid ──
+        html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">';
+        Object.keys(PILLARS).forEach(function (pk) {
+          var p = PILLARS[pk];
+          if (p.ceoOnly && !isCEOv) return;
+          var cnt = Object.values(FNS).filter(function (f) { return f.pillar === pk && (isCEOv || !f.ceoOnly); }).length;
+          var mine = !!ctx.pillarSet[pk];
+          html += '<button onclick="whereGo(\'' + pk + '\')" style="text-align:left;cursor:pointer;position:relative;background:var(--glass,#fff);border:1px solid ' + (mine ? p.color : 'var(--glass-border,#e5eaf3)') + ';border-radius:14px;padding:16px 18px;box-shadow:' + _cardSh + ';' + (mine ? 'outline:3px solid ' + p.color + '1f;outline-offset:-1px;' : '') + 'font-family:inherit;transition:transform .12s" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'none\'">'
+            + (mine ? '<span style="position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px;background:' + p.color + '1a;color:' + p.color + ';border:1px solid ' + p.color + '55"><i class="ti ti-map-pin"></i> You are here</span>' : '')
+            + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="width:38px;height:38px;border-radius:10px;background:' + p.color + '1a;color:' + p.color + ';display:flex;align-items:center;justify-content:center;font-size:19px">' + p.icon + '</span><span style="font-size:10px;font-weight:800;letter-spacing:.5px;color:' + p.color + '">' + p.label + '</span></div>'
+            + '<div style="font-size:14px;font-weight:800;color:var(--text-primary)">' + p.name + '</div>'
+            + '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.4">' + p.sub + '</div>'
+            + '<div style="margin-top:10px;font-size:10.5px;color:var(--text-dim)"><strong style="color:var(--text-primary)">' + cnt + '</strong> function' + (cnt === 1 ? '' : 's') + ' <span style="opacity:.6">· click to explore</span></div>'
+            + '</button>';
+        });
+        html += '</div>';
+      } else {
+        // ── Level 1: departments + functions inside the chosen pillar ──
+        var pk = _whereState.pillar, p = PILLARS[pk] || {};
+        html += '<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:16px"><button onclick="whereGo(\'\')" style="background:transparent;border:none;color:#2557e8;cursor:pointer;font-weight:700;font-family:inherit;padding:0"><i class="ti ti-arrow-left"></i> All pillars</button><span style="color:var(--text-dim)">›</span><span style="display:inline-flex;align-items:center;gap:6px;font-weight:800;color:var(--text-primary)"><span style="color:' + (p.color || '#2557e8') + '">' + (p.icon || '') + '</span>' + (p.name || pk) + '</span></div>';
+        var byDept = {};
+        Object.keys(FNS).forEach(function (k) {
+          var f = FNS[k]; if (f.pillar !== pk) return; if (f.ceoOnly && !isCEOv) return;
+          (byDept[f.dept] = byDept[f.dept] || []).push(k);
+        });
+        var deptKeys = Object.keys(byDept);
+        if (!deptKeys.length) {
+          html += '<div style="text-align:center;padding:40px;color:var(--text-muted)">No active functions in this pillar.</div>';
+        }
+        deptKeys.forEach(function (dept) {
+          var mineDept = !!ctx.deptSet[dept];
+          html += '<div style="margin-bottom:18px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:9px"><i class="ti ti-building" style="color:' + (p.color || '#2557e8') + ';font-size:15px"></i><strong style="font-size:13px;color:var(--text-primary)">' + dept + '</strong>' + (mineDept ? '<span style="font-size:8px;font-weight:800;letter-spacing:.3px;padding:2px 8px;border-radius:20px;background:' + p.color + '1a;color:' + p.color + '">YOUR DEPARTMENT</span>' : '') + '</div>';
+          html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(195px,1fr));gap:10px">';
+          byDept[dept].forEach(function (k) {
+            var f = FNS[k], mineFn = !!ctx.fnSet[k], inactive = !!f.disabled;
+            html += '<div style="position:relative;background:var(--glass,#fff);border:1px solid ' + (mineFn ? (p.color || '#2557e8') : 'var(--glass-border,#e5eaf3)') + ';border-radius:11px;padding:12px 13px;' + (mineFn ? 'box-shadow:0 0 0 3px ' + p.color + '1f;' : 'box-shadow:' + _cardSh + ';') + (inactive ? 'opacity:.55;' : '') + '">'
+              + '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px;color:' + (p.color || '#2557e8') + '">' + (f.icon || '<i class="ti ti-point"></i>') + '</span><span style="font-size:12.5px;font-weight:700;color:var(--text-primary);line-height:1.3">' + f.name + '</span></div>'
+              + (mineFn ? '<div style="margin-top:9px;display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px;background:' + p.color + '1a;color:' + p.color + ';border:1px solid ' + p.color + '55"><i class="ti ti-map-pin"></i> You are here</div>' : '')
+              + (inactive ? '<div style="margin-top:6px;font-size:9px;color:var(--text-dim)">Inactive</div>' : '')
+              + '</div>';
+          });
+          html += '</div></div>';
+        });
+      }
+      container.innerHTML = html;
+    }
+    function whereGo(pk) { _whereState.pillar = pk || null; var b = document.getElementById('emp-side-body'); if (b) empRenderWhereAmIPage(b); }
+    window.empRenderWhereAmIPage = empRenderWhereAmIPage;
+    window.whereGo = whereGo;
 
     // Render the body content based on empSideTab
     function empRenderTabContent() {
@@ -9132,6 +9379,8 @@
         empRenderMyTeamPage(body);
       } else if (empSideTab === 'kpi') {
         empRenderKPIFrameworkPage(body);
+      } else if (empSideTab === 'whereami') {
+        empRenderWhereAmIPage(body);
       } else if (empSideTab === 'kpi_architect') {
         renderKpiArchitectPage(body);
       } else if (empSideTab === 'eval') {
@@ -10432,6 +10681,48 @@
 
       return h;
     }
+    // v78: The 6 canonical TRACKER metrics that drive the Department Tracker and
+    // the Team Performance Tracker. User-supplied (name + why + how-measured +
+    // target + unit + direction). MIXED scope: a metric set can be defined at the
+    // FUNCTION level (FN_TRACKER_METRICS[fnKey]) OR the DEPARTMENT level
+    // (DEPT_TRACKER_METRICS[deptName]). Resolution order per function:
+    //   function-level → its department-level → the _FN_METRICS KPI library.
+    // Empty until populated, so nothing regresses meanwhile.
+    // Schema per metric: { name, why, how, target, unit, dir:'higher'|'lower' }
+    //   `how` = the measurement rule / connector field; actuals are pulled from
+    //   connectors where possible and shown as '—' when no data (never invented).
+    var FN_TRACKER_METRICS = window.FN_TRACKER_METRICS || {
+      // 'bd-sales': [ { name:'Win rate', why:'…', how:'won ÷ closed deals (Pipedrive)', target:25, unit:'%', dir:'higher' }, … 6 … ],
+    };
+    var DEPT_TRACKER_METRICS = window.DEPT_TRACKER_METRICS || {
+      // 'Operations Department': [ { name:'…', why:'…', how:'…', target:…, unit:'…', dir:'higher' }, … 6 … ],
+    };
+    window.FN_TRACKER_METRICS = FN_TRACKER_METRICS;
+    window.DEPT_TRACKER_METRICS = DEPT_TRACKER_METRICS;
+    function _normalizeTrackerMetric(m) {
+      return {
+        name: m.name, desc: m.why || m.desc || '', why: m.why || '', how: m.how || '',
+        target: m.target, unit: m.unit || '',
+        dir: m.dir || (m.lowerBetter ? 'lower' : undefined),
+        lowerBetter: (m.dir === 'lower' || !!m.lowerBetter),
+        _tracker: true
+      };
+    }
+    // Resolve the tracker metrics for a function: function-level, then its
+    // department-level set, then the _FN_METRICS library fallback.
+    function kabiGetTrackerMetrics(fnKey) {
+      var k = (typeof _normFn === 'function') ? _normFn(fnKey) : fnKey;
+      var t = FN_TRACKER_METRICS[k];
+      if (!Array.isArray(t) || !t.length) {
+        var dept = (typeof FNS !== 'undefined' && FNS[k]) ? FNS[k].dept : null;
+        if (dept && Array.isArray(DEPT_TRACKER_METRICS[dept]) && DEPT_TRACKER_METRICS[dept].length) t = DEPT_TRACKER_METRICS[dept];
+      }
+      if (Array.isArray(t) && t.length) return t.map(_normalizeTrackerMetric);
+      var fm = (typeof _FN_METRICS !== 'undefined') ? _FN_METRICS[k] : null;
+      return (fm && Array.isArray(fm.kpis)) ? fm.kpis : [];
+    }
+    window.kabiGetTrackerMetrics = kabiGetTrackerMetrics;
+
     function _buildMgrDeptInsight(deptName, empRec) {
       var h = '';
       // Map dept name to dept tab id
@@ -10486,9 +10777,10 @@
         if(vals._repCount) h += '<span style="font-size:8px;color:var(--text-dim)">'+vals._repCount+' in Pipedrive · '+vals._dealCount+' deals</span>';
         h += '</div>';
 
-        // KPI cards
+        // KPI cards — driven by the 6 canonical tracker metrics (falls back to
+        // the _FN_METRICS KPI library until the user supplies tracker metrics).
         h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:10px">';
-        fm.kpis.forEach(function(k){
+        kabiGetTrackerMetrics(fk).forEach(function(k){
           var v = vals[k.name];
           var hasVal = v !== undefined && v !== null && v !== '' && v !== '—';
           var _pl2 = (hasVal && typeof window.kabiPerfLevel === 'function') ? window.kabiPerfLevel(k.name, v, { direction: (k.dir === 'lower' || k.lowerBetter ? 'lower' : undefined), target: k.target }) : null;
@@ -16047,6 +16339,29 @@
       }
     }
 
+    // v78: Canonical KPI-submission persistence. Extracted from _finalizeSubmit so
+    // the KPI Architect's Submit reuses the EXACT same path — supersede any prior
+    // rejected submission for this fn+level, push to `subs`, persist to localStorage,
+    // and email HC. Keeping this single-sourced guarantees both entry points (the
+    // KPI Framework grid and the KPI Architect) produce identical submissions that
+    // HC approval and the connector-based evaluation read the same way.
+    function _commitKpiSubmission(submission, f) {
+      var _subLevel = submission.level || 'Entry';
+      var existingRejected = subs.find(function (s) {
+        return s.email === me.email && s.fnKey === submission.fnKey && (s.level || 'Entry') === _subLevel && s.status === 'rejected' && !s.superseded;
+      });
+      if (existingRejected) {
+        existingRejected.superseded = true;
+        existingRejected.supersededBy = submission.id;
+        existingRejected.supersededAt = new Date().toISOString();
+      }
+      subs.push(submission);
+      _saveSubs(); // persist to localStorage immediately
+      try {
+        sendEmail({ fnKey: submission.fnKey, fnName: submission.fnName, email: me.email, name: me.name, dept: (f && f.dept) || submission.dept, ts: submission.ts, selKPIs: submission.selKPIs });
+      } catch (e) { console.warn('[KPI submit] email failed:', e); }
+    }
+
     /* v63: Actual submission logic (called after coherence check passes/overrides) */
     /* v66.6: Paired-aware — produces ONE submission with per-KPI scope + pairedFnKey */
     /* v67.24: 3rd arg aiIssues[] carries the AI Review issues that the manager either
@@ -16128,19 +16443,9 @@
         if (_normalized.length) submission.aiOverrides = _normalized;
       }
 
-      // v67.9: If re-submitting after rejection, mark the old rejected sub as superseded
-      // so the manager view shows the NEW submission as the active one.
-      var _subLevel = submission.level || 'Entry';
-      var existingRejected = subs.find(function(s){
-        return s.email === me.email && s.fnKey === primary && (s.level || 'Entry') === _subLevel && s.status === 'rejected' && !s.superseded;
-      });
-      if (existingRejected) {
-        existingRejected.superseded = true;
-        existingRejected.supersededBy = submission.id;
-        existingRejected.supersededAt = new Date().toISOString();
-      }
-      subs.push(submission);
-      _saveSubs(); // v67.9: persist to localStorage immediately
+      // v78: shared persistence — supersede prior rejected + push + save + email HC.
+      // (Same function the KPI Architect submit calls, so both paths are identical.)
+      _commitKpiSubmission(submission, f);
 
       document.getElementById('sub-ok').style.display = 'block';
       document.getElementById('act-row').style.display = 'none';
@@ -16151,7 +16456,7 @@
       // access to. Before this change, submitting Level A silently erased the
       // tabs and made Levels B/C unreachable ("one submit covers all levels").
       openFn(primary);
-      sendEmail({ fnKey: primary, fnName: submission.fnName, email: me.email, name: me.name, dept: f.dept, ts, selKPIs });
+      // (email already sent inside _commitKpiSubmission)
       var _submittedLvl = submission.level || '';
       toast('<i class="ti ti-circle-check ti-green"></i> Submitted to HC — ' + (submission.fnName || '') + (_submittedLvl ? ' (' + _submittedLvl + ')' : ''), 'ok');
     }
@@ -17500,7 +17805,25 @@
     let _brandDraft = null;
     function _brandDraftGet() { if (!_brandDraft) _brandDraft = Brand.get(); return _brandDraft; }
     function _brandDraftPatch(patch) { Object.assign(_brandDraftGet(), patch || {}); renderBranding(document.getElementById('settings-body')); }
-    function _brandDraftSetQuiet(k, v) { _brandDraftGet()[k] = v; }  // for color drag (oninput) — no re-render
+    // v78: Live-refresh the Save/Discard bar WITHOUT a full re-render (keeps the
+    // text-input caret). Fixes the bug where typing into a text field (header
+    // text, footer, product name…) left the Save button disabled, so those
+    // customisations could never be saved.
+    function _brandRefreshDirtyUI() {
+      var dirty = _brandDirty();
+      var status = document.getElementById('brand-dirty-status');
+      if (status) {
+        status.style.color = dirty ? 'var(--cyan)' : 'var(--text-muted)';
+        status.innerHTML = dirty ? '<i class="ti ti-alert-circle"></i> Unsaved changes' : '<i class="ti ti-circle-check ti-green"></i> All changes saved';
+      }
+      ['brand-save-btn', 'brand-save-btn2', 'brand-discard-btn'].forEach(function (id) {
+        var btn = document.getElementById(id);
+        if (!btn) return;
+        btn.disabled = !dirty;
+        btn.style.opacity = dirty ? '1' : (id === 'brand-discard-btn' ? '.45' : '.5');
+      });
+    }
+    function _brandDraftSetQuiet(k, v) { _brandDraftGet()[k] = v; _brandRefreshDirtyUI(); }  // text inputs (oninput) — no full re-render, but keep Save in sync
     function _brandDirty() { return !!(_brandDraft && JSON.stringify(_brandDraft) !== JSON.stringify(Brand.get())); }
     function brandSaveDraft() { if (_brandDraft) { Brand.set(_brandDraft); } _brandDraft = null; renderBranding(document.getElementById('settings-body')); toast("<i class='ti ti-circle-check ti-green'></i> Branding saved &amp; applied", 'ok'); }
     function brandDiscardDraft() { _brandDraft = null; _brandLogoTrans = null; renderBranding(document.getElementById('settings-body')); }
