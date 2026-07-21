@@ -9296,7 +9296,10 @@
           + '<div id="kpi-arch-edit-' + i + '" style="display:none;margin-top:12px">'
           +   '<label style="font-size:10px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:5px"><i class="ti ti-pencil"></i> Edit KPI statement</label>'
           +   '<textarea id="kpi-arch-ta-' + i + '" oninput="_kpiArchState.set[' + i + '].edited=this.value" style="width:100%;min-height:64px;padding:10px 12px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:8px;color:var(--text-primary);font-size:12.5px;font-family:inherit;outline:none;resize:vertical">' + (k.edited || k.statement) + '</textarea>'
-          +   '<button onclick="kpiArchValidate(' + i + ')" style="margin-top:8px;font-size:10.5px;font-weight:700;padding:8px 14px;border-radius:8px;border:1px solid rgba(0,194,224,.3);background:rgba(0,194,224,.08);color:var(--cyan);cursor:pointer;font-family:inherit"><i class="ti ti-circle-check ti-green"></i> AI review & validate</button>'
+          +   '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">'
+          +     '<button onclick="kpiArchSaveEdit(' + i + ')" style="font-size:10.5px;font-weight:800;padding:8px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,#0d9960,#12a17a);color:#fff;cursor:pointer;font-family:inherit"><i class="ti ti-device-floppy"></i> Save edit</button>'
+          +     '<button onclick="kpiArchValidate(' + i + ')" style="font-size:10.5px;font-weight:700;padding:8px 14px;border-radius:8px;border:1px solid rgba(0,194,224,.3);background:rgba(0,194,224,.08);color:var(--cyan);cursor:pointer;font-family:inherit"><i class="ti ti-circle-check ti-green"></i> AI review &amp; validate</button>'
+          +   '</div>'
           + '</div>'
           + '<div style="margin-top:12px;padding:10px 13px;border-radius:9px;background:rgba(127,140,170,.06);border:1px solid var(--glass-border,rgba(127,140,170,.14));font-size:11px;color:var(--text-muted);line-height:1.5"><strong style="color:var(--text-primary)">Why:</strong> ' + k.why + '</div>'
           + '</div>';
@@ -9332,6 +9335,15 @@
       el.style.display = (el.style.display === 'none') ? 'block' : 'none';
       if (el.style.display === 'block') { var ta = document.getElementById('kpi-arch-ta-' + i); if (ta) ta.focus(); }
     }
+    // v79: commit the edited KPI statement and re-render the card (collapses the editor).
+    function kpiArchSaveEdit(i) {
+      var k = (_kpiArchState.set || [])[i]; if (!k) return;
+      var ta = document.getElementById('kpi-arch-ta-' + i);
+      if (ta) k.edited = ta.value;
+      toast('<i class="ti ti-circle-check ti-green"></i> KPI updated', 'ok');
+      kpiArchRenderResults();
+    }
+    window.kpiArchSaveEdit = kpiArchSaveEdit;
     function kpiArchValidate(i) {
       var k = (_kpiArchState.set || [])[i]; if (!k) return;
       var text = ((document.getElementById('kpi-arch-ta-' + i) || {}).value || k.edited || k.statement || '').trim();
@@ -10350,6 +10362,7 @@
     // (direct or indirect) to one of their direct reports. `assignedEvaluator` is a
     // single field, so each employee is always evaluated by exactly ONE evaluator.
     function peDelegateEval(evaluateeEmail, evaluatorEmail) {
+      if (typeof PE_CONFIG !== 'undefined' && PE_CONFIG.allowEvalDelegation === false) { toast('Evaluation delegation is turned off by HC', 'err'); return; }
       if (!evaluateeEmail || !evaluatorEmail) { toast('Pick both an evaluator and a team member', 'err'); return; }
       if (evaluateeEmail.toLowerCase() === evaluatorEmail.toLowerCase()) { toast('An employee can’t evaluate themselves', 'err'); return; }
       var ev = _empByEmail(evaluateeEmail), er = _empByEmail(evaluatorEmail);
@@ -10358,48 +10371,101 @@
       var myDirects = peGetDirectReports(me.email).map(function (e) { return (e.email || '').toLowerCase(); });
       if (myChain.indexOf(evaluateeEmail.toLowerCase()) < 0) { toast('You can only delegate your own team members', 'err'); return; }
       if (myDirects.indexOf(evaluatorEmail.toLowerCase()) < 0) { toast('The evaluator must be one of your direct reports', 'err'); return; }
-      ev.assignedEvaluator = er.email;          // single field ⇒ exactly one evaluator per employee
-      if (typeof _peSaveEmployees === 'function') _peSaveEmployees();
-      toast('<i class="ti ti-circle-check ti-green"></i> ' + er.name + ' will now evaluate ' + ev.name, 'ok');
+      // one active/pending delegation per employee (one evaluator per employee)
+      var existing = PE_EVAL_DELEGATIONS.find(function (d) { return d.evaluateeEmail.toLowerCase() === evaluateeEmail.toLowerCase() && (d.status === 'pending_hc' || d.status === 'active'); });
+      if (existing) { toast('There is already a ' + (existing.status === 'active' ? 'n active' : ' pending') + ' delegation for ' + ev.name, 'err'); return; }
+      var rec = {
+        id: Date.now(),
+        evaluateeEmail: ev.email, evaluateeName: ev.name, evaluateeDept: ev.dept || '',
+        evaluatorEmail: er.email, evaluatorName: er.name,
+        delegatorEmail: me.email, delegatorName: me.name,
+        status: 'pending_hc', createdAt: new Date().toISOString(), pendingEval: null
+      };
+      PE_EVAL_DELEGATIONS.push(rec); _saveEvalDelegations();
+      // Email HC + in-app notify Super Admins (HC approves before it takes effect).
+      try {
+        peSendEmail(HC_MAIL, 'Evaluation delegation request — ' + er.name + ' → ' + ev.name,
+          me.name + ' (' + me.email + ') requests to delegate an evaluation:\n\n' +
+          'Employee to be evaluated: ' + ev.name + ' (' + ev.email + ')\n' +
+          'Proposed evaluator: ' + er.name + ' (' + er.email + ')\n' +
+          'Department: ' + (ev.dept || '—') + '\n\n' +
+          'Approve or reject it in the portal → People & Access → Edit Requests.', EJ_TPL_EVAL);
+      } catch (e) {}
+      _notifyHcSuperAdmins({ type: 'note', fromName: me.name, fromEmail: me.email, body: 'Delegation request: let ' + er.name + ' evaluate ' + ev.name + '. Awaiting your approval (Edit Requests).' });
+      toast('<i class="ti ti-mail"></i> Delegation request sent to HC for approval', 'ok');
       empRenderTabContent();
     }
     function peRevokeEvalDelegation(evaluateeEmail) {
       var ev = _empByEmail(evaluateeEmail); if (!ev) return;
-      delete ev.assignedEvaluator;
-      if (typeof _peSaveEmployees === 'function') _peSaveEmployees();
+      var lc = evaluateeEmail.toLowerCase();
+      PE_EVAL_DELEGATIONS = PE_EVAL_DELEGATIONS.filter(function (d) { return !(d.evaluateeEmail.toLowerCase() === lc && (d.status === 'pending_hc' || d.status === 'active')); });
+      _saveEvalDelegations();
+      if (ev.assignedEvaluator) { delete ev.assignedEvaluator; if (typeof _peSaveEmployees === 'function') _peSaveEmployees(); }
       toast('Delegation removed — you evaluate ' + (ev.name || 'them') + ' again', 'ok');
       empRenderTabContent();
     }
+    // ── HC decision on a delegation request ──
+    function peHcApproveDelegation(id) {
+      var d = peGetDelegationById(id); if (!d || d.status !== 'pending_hc') return;
+      var ev = _empByEmail(d.evaluateeEmail);
+      d.status = 'active'; d.hcAt = new Date().toISOString(); d.hcBy = me ? me.email : '';
+      if (ev) { ev.assignedEvaluator = d.evaluatorEmail; if (typeof _peSaveEmployees === 'function') _peSaveEmployees(); }
+      _saveEvalDelegations();
+      // Now it "appears" to the delegate + inform the delegator.
+      addNotification(d.evaluatorEmail, { type: 'note', fromName: 'Human Capital', fromEmail: HC_MAIL, body: 'You have been assigned to evaluate ' + d.evaluateeName + ' this cycle (delegated by ' + d.delegatorName + ', approved by HC). They now appear in your Evaluate Team list.' });
+      addNotification(d.delegatorEmail, { type: 'note', fromName: 'Human Capital', fromEmail: HC_MAIL, body: 'HC approved your delegation: ' + d.evaluatorName + ' will evaluate ' + d.evaluateeName + '.' });
+      toast('<i class="ti ti-circle-check ti-green"></i> Delegation approved — ' + d.evaluatorName + ' can now evaluate ' + d.evaluateeName, 'ok');
+      try { renderHC(); } catch (e) {}
+    }
+    function peHcRejectDelegation(id) {
+      var d = peGetDelegationById(id); if (!d || d.status !== 'pending_hc') return;
+      var reason = prompt('Reason for rejecting this delegation (the manager will see it):', '');
+      if (reason === null) return;
+      d.status = 'rejected'; d.hcAt = new Date().toISOString(); d.hcBy = me ? me.email : ''; d.hcReason = (reason || '').trim();
+      _saveEvalDelegations();
+      addNotification(d.delegatorEmail, { type: 'note', fromName: 'Human Capital', fromEmail: HC_MAIL, body: 'HC declined your delegation (' + d.evaluatorName + ' → ' + d.evaluateeName + ')' + (d.hcReason ? ': ' + d.hcReason : '.') + ' You remain the evaluator.' });
+      toast('Delegation rejected — ' + d.delegatorName + ' notified', 'ok');
+      try { renderHC(); } catch (e) {}
+    }
+    window.peHcApproveDelegation = peHcApproveDelegation;
+    window.peHcRejectDelegation = peHcRejectDelegation;
     function _peRenderEvalDelegation() {
+      if (typeof PE_CONFIG !== 'undefined' && PE_CONFIG.allowEvalDelegation === false) return '';  // HC has not enabled delegation
       var directs = peGetDirectReports(me.email).filter(function (e) { return !e.isFormer; });
       var chain = peGetAllReports(me.email).filter(function (e) { return !e.isFormer; });
       if (directs.length < 1 || chain.length < 2) return '';   // nothing meaningful to delegate
-      var _empName = function (email) { var x = _empByEmail(email); return x ? x.name : email; };
-      var delegated = chain.filter(function (e) { return e.assignedEvaluator && String(e.assignedEvaluator).toLowerCase() !== String(e.mgr || '').toLowerCase(); });
-      var rows = delegated.map(function (e) {
+      var mine = PE_EVAL_DELEGATIONS.filter(function (d) { return d.delegatorEmail && d.delegatorEmail.toLowerCase() === me.email.toLowerCase() && (d.status === 'pending_hc' || d.status === 'active' || d.status === 'rejected'); });
+      var _badge = function (d) {
+        if (d.status === 'active') return '<span style="font-size:8.5px;font-weight:800;padding:2px 8px;border-radius:10px;background:rgba(18,161,122,.14);color:#12a17a">ACTIVE</span>';
+        if (d.status === 'pending_hc') return '<span style="font-size:8.5px;font-weight:800;padding:2px 8px;border-radius:10px;background:rgba(245,158,11,.14);color:#c2820b">AWAITING HC</span>';
+        return '<span style="font-size:8.5px;font-weight:800;padding:2px 8px;border-radius:10px;background:rgba(239,68,68,.12);color:#f87171">REJECTED</span>';
+      };
+      var rows = mine.map(function (d) {
         return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:9px">'
           + '<i class="ti ti-arrow-right" style="color:#6d5bd0"></i>'
-          + '<div style="flex:1;min-width:0;font-size:11.5px;color:var(--text-primary)"><strong>' + _empName(e.assignedEvaluator) + '</strong> evaluates <strong>' + e.name + '</strong> <span style="color:var(--text-muted)">· ' + (e.title || '') + '</span></div>'
-          + '<button onclick="peRevokeEvalDelegation(\'' + e.email + '\')" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.06);color:#f87171;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">Revoke</button>'
+          + '<div style="flex:1;min-width:0;font-size:11.5px;color:var(--text-primary)"><strong>' + d.evaluatorName + '</strong> evaluates <strong>' + d.evaluateeName + '</strong>' + (d.status === 'rejected' && d.hcReason ? ' <span style="color:#f87171">· ' + d.hcReason + '</span>' : '') + '</div>'
+          + _badge(d)
+          + (d.status !== 'rejected' ? '<button onclick="peRevokeEvalDelegation(\'' + d.evaluateeEmail + '\')" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.06);color:#f87171;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">Revoke</button>' : '')
           + '</div>';
       }).join('');
+      var _activeCount = mine.filter(function (d) { return d.status === 'active'; }).length;
       var _sel = 'padding:8px 10px;border-radius:8px;border:1px solid var(--glass-border,#e5eaf3);background:var(--glass,#fff);color:var(--text-primary);font-size:12px;font-family:inherit;outline:none;max-width:200px';
       var evateeOpts = chain.map(function (e) { return '<option value="' + e.email + '">' + e.name + ' · ' + (e.title || '') + '</option>'; }).join('');
       var evatorOpts = directs.map(function (e) { return '<option value="' + e.email + '">' + e.name + '</option>'; }).join('');
       return '<details class="pe-scoring-ref" style="margin-bottom:16px;background:rgba(109,91,208,.05);border:1px solid rgba(109,91,208,.22);border-radius:12px;overflow:hidden">'
         + '<summary style="cursor:pointer;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;list-style:none;user-select:none">'
-        +   '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:14px"><i class="ti ti-users-group"></i></span><strong style="font-size:12px;color:var(--text-primary)">Delegate evaluations</strong><span style="font-size:9.5px;color:var(--text-muted)">optional · one evaluator per employee</span>' + (delegated.length ? '<span style="font-size:9px;font-weight:800;padding:2px 8px;border-radius:10px;background:rgba(109,91,208,.14);color:#6d5bd0">' + delegated.length + ' active</span>' : '') + '</div>'
+        +   '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:14px"><i class="ti ti-users-group"></i></span><strong style="font-size:12px;color:var(--text-primary)">Delegate evaluations</strong><span style="font-size:9.5px;color:var(--text-muted)">optional · HC-approved · one evaluator per employee</span>' + (_activeCount ? '<span style="font-size:9px;font-weight:800;padding:2px 8px;border-radius:10px;background:rgba(109,91,208,.14);color:#6d5bd0">' + _activeCount + ' active</span>' : '') + '</div>'
         +   '<span class="pe-ref-arrow" style="font-size:10px;color:var(--text-dim);font-weight:700">▼</span>'
         + '</summary>'
         + '<div style="padding:0 14px 14px 14px">'
-        +   '<p style="font-size:11px;color:var(--text-muted);line-height:1.55;margin:0 0 12px">Hand the evaluation of any team member to one of your direct reports (e.g. a team lead). Each employee can be evaluated by <strong style="color:var(--text-primary)">only one</strong> evaluator — assigning here moves that responsibility, and the delegate sees them in their own Evaluate Team list.</p>'
+        +   '<p style="font-size:11px;color:var(--text-muted);line-height:1.55;margin:0 0 12px">Hand the evaluation of a team member to one of your direct reports. It goes to <strong style="color:var(--text-primary)">HC for approval</strong> first; once approved, the delegate sees them in their Evaluate Team list, and the completed evaluation comes back to <strong style="color:var(--text-primary)">you</strong> for review before HC finalizes it. Each employee has only one evaluator.</p>'
         +   (rows ? '<div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px">' + rows + '</div>' : '')
         +   '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
         +     '<span style="font-size:10.5px;color:var(--text-muted)">Let</span>'
         +     '<select id="deleg-evaluator" style="' + _sel + '">' + evatorOpts + '</select>'
         +     '<span style="font-size:10.5px;color:var(--text-muted)">evaluate</span>'
         +     '<select id="deleg-evaluatee" style="' + _sel + '">' + evateeOpts + '</select>'
-        +     '<button onclick="peDelegateEval(document.getElementById(\'deleg-evaluatee\').value, document.getElementById(\'deleg-evaluator\').value)" style="padding:8px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,#7c3aed,#6d5bd0);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">Assign</button>'
+        +     '<button onclick="peDelegateEval(document.getElementById(\'deleg-evaluatee\').value, document.getElementById(\'deleg-evaluator\').value)" style="padding:8px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,#7c3aed,#6d5bd0);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">Request HC approval</button>'
         +   '</div>'
         + '</div>'
         + '</details>';
@@ -10524,6 +10590,7 @@
           </div>
         </details>
 
+        ${(typeof _peRenderDelegatorReviews === 'function') ? _peRenderDelegatorReviews() : ''}
         ${(typeof _peRenderEvalDelegation === 'function') ? _peRenderEvalDelegation() : ''}
 
         ${reports.length === 0 ? `
@@ -18323,12 +18390,12 @@
       var f = input.files && input.files[0]; if (!f) return;
       if (!/^image\/(png|jpeg|svg\+xml|webp)$/.test(f.type)) { toast('Use a PNG, JPG, SVG or WebP image', 'err'); return; }
       var rd = new FileReader();
-      rd.onload = function () { _brandLogoTrans = null; _brandDraftPatch({ companyLogoUrl: rd.result }); };
+      rd.onload = function () { _brandLogoTrans = null; _brandLiveApply({ companyLogoUrl: rd.result }); };  // v79: apply the logo instantly (no separate Save)
       rd.readAsDataURL(f);
     }
     function brandRemoveLogo() {
       if (!confirm('Remove the uploaded logo? The letter mark will be used instead.')) return;
-      _brandLogoTrans = null; _brandDraftPatch({ companyLogoUrl: '' });
+      _brandLogoTrans = null; _brandLiveApply({ companyLogoUrl: '' });  // v79: apply instantly
     }
     function brandSetTheme(t) { _brandDraftPatch({ loginTheme: t }); }
     function brandSetPhoto(input) {
@@ -18375,7 +18442,7 @@
       const _pvDesc = b.loginSubtitle ? `<div style="color:${_descC} !important;font-size:9.5px;line-height:1.45;margin-top:5px">${b.loginSubtitle}</div>` : '';
       const _pvPtsList = (b.loginPoints || []).filter(function (t) { return t && t.trim(); }).slice(0, 3).map(function (t) { return `<div style="display:flex;align-items:center;gap:6px;margin-top:5px;color:${_ptsC} !important;font-size:9.5px;justify-content:${_ptsJ}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="${_ptsC}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5l9 -11"/></svg>${t}</div>`; }).join('');
       const _pvMsg = `<div style="${_vMargin}text-align:${_alignH}">${_pvHead}${_pvDesc}${_pvPtsList}</div>`;
-      const _pvCard = `<div style="background:#fff;border-radius:10px;padding:13px;box-shadow:0 14px 34px -14px rgba(0,0,0,.45);width:150px;flex-shrink:0"><div style="font-weight:800;font-size:12px;color:#0f172a">Welcome back</div><div style="height:20px;border:1px solid #e5eaf3;border-radius:6px;margin:8px 0"></div><div style="height:25px;border-radius:6px;background:${_btnG};color:${_onP} !important;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center">Sign in</div></div>`;
+      const _pvCard = `<div style="background:#fff;border-radius:10px;padding:14px 15px;box-shadow:0 14px 34px -14px rgba(0,0,0,.45);width:72%;max-width:210px;min-width:128px"><div style="font-weight:800;font-size:12px;color:#0f172a">Welcome back</div><div style="font-size:8.5px;color:#64748b;margin-top:2px">Use your company email to continue</div><div style="height:22px;border:1px solid #e5eaf3;border-radius:6px;margin:9px 0"></div><div style="height:26px;border-radius:6px;background:${_btnG};color:${_onP} !important;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center">Sign in</div></div>`;
       const _pvFullBg = 'background-color:' + lg.color + ';background-image:' + lg.image + ';background-size:' + lg.size + ';';
       const _pvPhotoBg = b.loginBgImage ? ('background:linear-gradient(rgba(8,15,30,.42),rgba(8,15,30,.72)),url(' + b.loginBgImage + ');background-size:cover;background-position:center;') : 'background:repeating-linear-gradient(45deg,#334155 0 10px,#3d4d64 10px 20px);';
       const _livePreview = (function () {
@@ -21563,6 +21630,9 @@
       // Adjustment" after submitting an evaluation. Default on. When on, a manager
       // may request an adjustment ONCE per evaluation.
       allowScoreAdjustment: true,
+      // v79: Super Admin controls whether managers may delegate the evaluation of
+      // a team member to one of their direct reports. Default OFF — HC enables it.
+      allowEvalDelegation: false,
       // v67.21: Well-being Check-in visibility per level.
       // Super Admin can toggle each level on/off. Default: all visible.
       wellbeingVisible: {
@@ -21574,6 +21644,29 @@
         'Entry': true,
       }
     };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // v79: EVALUATION DELEGATION (HC-approved). A manager requests to delegate
+    // the evaluation of a team member to a direct report. Flow:
+    //   1) manager requests → status 'pending_hc' (HC emailed)
+    //   2) HC approves → status 'active', emp.assignedEvaluator set, delegate notified
+    //      HC rejects  → status 'rejected' (reason), delegator notified
+    //   3) delegate submits the eval → held on the record (pendingEval, 'pending_delegator')
+    //   4) delegator approves → written to PE_EVALS + HC emailed (final) ; rejects → back to delegate
+    // ═══════════════════════════════════════════════════════════════════
+    var _PE_EVAL_DELEG_LS_KEY = 'kabi_pe_eval_delegations_v1';
+    function _loadEvalDelegations() { try { var r = localStorage.getItem(_PE_EVAL_DELEG_LS_KEY); return r ? JSON.parse(r) : []; } catch (e) { return []; } }
+    function _saveEvalDelegations() { try { localStorage.setItem(_PE_EVAL_DELEG_LS_KEY, JSON.stringify(PE_EVAL_DELEGATIONS)); } catch (e) { console.warn('[eval-deleg] save failed', e); } }
+    var PE_EVAL_DELEGATIONS = _loadEvalDelegations();
+    function peGetActiveDelegation(evaluateeEmail) {
+      if (!evaluateeEmail) return null;
+      var lc = evaluateeEmail.toLowerCase();
+      return PE_EVAL_DELEGATIONS.find(function (d) { return d.evaluateeEmail.toLowerCase() === lc && d.status === 'active'; }) || null;
+    }
+    function peGetDelegationById(id) { return PE_EVAL_DELEGATIONS.find(function (d) { return String(d.id) === String(id); }) || null; }
+    function _notifyHcSuperAdmins(notif) {
+      try { Object.keys(USERS || {}).forEach(function (email) { if (USERS[email] && USERS[email].role === 'pm_super_admin') addNotification(email, notif); }); } catch (e) {}
+    }
 
     // ═══════════════════════════════════════════════════════
     // FINAL SCORE HELPERS
@@ -26910,6 +27003,16 @@
             <span class="inv-slider"></span>
           </label>
         </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 16px;margin-top:10px;background:${PE_CONFIG.allowEvalDelegation === true ? 'rgba(109,91,208,.1)' : 'rgba(255,255,255,.03)'};border:1px solid ${PE_CONFIG.allowEvalDelegation === true ? 'rgba(109,91,208,.35)' : 'rgba(255,255,255,.08)'};border-radius:10px">
+          <div>
+            <span style="font-size:12px;font-weight:700;color:${PE_CONFIG.allowEvalDelegation === true ? '#9B81BC' : 'var(--text-primary)'}">Allow &ldquo;Evaluation Delegation&rdquo;</span>
+            <div style="font-size:9px;color:var(--text-dim);margin-top:2px">${PE_CONFIG.allowEvalDelegation === true ? '<i class=\"ti ti-circle-check ti-green\"></i> Managers may delegate an evaluation to a direct report — each delegation needs HC approval' : '<i class=\"ti ti-lock\"></i> Off — managers cannot delegate evaluations'}</div>
+          </div>
+          <label class="inv-switch" style="flex-shrink:0" title="${PE_CONFIG.allowEvalDelegation === true ? 'On — managers can request delegations' : 'Off — disabled'}">
+            <input type="checkbox" ${PE_CONFIG.allowEvalDelegation === true ? 'checked' : ''} onchange="peToggleEvalDelegation(this.checked)">
+            <span class="inv-slider"></span>
+          </label>
+        </div>
       </div>
 
       <!-- Justification Mode -->
@@ -27377,6 +27480,13 @@
     }
 
     // v77: Super Admin show/hide the manager "Request Score Adjustment" option.
+    function peToggleEvalDelegation(checked) {
+      PE_CONFIG.allowEvalDelegation = checked;
+      try { _savePEConfig(); } catch (e) {}
+      toast(checked ? '<i class="ti ti-circle-check ti-green"></i> Managers can now request evaluation delegations (HC-approved)' : '<i class="ti ti-ban ti-rose"></i> Evaluation delegation turned off', 'ok');
+      renderPEAdmin(document.getElementById('hc-body'));
+    }
+    window.peToggleEvalDelegation = peToggleEvalDelegation;
     function peToggleScoreAdjustment(checked) {
       PE_CONFIG.allowScoreAdjustment = checked;
       try { _savePEConfig(); } catch (e) {}
@@ -30071,6 +30181,114 @@
     }
 
     // ── EDIT REQUESTS ──
+    function _peShortDate(iso) { try { return new Date(iso).toLocaleDateString('en', { month: 'short', day: 'numeric' }); } catch (e) { return ''; } }
+    // ── Delegator reviews the delegate's submitted evaluation ──
+    function peDelegatorApproveEval(delId) {
+      var d = peGetDelegationById(delId); if (!d || !d.pendingEval || d.pendingEval.reviewStatus !== 'pending_delegator') return;
+      d.pendingEval.reviewStatus = 'pending_hc_final'; d.pendingEval.delegatorApprovedAt = new Date().toISOString();
+      _saveEvalDelegations();
+      try { peSendEmail(HC_MAIL, 'Delegated evaluation — final approval needed — ' + d.evaluateeName, d.delegatorName + ' approved ' + d.evaluatorName + '’s evaluation of ' + d.evaluateeName + '. Please give final approval in the portal → People & Access → Edit Requests.', EJ_TPL_EVAL); } catch (e) {}
+      _notifyHcSuperAdmins({ type: 'note', fromName: d.delegatorName, fromEmail: d.delegatorEmail, body: 'Delegated evaluation of ' + d.evaluateeName + ' approved by ' + d.delegatorName + ' — awaiting your final approval.' });
+      addNotification(d.evaluatorEmail, { type: 'note', fromName: d.delegatorName, fromEmail: d.delegatorEmail, body: 'Your evaluation of ' + d.evaluateeName + ' was approved by ' + d.delegatorName + ' and sent to HC for final approval.' });
+      toast('<i class="ti ti-mail"></i> Approved — sent to HC for final approval', 'ok');
+      try { empRenderTabContent(); } catch (e) {}
+    }
+    function peDelegatorRejectEval(delId) {
+      var d = peGetDelegationById(delId); if (!d || !d.pendingEval) return;
+      var reason = prompt('Reason for sending this evaluation back to ' + d.evaluatorName + ':', ''); if (reason === null) return;
+      d.pendingEval = null; _saveEvalDelegations();
+      addNotification(d.evaluatorEmail, { type: 'note', fromName: d.delegatorName, fromEmail: d.delegatorEmail, body: d.delegatorName + ' asked you to revise your evaluation of ' + d.evaluateeName + ((reason || '').trim() ? ': ' + reason.trim() : '.') + ' Please update and resubmit.' });
+      toast('Sent back to ' + d.evaluatorName + ' for revision', 'ok');
+      try { empRenderTabContent(); } catch (e) {}
+    }
+    // ── HC final approval of a delegated evaluation ──
+    function peHcFinalizeEval(delId) {
+      var d = peGetDelegationById(delId); if (!d || !d.pendingEval || d.pendingEval.reviewStatus !== 'pending_hc_final') return;
+      var pe = d.pendingEval; var key = pe.data.empId + '_' + pe.quarter;
+      PE_EVALS[key] = pe.data; try { _savePEEvals(); } catch (e) {}
+      d.pendingEval = { done: true, quarter: pe.quarter, finalizedAt: new Date().toISOString() };
+      _saveEvalDelegations();
+      try { peSendEmail(HC_MAIL, 'Evaluation finalized — ' + d.evaluateeName, 'Final approval complete for ' + d.evaluateeName + ' (evaluated by ' + d.evaluatorName + ', delegated by ' + d.delegatorName + ').', EJ_TPL_EVAL); } catch (e) {}
+      addNotification(d.evaluatorEmail, { type: 'note', fromName: 'Human Capital', fromEmail: HC_MAIL, body: 'HC finalized your evaluation of ' + d.evaluateeName + '.' });
+      addNotification(d.delegatorEmail, { type: 'note', fromName: 'Human Capital', fromEmail: HC_MAIL, body: 'HC finalized the evaluation of ' + d.evaluateeName + ' (by ' + d.evaluatorName + ').' });
+      toast('<i class="ti ti-circle-check ti-green"></i> Evaluation finalized', 'ok');
+      try { renderHC(); } catch (e) {}
+    }
+    function peHcRejectEval(delId) {
+      var d = peGetDelegationById(delId); if (!d || !d.pendingEval) return;
+      var reason = prompt('Reason for rejecting this evaluation:', ''); if (reason === null) return;
+      d.pendingEval = null; _saveEvalDelegations();
+      addNotification(d.delegatorEmail, { type: 'note', fromName: 'Human Capital', fromEmail: HC_MAIL, body: 'HC rejected the delegated evaluation of ' + d.evaluateeName + ((reason || '').trim() ? ': ' + reason.trim() : '.') + ' Please have ' + d.evaluatorName + ' revise it.' });
+      addNotification(d.evaluatorEmail, { type: 'note', fromName: 'Human Capital', fromEmail: HC_MAIL, body: 'HC asked for a revision of your evaluation of ' + d.evaluateeName + ((reason || '').trim() ? ': ' + reason.trim() : '.') });
+      toast('Evaluation rejected — delegator & evaluator notified', 'ok');
+      try { renderHC(); } catch (e) {}
+    }
+    // Read-only view of a pending delegated evaluation (delegator/HC review).
+    function peViewDelegatedEval(delId) {
+      var d = peGetDelegationById(delId); if (!d || !d.pendingEval || !d.pendingEval.data) return;
+      var pe = d.pendingEval.data;
+      var rows = (pe.kpiScores || []).map(function (k) { return '<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--glass-border,#e5eaf3);font-size:12px"><span style="color:var(--text-muted)">' + (k.name || 'KPI') + '</span><strong style="color:var(--text-primary)">' + (k.score != null ? k.score + '/5' : '—') + '</strong></div>'; }).join('');
+      var ov = document.getElementById('kabi-deleg-eval-view');
+      if (!ov) { ov = document.createElement('div'); ov.id = 'kabi-deleg-eval-view'; document.body.appendChild(ov); ov.onclick = function (e) { if (e.target === ov) ov.style.display = 'none'; }; }
+      ov.style.cssText = 'position:fixed;inset:0;z-index:9600;background:rgba(10,31,82,.55);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px;font-family:var(--font)';
+      ov.innerHTML = '<div style="width:100%;max-width:480px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:16px;overflow:hidden;box-shadow:0 30px 70px -20px rgba(10,31,82,.5)">'
+        + '<div style="padding:18px 22px;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),#12306e);color:#fff"><div style="font-size:16px;font-weight:900">' + d.evaluatorName + '’s evaluation of ' + d.evaluateeName + '</div><div style="font-size:11px;opacity:.85;margin-top:3px">' + (d.pendingEval.quarter || '') + ' · Total ' + (pe.totalScore != null ? pe.totalScore.toFixed(2) + '/5 (' + (pe.totalPct || '') + '%)' : '') + '</div></div>'
+        + '<div style="padding:18px 22px">' + (rows || '<div style="color:var(--text-muted);font-size:12px">No KPI scores recorded.</div>') + '</div>'
+        + '<div style="display:flex;justify-content:flex-end;padding:0 22px 18px"><button onclick="document.getElementById(\'kabi-deleg-eval-view\').style.display=\'none\'" style="padding:9px 16px;border-radius:9px;border:1px solid var(--glass-border,#e5eaf3);background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Close</button></div>'
+        + '</div>';
+      ov.style.display = 'flex';
+    }
+    // HC approval queue block (delegation requests + delegated-eval final approvals).
+    function peRenderEvalDelegationApprovals() {
+      var pendReq = PE_EVAL_DELEGATIONS.filter(function (d) { return d.status === 'pending_hc'; });
+      var pendFinal = PE_EVAL_DELEGATIONS.filter(function (d) { return d.pendingEval && d.pendingEval.reviewStatus === 'pending_hc_final'; });
+      if (!pendReq.length && !pendFinal.length) return '';
+      var h = '<div style="margin-bottom:18px;background:rgba(109,91,208,.06);border:1px solid rgba(109,91,208,.28);border-radius:12px;padding:14px 16px">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><i class="ti ti-users-group" style="color:#9B81BC;font-size:16px"></i><strong style="font-size:13px;color:var(--text-primary)">Evaluation delegations</strong><span style="font-size:9px;font-weight:800;padding:2px 8px;border-radius:10px;background:rgba(109,91,208,.14);color:#9B81BC">' + (pendReq.length + pendFinal.length) + ' to review</span></div>';
+      pendReq.forEach(function (d) {
+        h += '<div style="display:flex;align-items:center;gap:10px;padding:11px 13px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:10px;margin-bottom:8px;flex-wrap:wrap">'
+          + '<div style="flex:1;min-width:200px;font-size:12px;color:var(--text-primary)"><i class="ti ti-user-plus" style="color:#9B81BC"></i> <strong>' + d.delegatorName + '</strong> wants <strong>' + d.evaluatorName + '</strong> to evaluate <strong>' + d.evaluateeName + '</strong><div style="font-size:10px;color:var(--text-muted);margin-top:2px">' + (d.evaluateeDept || '') + ' · requested ' + _peShortDate(d.createdAt) + '</div></div>'
+          + '<div style="display:flex;gap:7px"><button onclick="peHcApproveDelegation(' + d.id + ')" class="btn-primary" style="padding:7px 14px;font-size:11px"><i class="ti ti-check ti-green"></i> Approve</button>'
+          + '<button onclick="peHcRejectDelegation(' + d.id + ')" style="padding:7px 12px;border-radius:7px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.06);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-x ti-rose"></i> Reject</button></div>'
+          + '</div>';
+      });
+      pendFinal.forEach(function (d) {
+        var pe = d.pendingEval;
+        h += '<div style="display:flex;align-items:center;gap:10px;padding:11px 13px;background:rgba(18,161,122,.05);border:1px solid rgba(18,161,122,.25);border-radius:10px;margin-bottom:8px;flex-wrap:wrap">'
+          + '<div style="flex:1;min-width:200px;font-size:12px;color:var(--text-primary)"><i class="ti ti-clipboard-check" style="color:#12a17a"></i> Final approval: <strong>' + d.evaluatorName + '</strong>’s evaluation of <strong>' + d.evaluateeName + '</strong> <span style="color:var(--text-muted)">(approved by ' + d.delegatorName + ')</span><div style="font-size:10px;color:var(--text-muted);margin-top:2px">Score ' + (pe.data && pe.data.totalScore != null ? pe.data.totalScore.toFixed(2) + '/5' : '') + ' · ' + (pe.quarter || '') + '</div></div>'
+          + '<div style="display:flex;gap:7px"><button onclick="peViewDelegatedEval(' + d.id + ')" style="padding:7px 12px;border-radius:7px;border:1px solid var(--glass-border,#e5eaf3);background:transparent;color:var(--text-primary);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-eye"></i> View</button>'
+          + '<button onclick="peHcFinalizeEval(' + d.id + ')" class="btn-primary" style="padding:7px 14px;font-size:11px"><i class="ti ti-check ti-green"></i> Finalize</button>'
+          + '<button onclick="peHcRejectEval(' + d.id + ')" style="padding:7px 12px;border-radius:7px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.06);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-x ti-rose"></i> Reject</button></div>'
+          + '</div>';
+      });
+      h += '</div>';
+      return h;
+    }
+    // Delegator's queue of delegate-submitted evaluations awaiting their review.
+    function _peRenderDelegatorReviews() {
+      if (!me) return '';
+      var mine = PE_EVAL_DELEGATIONS.filter(function (d) { return d.delegatorEmail && d.delegatorEmail.toLowerCase() === me.email.toLowerCase() && d.pendingEval && d.pendingEval.reviewStatus === 'pending_delegator'; });
+      if (!mine.length) return '';
+      var rows = mine.map(function (d) {
+        var sc = (d.pendingEval.data && d.pendingEval.data.totalScore != null) ? d.pendingEval.data.totalScore.toFixed(2) + '/5' : '';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:11px 13px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:10px;margin-bottom:8px;flex-wrap:wrap">'
+          + '<div style="flex:1;min-width:200px;font-size:12px;color:var(--text-primary)"><strong>' + d.evaluatorName + '</strong> submitted an evaluation of <strong>' + d.evaluateeName + '</strong><div style="font-size:10px;color:var(--text-muted);margin-top:2px">Score ' + sc + ' · awaiting your review</div></div>'
+          + '<div style="display:flex;gap:7px"><button onclick="peViewDelegatedEval(' + d.id + ')" style="padding:7px 12px;border-radius:7px;border:1px solid var(--glass-border,#e5eaf3);background:transparent;color:var(--text-primary);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-eye"></i> View</button>'
+          + '<button onclick="peDelegatorApproveEval(' + d.id + ')" style="padding:7px 14px;border-radius:7px;border:none;background:linear-gradient(135deg,#0d9960,#12a17a);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit"><i class="ti ti-check"></i> Approve</button>'
+          + '<button onclick="peDelegatorRejectEval(' + d.id + ')" style="padding:7px 12px;border-radius:7px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.06);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-x ti-rose"></i> Reject</button></div>'
+          + '</div>';
+      }).join('');
+      return '<div style="margin-bottom:16px;background:rgba(0,194,224,.05);border:1px solid rgba(0,194,224,.25);border-radius:12px;padding:14px 16px">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><i class="ti ti-clipboard-check" style="color:var(--cyan);font-size:16px"></i><strong style="font-size:12.5px;color:var(--text-primary)">Delegated evaluations to review</strong><span style="font-size:9px;font-weight:800;padding:2px 8px;border-radius:10px;background:rgba(0,194,224,.14);color:var(--cyan)">' + mine.length + '</span></div>'
+        + rows + '</div>';
+    }
+    window.peDelegatorApproveEval = peDelegatorApproveEval;
+    window.peDelegatorRejectEval = peDelegatorRejectEval;
+    window.peHcFinalizeEval = peHcFinalizeEval;
+    window.peHcRejectEval = peHcRejectEval;
+    window.peViewDelegatedEval = peViewDelegatedEval;
+    window.peRenderEvalDelegationApprovals = peRenderEvalDelegationApprovals;
+
     function renderPEEditReqs(el) {
       const pending = PE_EDIT_REQUESTS.filter(r => r.status === 'pending');
       const resolved = PE_EDIT_REQUESTS.filter(r => r.status !== 'pending');
@@ -30082,6 +30300,8 @@
         `<span class="pe-tab-head-chip" style="background:${pending.length ? 'rgba(194,130,11,.14)' : 'rgba(18,161,122,.12)'};border:1px solid ${pending.length ? 'rgba(194,130,11,.32)' : 'rgba(18,161,122,.3)'};color:${pending.length ? '#c2820b' : '#12a17a'}"><span style="width:7px;height:7px;border-radius:50%;background:${pending.length ? '#c2820b' : '#12a17a'}"></span>${pending.length} Pending · ${resolved.length} Resolved</span>`,
         '#c2820b'
       ) + `
+
+      ${(typeof peRenderEvalDelegationApprovals === 'function') ? peRenderEvalDelegationApprovals() : ''}
 
       ${PE_EDIT_REQUESTS.length === 0 ? '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:11px;background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.08);border-radius:10px">No edit requests yet</div>' : ''}
 
@@ -31317,7 +31537,20 @@
       const kpis = peGetApprovedKPIs(emp.fn, null, emp.level);
       kpis.forEach((_, i) => { if (!peEvalState.kpiScores[i]) peEvalState.kpiScores[i] = {}; peEvalState.kpiScores[i].name = kpis[i]; peEvalState.kpiScores[i].justification = peEvalState.justs?.[`kpi-just_${i}`] || peEvalState.justs?.['kpi-secjust_0'] || ''; });
       const r = peCalcTotal(peEvalState, emp); const rc = peRating(r.total);
-      PE_EVALS[`${emp.id}_${peEvalState.quarter}`] = { empId: emp.id, quarter: peEvalState.quarter, evaluator: me.name, evaluatorEmail: me.email, timestamp: new Date().toISOString(), totalScore: r.total, totalPct: r.totalPct, kpiScores: peEvalState.kpiScores.filter(k => k), bScores: { ...peEvalState.bScores }, lScores: { ...(peEvalState.lScores || {}) }, tScores: { ...peEvalState.tScores }, bAvg: r.bAvg, lAvg: r.lAvg, tAvg: r.tAvg, clientSat: peEvalState.clientSat, digitalAdapt: peEvalState.digitalAdapt, learning: peEvalState.learning, justs: { ...peEvalState.justs }, weights: { ...peGetWeights(emp) } };
+      const _evalObj = { empId: emp.id, quarter: peEvalState.quarter, evaluator: me.name, evaluatorEmail: me.email, timestamp: new Date().toISOString(), totalScore: r.total, totalPct: r.totalPct, kpiScores: peEvalState.kpiScores.filter(k => k), bScores: { ...peEvalState.bScores }, lScores: { ...(peEvalState.lScores || {}) }, tScores: { ...peEvalState.tScores }, bAvg: r.bAvg, lAvg: r.lAvg, tAvg: r.tAvg, clientSat: peEvalState.clientSat, digitalAdapt: peEvalState.digitalAdapt, learning: peEvalState.learning, justs: { ...peEvalState.justs }, weights: { ...peGetWeights(emp) } };
+      // v79: if THIS is a DELEGATED evaluation (I'm the assigned delegate, not the
+      // line manager), it does NOT go straight to HC. It goes to the delegator for
+      // review → then HC final approval. Held on the delegation record until then.
+      var _del = (typeof peGetActiveDelegation === 'function') ? peGetActiveDelegation(emp.email) : null;
+      if (_del && _del.evaluatorEmail && _del.evaluatorEmail.toLowerCase() === me.email.toLowerCase()) {
+        _del.pendingEval = { quarter: peEvalState.quarter, data: _evalObj, submittedAt: new Date().toISOString(), reviewStatus: 'pending_delegator' };
+        _saveEvalDelegations();
+        addNotification(_del.delegatorEmail, { type: 'note', fromName: me.name, fromEmail: me.email, body: 'I submitted the evaluation of ' + _del.evaluateeName + ' (' + r.total.toFixed(2) + '/5) — please review it in your Evaluate Team page.' });
+        toast('<i class="ti ti-mail"></i> Sent to ' + (_del.delegatorName || 'your manager') + ' for review', 'ok');
+        peRenderManagerEval();
+        return;
+      }
+      PE_EVALS[`${emp.id}_${peEvalState.quarter}`] = _evalObj;
       _savePEEvals(); // v67.9: persist to localStorage
       peSendEmail(HC_MAIL, 'Evaluation Submitted — ' + emp.name, `Evaluator: ${me.name} (${me.email})\nEmployee: ${emp.name}\nDepartment: ${emp.dept}\nFunction: ${peGetFnName(emp.fn)}\nQuarter: ${peEvalState.quarter}\n\nScore: ${r.total.toFixed(2)}/5 (${r.totalPct}%) — ${rc.name}`, EJ_TPL_EVAL);
       toast(`<i class="ti ti-circle-check ti-green"></i> ${emp.name}: ${r.total.toFixed(2)}/5 — ${rc.name}`); peRenderManagerEval();
@@ -43325,8 +43558,8 @@
           '"></div>',
           '<div style="font-size:12px;color:' + t.muted + ';line-height:1.6">',
             rtl
-              ? 'يفحص: الواقعية · التكرار · التناقضات · الفجوات<br>عادةً يستغرق ٣-٥ ثوانٍ.'
-              : 'Checking: realism · duplicates · conflicts · gaps<br>Usually takes 3-5 seconds.',
+              ? 'يفحص: الواقعية · التكرار · التناقضات · الفجوات<br>عادةً يستغرق بضع ثوانٍ.'
+              : 'Checking: realism · duplicates · conflicts · gaps<br>Usually takes a few seconds.',
           '</div>',
         '</div>',
       '</div>',
@@ -43393,7 +43626,9 @@
     var hasWarning = result.warningCount > 0;
     var hasAny = result.issues.length > 0;
 
-    modal.dataset.canClose = hasCritical ? '0' : '1';
+    // v79: the pre-submit review is ADVISORY — the manager owns the final set
+    // (the AI itself drafted these KPIs), so it never HARD-blocks. Always closeable.
+    modal.dataset.canClose = '1';
     modal.style.display = 'flex';
 
     // Header — color depends on severity
@@ -43403,7 +43638,7 @@
         ? 'linear-gradient(135deg,#F59E0B,#B45309)'
         : 'linear-gradient(135deg,#3BB691,#0F766E)');
     var headerTitle = hasCritical
-      ? (rtl ? '<i class=\"ti ti-ban ti-rose\"></i> لا يمكن التسليم — يجب الإصلاح أولاً' : '<i class=\"ti ti-ban ti-rose\"></i> Cannot submit — fix required')
+      ? (rtl ? '<i class=\"ti ti-alert-triangle ti-amber\"></i> راجِع قبل التسليم' : '<i class=\"ti ti-alert-triangle\"></i> Review suggestions before you submit')
       : (hasWarning
         ? (rtl ? '<i class=\"ti ti-alert-triangle ti-amber\"></i> تحذيرات قبل التسليم' : '<i class=\"ti ti-alert-triangle ti-amber\"></i> Warnings before submit')
         : (rtl ? '<i class=\"ti ti-circle-check ti-green\"></i> المراجعة سليمة' : '<i class=\"ti ti-circle-check ti-green\"></i> Looks good'));
@@ -43633,17 +43868,14 @@
         '">' + (rtl ? '↩ ارجع وأصلح' : '↩ Go back & fix') + '</button>';
     }
 
-    if (hasCritical) {
-      html += '<button disabled style="' +
-        'padding:8px 16px;border-radius:6px;font-size:12px;font-weight:700;' +
-        'border:none;background:' + t.muted + ';color:#fff;opacity:.5;cursor:not-allowed' +
-        '" title="' + (rtl ? 'يجب إصلاح المشاكل الحرجة أولاً' : 'Fix critical issues first') + '">' +
-        (rtl ? '<i class=\"ti ti-ban ti-rose\"></i> لا يمكن التسليم' : '<i class=\"ti ti-ban ti-rose\"></i> Cannot submit') + '</button>';
-    } else if (hasWarning) {
+    if (hasCritical || hasWarning) {
+      // Advisory only — the manager can always proceed. Overridden issues are
+      // forwarded to onProceed and stored on the submission for HC visibility.
       html += '<button id="kabi-presubmit-anyway" style="' +
         'padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;' +
-        'border:none;background:' + t.warning + ';color:#fff' +
-        '">' + (rtl ? '<i class=\"ti ti-alert-triangle ti-amber\"></i> سلّم على أي حال' : '<i class=\"ti ti-alert-triangle ti-amber\"></i> Submit anyway') + '</button>';
+        'border:none;background:' + (hasCritical ? '#dc4b57' : t.warning) + ';color:#fff' +
+        '" title="' + (rtl ? 'أنت تملك المجموعة النهائية — هذه مراجعة استشارية' : 'You own the final set — this review is advisory') + '">' +
+        (rtl ? '<i class=\"ti ti-check\"></i> سلّم على أي حال' : '<i class=\"ti ti-check\"></i> Submit anyway') + '</button>';
     } else {
       html += '<button id="kabi-presubmit-confirm" style="' +
         'padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;' +
