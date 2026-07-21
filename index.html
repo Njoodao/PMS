@@ -2860,7 +2860,10 @@
       border-radius: 14px;
       padding: 10px;
       position: sticky;
-      top: 14px;
+      top: 80px;                 /* sit just below the 66px sticky topbar */
+      align-self: start;         /* don't stretch to the grid row height, else sticky can't move */
+      max-height: calc(100vh - 96px);
+      overflow-y: auto;          /* long nav scrolls inside itself, stays fully reachable */
       backdrop-filter: blur(20px) saturate(160%);
       box-shadow: 0 8px 32px rgba(2, 10, 30, .4), 0 0 0 1px rgba(255, 255, 255, .03) inset;
     }
@@ -7330,23 +7333,31 @@
         + '<div style="' + _cardCss + '">'
         + '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:6px">'
         + '<div class="u-avatar" style="width:74px;height:74px;border-radius:50%;font-size:30px;flex-shrink:0">' + _avatarInner(me.email, gender) + '</div>'
-        + '<div style="flex:1;min-width:160px"><div style="font-size:19px;font-weight:900;color:var(--text-primary)">' + (me.name || '') + '</div><div style="font-size:13px;color:var(--text-muted);margin-top:1px">' + title + '</div>'
+        + '<div style="flex:1;min-width:160px"><div style="font-size:19px;font-weight:900;color:var(--text-primary)">' + (me.name || '') + '</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">' + title + '</div>'
+        + '<div style="margin-top:9px"><span style="display:inline-flex;align-items:center;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:800;background:' + (rd.bg || 'rgba(0,194,224,.12)') + ';color:' + (rd.color || 'var(--cyan)') + ';border:1px solid ' + (rd.border || 'rgba(0,194,224,.25)') + '">' + (((me.role === "manager" || me.role === "employee") && emp) ? (function(){ try { return kabiNormalizeLevel(emp.level); } catch(e){ return rd.label; } })() : rd.label) + '</span></div>'
         + '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><label style="display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:8px;border:1px solid var(--glass-border,#e5eaf3);background:rgba(127,140,170,.06);font-size:11px;font-weight:700;color:var(--text-primary);cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h2a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1a2 2 0 0 0 2 2h2a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2"/><path d="M9 13a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg> Upload photo (optional)<input type="file" accept="image/*" onchange="profileUploadAvatar(this)" style="display:none"></label>'
         + (hasPhoto ? '<button onclick="profileRemoveAvatar()" style="padding:7px 13px;border-radius:8px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.06);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Remove</button>' : '') + '</div></div></div>'
-        + '<div style="margin-top:10px">'
-        + _row('Email', me.email || '—')
-        + _row('Department', dept)
-        + _row('Function', fnName)
-        + _row('Manager', mgr)
-        + _row('Hire date', hire)
-        + '<div style="display:flex;justify-content:space-between;gap:16px;padding:13px 0"><span style="font-size:12px;color:var(--text-muted)">Tenure</span><span style="font-size:12.5px;font-weight:700;color:var(--text-primary)">' + tenureStr + '</span></div>'
+        + '<div style="margin-top:16px;border-top:1px solid var(--glass-border,rgba(127,140,170,.16));padding-top:4px">'
+        + (function () {
+            var rows = [['Email', me.email || '—']];
+            if (dept !== '—') rows.push(['Department', dept]);
+            if (fnName !== '—') rows.push(['Function', fnName]);
+            if (mgr !== '—') rows.push(['Manager', mgr]);
+            if (hire !== '—') rows.push(['Hire date', hire]);
+            if (tenureStr !== '—') rows.push(['Tenure', tenureStr]);
+            return rows.map(function (r, i) {
+              var last = i === rows.length - 1;
+              return '<div style="display:flex;justify-content:space-between;gap:16px;padding:12px 0' + (last ? '' : ';border-bottom:1px solid var(--glass-border,rgba(127,140,170,.16))') + '"><span style="font-size:12px;color:var(--text-muted)">' + r[0] + '</span><span style="font-size:12.5px;font-weight:700;color:var(--text-primary);text-align:right;word-break:break-word">' + r[1] + '</span></div>';
+            }).join('');
+          })()
         + '</div></div>'
         // password card
         + '<div style="' + _cardCss + ';margin-bottom:0">'
         + '<h3 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0 0 4px">Change password</h3>'
-        + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Update the password you use to sign in.</div>'
-        + '<label style="' + _lab + '">Current password</label><input id="pf-cur" type="password" placeholder="Current password" style="' + _inp + ';margin-bottom:14px">'
-        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="pf-pw-grid"><div><label style="' + _lab + '">New password</label><input id="pf-new" type="password" placeholder="New password (min 6 characters)" style="' + _inp + '"></div><div><label style="' + _lab + '">Confirm</label><input id="pf-cf" type="password" placeholder="Confirm new password" style="' + _inp + '"></div></div>'
+        + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Update the password you use to sign in. <strong style="color:var(--text-primary)">All fields are required.</strong></div>'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><label style="' + _lab + ';margin-bottom:0">Current password *</label><button type="button" onclick="profileForgotPassword()" style="background:none;border:none;color:var(--cyan);font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;padding:0;text-decoration:underline">Forgot?</button></div>'
+        + '<input id="pf-cur" type="password" placeholder="Current password" style="' + _inp + ';margin-bottom:14px">'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="pf-pw-grid"><div><label style="' + _lab + '">New password *</label><input id="pf-new" type="password" placeholder="New password (min 6 characters)" style="' + _inp + '"></div><div><label style="' + _lab + '">Confirm *</label><input id="pf-cf" type="password" placeholder="Confirm new password" style="' + _inp + '"></div></div>'
         + '<button onclick="profileChangePassword()" style="margin-top:16px;padding:11px 20px;border-radius:9px;border:none;background:var(--brand-primary,#0a1f52);color:var(--brand-on-primary,#fff);font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Update password</button>'
         + '</div></div>';
       ov.style.display = 'flex';
@@ -7361,13 +7372,39 @@
       rd.readAsDataURL(f);
     }
     function profileRemoveAvatar() { _delAvatar(me.email); _refreshTopbarUser(me); openProfile(); }
+    // Forgot current password → for security, only HC can reset. Direct the user to HC.
+    function profileForgotPassword() {
+      var hc = (typeof HC_MAIL !== 'undefined' && HC_MAIL) ? HC_MAIL : 'your HR Business Partner';
+      var ov = document.getElementById('pf-forgot-modal');
+      if (!ov) { ov = document.createElement('div'); ov.id = 'pf-forgot-modal'; document.body.appendChild(ov); ov.onclick = function (e) { if (e.target === ov) ov.style.display = 'none'; }; }
+      ov.style.cssText = 'position:fixed;inset:0;z-index:9600;background:rgba(10,31,82,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;font-family:var(--font)';
+      ov.innerHTML = '<div style="width:100%;max-width:410px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:16px;overflow:hidden;box-shadow:0 30px 70px -20px rgba(10,31,82,.5)">'
+        + '<div style="padding:20px 22px;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 62%,#060f2a));color:var(--brand-on-primary,#fff)">'
+        +   '<div style="width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:11px"><i class="ti ti-lock-question"></i></div>'
+        +   '<div style="font-size:17px;font-weight:900;line-height:1.2">Forgot your password?</div>'
+        + '</div>'
+        + '<div style="padding:20px 22px;font-size:13px;line-height:1.6;color:var(--text-primary)">'
+        +   'For your security, passwords can only be reset by <strong>Human Capital</strong>. Please contact HC to request a reset:'
+        +   '<div style="margin-top:12px;padding:11px 14px;border-radius:10px;background:rgba(0,194,224,.08);border:1px solid rgba(0,194,224,.22);font-weight:800;color:var(--cyan);word-break:break-all"><i class="ti ti-mail"></i> ' + hc + '</div>'
+        + '</div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;padding:0 22px 20px">'
+        +   '<button type="button" onclick="document.getElementById(\'pf-forgot-modal\').style.display=\'none\'" style="padding:9px 16px;border-radius:9px;border:1px solid var(--glass-border,#e5eaf3);background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Close</button>'
+        +   '<a href="mailto:' + hc + '?subject=Password%20reset%20request" style="padding:9px 16px;border-radius:9px;background:var(--brand-primary,#0a1f52);color:var(--brand-on-primary,#fff);font-size:12px;font-weight:800;font-family:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:6px"><i class="ti ti-mail"></i> Email HC</a>'
+        + '</div>'
+        + '</div>';
+      ov.style.display = 'flex';
+    }
+    window.profileForgotPassword = profileForgotPassword;
     function profileChangePassword() {
       if (!me) return;
       var email = me.email;
       var cur = (document.getElementById('pf-cur') || {}).value || '';
       var nw = (document.getElementById('pf-new') || {}).value || '';
       var cf = (document.getElementById('pf-cf') || {}).value || '';
-      if (!nw || nw.length < 6) { toast('New password must be at least 6 characters', 'err'); return; }
+      if (!cur) { toast('Please enter your current password', 'err'); return; }
+      if (!nw) { toast('Please enter a new password', 'err'); return; }
+      if (nw.length < 6) { toast('New password must be at least 6 characters', 'err'); return; }
+      if (!cf) { toast('Please re-enter (confirm) your new password', 'err'); return; }
       if (nw !== cf) { toast('New passwords do not match', 'err'); return; }
       var stored = (typeof _getPwd === 'function') ? _getPwd(email) : null;
       var ok = stored ? (_hashPwd(cur) === stored) : (USERS[email] && cur === USERS[email].pass);
@@ -15088,9 +15125,12 @@
       ico.style.background = p.light;
       document.getElementById('fn-title').textContent = paired ? fnGetMergedLabel(primary) : f.name;
       var _lvlNow = (window._kpiSelectedLevel && window._kpiSelectedLevel[primary]) || 'Entry';
+      var _periodShort = '';
+      try { _periodShort = (typeof window.kabiEvalPeriod === 'function' ? (window.kabiEvalPeriod() || '') : '').replace(/\s*\(.*\)\s*$/, ''); } catch (e) {}
+      var _phase = _periodShort ? ' · phased to ' + _periodShort : '';
       const subText = paired
-        ? (f.dept + ' · ' + p.label + ' Pillar · ' + _lvlNow + ' level · Paired — 4-KPI shared budget')
-        : (f.dept + ' · ' + p.label + ' Pillar · ' + _lvlNow + ' level' + (isCEOOwner ? ' · CEO-Owned KPIs' : ''));
+        ? (f.dept + ' · ' + p.label + ' Pillar · ' + _lvlNow + ' level' + _phase + ' · Paired — 4-KPI shared budget')
+        : (f.dept + ' · ' + p.label + ' Pillar · ' + _lvlNow + ' level' + _phase + (isCEOOwner ? ' · CEO-Owned KPIs' : ''));
       document.getElementById('fn-sub').textContent = subText;
       // v66.6: paired-aware submission lookup
       // v67.9: ignore superseded (re-submitted after rejection) entries — pick the active one
@@ -16971,6 +17011,12 @@
       productName: 'Performance System',
       logoText: 'K',
       companyLogoUrl: '',
+      // v77: white-label the top header (topbar) — empty = falls back to Product label
+      headerText: '',
+      // v77: white-label the app footer
+      footerText: 'Performance Management System',
+      footerLinkText: 'kabi.ai',
+      footerLinkUrl: 'https://kabi.ai',
       allowedDomains: ['kabi.ai'],
       primary: '#0a1f52',        // brand primary — sidebar, primary buttons, brand surfaces
       accent: '#00c2e0',         // brand accent — highlights, active states, focus rings
@@ -17051,8 +17097,26 @@
         try { document.title = b.productName + ' — ' + b.companyName; } catch (e) {}
         try { _applyBrandToLogin(b); } catch (e) {}
         try { _applyBrandToTopbar(b); } catch (e) {}
+        try { _applyBrandToFooter(b); } catch (e) {}
       }
     };
+    // White-label the app footer (Branding › Footer).
+    function _applyBrandToFooter(b) {
+      var t = document.getElementById('af-text');
+      if (t) t.textContent = (b.footerText != null ? b.footerText : 'Performance Management System');
+      var a = document.getElementById('af-link');
+      if (a) {
+        var txt = (b.footerLinkText != null && String(b.footerLinkText).trim()) ? b.footerLinkText : '';
+        a.textContent = txt;
+        a.style.display = txt ? '' : 'none';
+        var url = (b.footerLinkUrl || '').trim();
+        if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+        a.setAttribute('href', url || '#');
+        // hide the separating dot before the link when there's no link
+        var dot = a.previousElementSibling;
+        if (dot && dot.classList && dot.classList.contains('af-dot')) dot.style.display = txt ? '' : 'none';
+      }
+    }
 
     function _brandPalette(b) {
       var cols = (b.loginColors || []).filter(Boolean);
@@ -17131,7 +17195,7 @@
     function _applyBrandToTopbar(b) {
       // Header product-name text is customisable (Branding › Product name).
       var pn = document.getElementById('topbar-product-name');
-      if (pn) pn.textContent = (b.productName && String(b.productName).trim()) || 'Performance System';
+      if (pn) pn.textContent = (b.headerText && String(b.headerText).trim()) || (b.productName && String(b.productName).trim()) || 'Performance System';
       var lightImg = document.querySelector('.topbar-logo-light');
       var darkImg  = document.querySelector('.topbar-logo-dark');
       if (!lightImg && !darkImg) return;
@@ -17407,8 +17471,17 @@
           <input style="${_inp};margin-bottom:12px" value="${(b.companyName || '').replace(/"/g, '&quot;')}" oninput="_brandDraftSetQuiet('companyName',this.value);_brandLivePreviewRefresh()">
           <label style="${_lab}">Product label</label>
           <input style="${_inp};margin-bottom:12px" value="${(b.productName || '').replace(/"/g, '&quot;')}" oninput="_brandDraftSetQuiet('productName',this.value);_brandLivePreviewRefresh()">
+          <label style="${_lab}">Header text (top bar) <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">· empty = uses Product label (applies on Save)</span></label>
+          <input style="${_inp};margin-bottom:12px" value="${(b.headerText || '').replace(/"/g, '&quot;')}" placeholder="Performance System" oninput="_brandDraftSetQuiet('headerText',this.value)">
           <label style="${_lab}">Letter mark (used when no logo)</label>
           <input maxlength="2" style="${_inp};width:70px;text-align:center;font-weight:800" value="${(b.logoText || '').replace(/"/g, '&quot;')}" oninput="_brandDraftSetQuiet('logoText',this.value);_brandLivePreviewRefresh()">
+          <div style="border-top:1px solid var(--glass-border,rgba(127,140,170,.16));margin:16px 0 12px"></div>
+          <label style="${_lab}">Footer text <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">· the line at the bottom of every page (applies on Save)</span></label>
+          <input style="${_inp};margin-bottom:12px" value="${(b.footerText != null ? b.footerText : '').replace(/"/g, '&quot;')}" placeholder="Performance Management System" oninput="_brandDraftSetQuiet('footerText',this.value)">
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:130px"><label style="${_lab}">Footer link text <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">(empty = hidden)</span></label><input style="${_inp}" value="${(b.footerLinkText != null ? b.footerLinkText : '').replace(/"/g, '&quot;')}" placeholder="kabi.ai" oninput="_brandDraftSetQuiet('footerLinkText',this.value)"></div>
+            <div style="flex:1;min-width:130px"><label style="${_lab}">Footer link URL</label><input style="${_inp}" value="${(b.footerLinkUrl != null ? b.footerLinkUrl : '').replace(/"/g, '&quot;')}" placeholder="https://kabi.ai" oninput="_brandDraftSetQuiet('footerLinkUrl',this.value)"></div>
+          </div>
         </div>
         <!-- Logo -->
         <div style="${_card};margin-bottom:0">
@@ -20621,16 +20694,16 @@
     // Templates for employee wellbeing messages — AI picks one at random.
     // These are NEUTRAL wellbeing messages — no hints about performance, workload, or pace.
     let PE_EMP_WELLBEING_TEMPLATES = [
-      "How are you feeling today? Take a moment to check in with yourself <i class=\"ti ti-heart ti-blue\"></i>",
-      "Staying hydrated boosts focus and mood. Grab a glass of water! <i class=\"ti ti-droplet\"></i>",
-      "A short walk outside can refresh your perspective. Consider one today <i class=\"ti ti-leaf ti-green\"></i>",
+      "How are you feeling today? Take a moment to check in with yourself 💙",
+      "Staying hydrated boosts focus and mood. Grab a glass of water! 💧",
+      "A short walk outside can refresh your perspective. Consider one today 🌿",
       "Your wellbeing matters. Remember to take your breaks throughout the day <i class=\"ti ti-coffee\"></i>",
-      "Sleep is a superpower. Aim for 7–8 hours tonight <i class=\"ti ti-moon\"></i>",
-      "Connect with a colleague today — a friendly chat lifts the mood <i class=\"ti ti-handshake\"></i>",
+      "Sleep is a superpower. Aim for 7–8 hours tonight 🌙",
+      "Connect with a colleague today — a friendly chat lifts the mood 🤝",
       "Deep breathing for 2 minutes can reduce stress. Give it a try <i class=\"ti ti-yoga\"></i>",
       "You've been part of the KABi family for a while — thank you for being here! <i class=\"ti ti-confetti\"></i>",
       "Explore something new today — learning keeps us curious and engaged <i class=\"ti ti-sparkles ti-cyan\"></i>",
-      "Your mental health matters. The HR team is always here to listen <i class=\"ti ti-heart ti-blue\"></i>"
+      "Your mental health matters. The HR team is always here to listen 💙"
     ];
 
     // Templates for MANAGER insights — about their team (workload balance, burnout risk, leave patterns, stagnation).
@@ -24979,12 +25052,12 @@
       // Reasoning: lets HC tailor messages per level (e.g. wellbeing tips for
       // staff vs strategic reminders for Top Mgmt) without duplicating templates.
       templates: [
-        { text: "How are you feeling today? Take a moment to check in with yourself <i class=\"ti ti-heart ti-blue\"></i>",        audiences: ['all'] },
-        { text: "Staying hydrated boosts focus and mood. Grab a glass of water! <i class=\"ti ti-droplet\"></i>",            audiences: ['all'] },
-        { text: "A short walk outside can refresh your perspective. Consider one today <i class=\"ti ti-leaf ti-green\"></i>",     audiences: ['all'] },
-        { text: "Sleep is a superpower. Aim for 7–8 hours tonight <i class=\"ti ti-moon\"></i>",                          audiences: ['staff', 'management'] },
-        { text: "Connect with a colleague today — a friendly chat lifts the mood <i class=\"ti ti-handshake\"></i>",           audiences: ['all'] },
-        { text: "Your mental health matters. The HR team is always here to listen <i class=\"ti ti-heart ti-blue\"></i>",          audiences: ['all'] }
+        { text: "How are you feeling today? Take a moment to check in with yourself 💙",        audiences: ['all'] },
+        { text: "Staying hydrated boosts focus and mood. Grab a glass of water! 💧",            audiences: ['all'] },
+        { text: "A short walk outside can refresh your perspective. Consider one today 🌿",     audiences: ['all'] },
+        { text: "Sleep is a superpower. Aim for 7–8 hours tonight 🌙",                          audiences: ['staff', 'management'] },
+        { text: "Connect with a colleague today — a friendly chat lifts the mood 🤝",           audiences: ['all'] },
+        { text: "Your mental health matters. The HR team is always here to listen 💙",          audiences: ['all'] }
       ],
       lastRun: null
     };
@@ -35154,13 +35227,21 @@
     /* ─── v63: Prompt builders for Generate mode ──────────────────────── */
     // v66.11.0: Get human-readable eval period label for AI prompts
     function _getEvalPeriodLabel() {
-      var freq = (typeof PE_FREQUENCY !== 'undefined') ? PE_FREQUENCY : 'quarterly';
+      var freq = (typeof PE_FREQUENCY !== 'undefined') ? PE_FREQUENCY : 'semi-annual';
+      var year = new Date().getFullYear();
       var openQ = (typeof peGetOpenQ === 'function') ? peGetOpenQ() : null;
-      var qLabel = openQ && (typeof PE_QUARTERS !== 'undefined') && PE_QUARTERS[openQ] ? PE_QUARTERS[openQ].label : '';
-      if (freq === 'quarterly') return qLabel || 'Q1-Q4 2026 quarterly';
-      if (freq === 'semi-annual') return 'H1/H2 2026 semi-annual';
-      if (freq === 'annual') return 'Full Year 2026 annual';
-      return qLabel || freq;
+      // A specific cycle is OPEN → use its exact label (e.g. "H1 2026 (Jan-Jun)",
+      // "Q3 2026 (Jul-Sep)", "Full Year 2026") so targets phase to the real period.
+      if (openQ && typeof PE_QUARTERS !== 'undefined' && PE_QUARTERS[openQ] && PE_QUARTERS[openQ].label) {
+        return PE_QUARTERS[openQ].label;
+      }
+      // No cycle open yet → the next/first cycle of the configured frequency, this year.
+      var keys = (typeof PE_QUARTERS !== 'undefined') ? Object.keys(PE_QUARTERS) : [];
+      if (keys.length && PE_QUARTERS[keys[0]] && PE_QUARTERS[keys[0]].label) return PE_QUARTERS[keys[0]].label;
+      if (freq === 'quarterly')   return 'Q1 ' + year;
+      if (freq === 'semi-annual') return 'H1 ' + year;
+      if (freq === 'annual')      return 'Full Year ' + year;
+      return String(freq);
     }
     // v69: expose the evaluation period + frequency so other script modules
     // (KPI Library injection in 07) can make the generator period-aware.
@@ -42686,7 +42767,7 @@
 
   <!-- v67.10: App Footer — visible only after login (signature on all pages) -->
   <div class="app-footer" id="app-footer" role="contentinfo" aria-label="KABi Performance Management System">
-    <span class="af-text">Performance Management System</span>
+    <span class="af-text" id="af-text">Performance Management System</span>
     <span class="af-dot" aria-hidden="true"></span>
     <!-- KABi Icon ONLY (extracted from official logo, exact same paths, no redraw) -->
     <svg class="af-icon" viewBox="0 0 86 75" xmlns="http://www.w3.org/2000/svg" aria-label="KABi" role="img">
@@ -42706,7 +42787,7 @@
       <path fill="#3CA77D" d="M77.12,74.42H62.85c-2.46,0-4.79-1.12-6.32-3.03L26.25,33.57L79.09,46.8c3.59,0.9,6.1,4.11,6.1,7.79v11.8C85.2,70.82,81.58,74.42,77.12,74.42z"/>
     </svg>
     <span class="af-dot" aria-hidden="true"></span>
-    <a class="af-link" href="https://kabi.ai" target="_blank" rel="noopener">kabi.ai</a>
+    <a class="af-link" id="af-link" href="https://kabi.ai" target="_blank" rel="noopener">kabi.ai</a>
   </div>
 
   <script>
