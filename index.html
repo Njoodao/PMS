@@ -9332,11 +9332,14 @@
         const _kabiHexLum = function (hex) { hex = (hex || '').replace('#', '').trim(); if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join(''); var n = parseInt(hex, 16); if (isNaN(n)) return 0; var r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255; return 0.299 * r + 0.587 * g + 0.114 * b; };
         const _bpHex = (((window.Brand && Brand.get) ? Brand.get().primary : '') || '#0a1f52').trim() || '#0a1f52';
         const _bpLight = _kabiHexLum(_bpHex) > 0.6;
-        const _ct    = _bpLight ? '#0f172a' : '#ffffff';
-        const _ctDim = _bpLight ? 'rgba(15,23,42,.60)' : 'rgba(255,255,255,.62)';
-        const _ctLbl = _bpLight ? 'rgba(15,23,42,.55)' : 'var(--brand-accent,#00c2e0)';
-        const _cChip = _bpLight ? 'rgba(15,23,42,.06)' : 'rgba(255,255,255,.14)';
-        const _cBord = _bpLight ? 'rgba(15,23,42,.12)' : 'rgba(255,255,255,.18)';
+        // v77: Super Admin can override the card text colour (auto = by luminance · white · black).
+        const _cardTextPref = (((window.Brand && Brand.get) ? Brand.get().cardTextColor : '') || 'auto');
+        const _lightText = (_cardTextPref === 'white') ? true : (_cardTextPref === 'black') ? false : !_bpLight;
+        const _ct    = _lightText ? '#ffffff' : '#0f172a';
+        const _ctDim = _lightText ? 'rgba(255,255,255,.62)' : 'rgba(15,23,42,.60)';
+        const _ctLbl = _lightText ? 'var(--brand-accent,#00c2e0)' : 'rgba(15,23,42,.55)';
+        const _cChip = _lightText ? 'rgba(255,255,255,.14)' : 'rgba(15,23,42,.06)';
+        const _cBord = _lightText ? 'rgba(255,255,255,.18)' : 'rgba(15,23,42,.12)';
 
         let _scoreSection = '';
         if (isCEO) {
@@ -9354,17 +9357,17 @@
         }
 
         const _profileCardHtml = `
-          <div class="emp-hero-card" style="flex:1;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 80%,#000));border:1px solid ${_cBord};border-radius:18px;padding:22px 24px;position:relative;overflow:hidden;box-shadow:0 18px 44px -22px rgba(10,31,82,.7);box-sizing:border-box">
-            <div style="position:absolute;top:-30px;right:-30px;width:170px;height:170px;background:radial-gradient(circle,${_bpLight ? 'rgba(15,23,42,.05)' : 'rgba(255,255,255,.08)'},transparent 62%);pointer-events:none"></div>
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;position:relative">
-              <div style="display:flex;align-items:center;gap:15px;min-width:0;flex:1">
-                <div style="width:60px;height:60px;border-radius:16px;background:${_cChip};border:1px solid ${_cBord};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:${_ct};flex-shrink:0">${initials}</div>
-                <div style="min-width:0">
-                  <h3 style="font-size:19px;font-weight:900;color:${_ct};margin:0;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${emp.name}</h3>
-                  <div style="font-size:12.5px;color:${_ctDim};margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_deptLine}</div>
-                  <div style="margin-top:9px"><span style="display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:20px;background:${_lsColor}26;color:${_lsColor};border:1px solid ${_lsColor}55;font-size:11px;font-weight:800">${levelIcon} ${isCEO ? 'Executive' : _lvl}</span></div>
-                </div>
+          <div class="emp-hero-card" style="flex:1;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 80%,#000));border:1px solid ${_cBord};border-radius:18px;padding:20px 22px;position:relative;overflow:hidden;box-shadow:0 18px 44px -22px rgba(10,31,82,.7);box-sizing:border-box;display:flex;flex-direction:column;min-height:150px">
+            <div style="position:absolute;top:-30px;right:-30px;width:170px;height:170px;background:radial-gradient(circle,${_lightText ? 'rgba(255,255,255,.08)' : 'rgba(15,23,42,.05)'},transparent 62%);pointer-events:none"></div>
+            <div style="display:flex;align-items:center;gap:15px;min-width:0;position:relative">
+              <div style="width:58px;height:58px;border-radius:16px;background:${_cChip};border:1px solid ${_cBord};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:${_ct};flex-shrink:0">${initials}</div>
+              <div style="min-width:0">
+                <h3 style="font-size:19px;font-weight:900;color:${_ct};margin:0;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${emp.name}</h3>
+                <div style="font-size:12.5px;color:${_ctDim};margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_deptLine}</div>
               </div>
+            </div>
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:auto;padding-top:18px;position:relative">
+              <span style="display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:20px;background:${_lsColor}26;color:${_lsColor};border:1px solid ${_lsColor}55;font-size:11px;font-weight:800;align-self:flex-end">${levelIcon} ${isCEO ? 'Executive' : _lvl}</span>
               <div style="text-align:right;flex-shrink:0">${_scoreSection}</div>
             </div>
           </div>`;
@@ -17155,6 +17158,10 @@
       companyLogoUrl: '',
       // v77: white-label the top header (topbar) — empty = falls back to Product label
       headerText: '',
+      // v77: sidebar icon colour — 'colored' (brand palette) · 'black' · 'white'
+      sidebarIconColor: 'colored',
+      // v77: employee-card text colour — 'auto' (by brand luminance) · 'white' · 'black'
+      cardTextColor: 'auto',
       // v77: white-label the app footer
       footerText: 'Performance Management System',
       footerLinkText: 'kabi.ai',
@@ -17234,6 +17241,10 @@
           + '#app .hc-side-nav .hc-side-item:not(.on){ color:' + _onDim + ' !important; }'
           + '#app .hc-side-nav .hc-side-item:not(.on):hover{ color:' + _onAuto + ' !important; background:' + (_bpLum > 0.6 ? 'rgba(15,23,42,.06)' : 'rgba(255,255,255,.06)') + ' !important; }'
           + (_bpLum > 0.6 ? '#app .hc-side-nav .hc-side-item.on{ color:' + _onAuto + ' !important; }#app .hc-side-nav .hc-side-head{ color:' + _onDim + ' !important; }#app .hc-side-nav .hc-side-section{ color:' + _onDim + ' !important; }' : '')
+          // Sidebar ICON colour — Super Admin choice (colored = brand palette, no override).
+          + ((b.sidebarIconColor === 'black' || b.sidebarIconColor === 'white')
+              ? '#app .hc-side-nav .hc-side-item .hc-side-icon, #app .hc-side-nav .hc-side-item .hc-side-icon *{ color:' + (b.sidebarIconColor === 'white' ? '#ffffff' : '#0f172a') + ' !important; }'
+              : '')
           // theme background glow → brand accent
           + 'body.light-mode::before { background: radial-gradient(ellipse 80% 60% at 50% -20%, ' + accRgbaWeak + ' 0%, transparent 65%), radial-gradient(ellipse 60% 40% at 100% 100%, ' + accRgbaFaint + ' 0%, transparent 60%) !important; }';
         try { document.title = b.productName + ' — ' + b.companyName; } catch (e) {}
@@ -17623,6 +17634,15 @@
           <div style="display:flex;gap:12px;flex-wrap:wrap">
             <div style="flex:1;min-width:130px"><label style="${_lab}">Footer link text <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">(empty = hidden)</span></label><input style="${_inp}" value="${(b.footerLinkText != null ? b.footerLinkText : '').replace(/"/g, '&quot;')}" placeholder="kabi.ai" oninput="_brandDraftSetQuiet('footerLinkText',this.value)"></div>
             <div style="flex:1;min-width:130px"><label style="${_lab}">Footer link URL</label><input style="${_inp}" value="${(b.footerLinkUrl != null ? b.footerLinkUrl : '').replace(/"/g, '&quot;')}" placeholder="https://kabi.ai" oninput="_brandDraftSetQuiet('footerLinkUrl',this.value)"></div>
+          </div>
+          <div style="border-top:1px solid var(--glass-border,rgba(127,140,170,.16));margin:16px 0 12px"></div>
+          <label style="${_lab}">Sidebar icon colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">· applies on Save</span></label>
+          <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:8px;overflow:hidden;margin-bottom:14px">
+            ${[['colored','Colored'],['black','Black'],['white','White']].map(function(o){ var on=(b.sidebarIconColor||'colored')===o[0]; return '<button onclick="_brandDraftPatch({sidebarIconColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
+          </div>
+          <label style="${_lab}">Employee card text colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">· applies on Save</span></label>
+          <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:8px;overflow:hidden">
+            ${[['auto','Auto'],['white','White'],['black','Black']].map(function(o){ var on=(b.cardTextColor||'auto')===o[0]; return '<button onclick="_brandDraftPatch({cardTextColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
           </div>
         </div>
         <!-- Logo -->
