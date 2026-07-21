@@ -4345,11 +4345,11 @@
     }
 
     .pe-qtr-btn {
-      padding: 12px 22px;
+      padding: 14px 20px;
       border-radius: 12px;
-      border: 1.5px solid rgba(255, 255, 255, .08);
-      background: rgba(10, 31, 82, .5);
-      color: rgba(255, 255, 255, .4);
+      border: 1.5px solid rgba(255, 255, 255, .1);
+      background: rgba(255, 255, 255, .04);
+      color: var(--text-primary);
       font-size: 12px;
       font-weight: 700;
       cursor: pointer;
@@ -4357,19 +4357,36 @@
       transition: .2s;
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
     }
 
+    .pe-qtr-btn:hover {
+      border-color: var(--brand-accent, #00c2e0);
+      transform: translateY(-1px);
+    }
+
+    body.light-mode .pe-qtr-btn {
+      background: #ffffff;
+      border-color: #e5eaf3;
+      color: #0f172a;
+      box-shadow: 0 1px 2px rgba(10, 31, 82, .05), 0 8px 22px -18px rgba(10, 31, 82, .35);
+    }
+
+    /* OPEN cycle → green tint (works in both themes) */
     .pe-qtr-btn.open {
-      border-color: rgba(74, 222, 128, .4);
-      color: #4ade80;
-      background: rgba(74, 222, 128, .06);
+      border-color: rgba(74, 222, 128, .5);
+      color: var(--text-primary);
+      background: rgba(74, 222, 128, .1);
     }
 
-    .pe-qtr-btn.closed {
-      border-color: rgba(248, 113, 113, .2);
-      color: #f87171;
+    body.light-mode .pe-qtr-btn.open {
+      border-color: rgba(22, 163, 74, .45);
+      background: rgba(34, 197, 94, .08);
+      color: #0f172a;
     }
+
+    /* Not-started / closed cycles stay neutral — the status pill carries the state colour */
+    .pe-qtr-btn.closed { }
 
     .pe-readonly {
       opacity: .7;
@@ -6128,6 +6145,10 @@
 
       function showTip(customTip) {
         if (mascot.classList.contains('hidden')) return;
+        // Don't auto-surface tip bubbles until a user has signed in. Before sign-in the
+        // copilot stays available (click it to chat) for basic questions about the
+        // system — but it should not pop up bubbles on the login screen.
+        if (typeof me === 'undefined' || !me || !me.email) return;
         // Remove any existing bubble
         if (activeBubble) {
           activeBubble.classList.add('fade-out');
@@ -17078,17 +17099,18 @@
           if (!im) return;
           im.src = b.companyLogoUrl;
           im.setAttribute('alt', b.companyName || 'Logo');
-          im.style.setProperty('filter', 'none', 'important');   // keep the true brand colours
-          im.style.setProperty('height', '26px', 'important');
+          // WYSIWYG: show the uploaded logo EXACTLY as-is — never invert the colours,
+          // never add a background. A transparent (backgroundless) upload stays
+          // transparent; a logo that carries its own background keeps it. What the
+          // super-admin uploads in Settings › Branding is what appears here.
+          im.style.setProperty('filter', 'none', 'important');
+          im.style.setProperty('background', 'transparent', 'important');
+          im.style.setProperty('padding', '0', 'important');
+          im.style.setProperty('border-radius', '0', 'important');
+          im.style.setProperty('height', '30px', 'important');
           im.style.setProperty('width', 'auto', 'important');
-          im.style.setProperty('max-width', '170px', 'important');
+          im.style.setProperty('max-width', '180px', 'important');
           im.style.setProperty('object-fit', 'contain');
-        });
-        _analyzeLogo(b.companyLogoUrl, function (info) {
-          // light-mode img sits on a LIGHT topbar → chip only if the logo is very light
-          chip(lightImg, info.luminance > 0.72, 'rgba(10,22,44,.92)');
-          // dark-mode img sits on a DARK topbar → chip only if the logo is very dark
-          chip(darkImg,  info.luminance < 0.30, '#ffffff');
         });
       } else {
         // No custom logo → restore the default KABi logos + stylesheet-governed styling.
@@ -21726,6 +21748,110 @@
     _loadPEConfig();
     _loadPEEvals();
 
+    // ═══════════════════════════════════════════════════════════════════
+    // CYCLE ARCHIVE (v76) — when a cycle is finished, snapshot ALL of its
+    // records (every evaluation, in full detail, + the cycle config/meta),
+    // then reset the live cycle so a brand-new round can be opened with new
+    // records and a fresh process. Archives are persisted and viewable/
+    // exportable anytime — nothing is lost.
+    // ═══════════════════════════════════════════════════════════════════
+    let PE_ARCHIVES = [];
+    const _PE_ARCHIVES_LS_KEY = 'kabi_pe_archives_v1';
+    function _savePEArchives(){ try { localStorage.setItem(_PE_ARCHIVES_LS_KEY, JSON.stringify(PE_ARCHIVES)); } catch(e){ console.warn('[PE Archive] save failed:', e); } }
+    function _loadPEArchives(){ try { var raw = localStorage.getItem(_PE_ARCHIVES_LS_KEY); if (raw){ var p = JSON.parse(raw); if (Array.isArray(p)) PE_ARCHIVES = p; } } catch(e){ console.warn('[PE Archive] load failed:', e); } }
+    _loadPEArchives();
+
+    // Full-detail snapshot of one cycle: every eval record for it + config + meta.
+    function _peBuildCycleSnapshot(qk){
+      var q = PE_QUARTERS[qk] || {};
+      var evals = {};
+      Object.keys(PE_EVALS).forEach(function(k){ if (k.endsWith('_' + qk)) { try { evals[k] = JSON.parse(JSON.stringify(PE_EVALS[k])); } catch(e){ evals[k] = PE_EVALS[k]; } } });
+      var submitted = Object.keys(evals).filter(function(k){ return evals[k] && !evals[k].isDraft; }).length;
+      return {
+        id: 'ARC_' + qk + '_' + (q.year || 'NA') + '_' + PE_ARCHIVES.length + '_' + Object.keys(evals).length,
+        qk: qk,
+        label: q.label || qk,
+        year: q.year || null,
+        archivedAtISO: new Date().toISOString(),
+        archivedBy: (me && (me.name || me.email)) || 'HC',
+        resultsVisible: !!(PE_CONFIG && PE_CONFIG.resultsVisible),
+        justMode: (PE_CONFIG && PE_CONFIG.justMode) || null,
+        employeeCount: (typeof PE_EMPLOYEES !== 'undefined') ? PE_EMPLOYEES.length : 0,
+        evalCount: submitted,
+        totalRecords: Object.keys(evals).length,
+        quarterMeta: (function(){ try { return JSON.parse(JSON.stringify(q)); } catch(e){ return {}; } })(),
+        evals: evals
+      };
+    }
+
+    // Archive a finished cycle in full, then reset it so a new round can open.
+    function peArchiveCycle(qk){
+      var q = PE_QUARTERS[qk]; if (!q) return;
+      var snap = _peBuildCycleSnapshot(qk);
+      if (snap.totalRecords === 0){
+        if (!confirm('"' + snap.label + '" has no evaluation records yet. Archive an empty snapshot and reset the cycle anyway?')) return;
+      } else if (!confirm('Archive "' + snap.label + '" with all ' + snap.evalCount + ' submitted evaluation(s) in full detail, then RESET this cycle for a fresh round?\n\n• The archived records are kept — view or export them anytime.\n• The live cycle is cleared so you can open a brand-new cycle with new records and a new process.')){
+        return;
+      }
+      PE_ARCHIVES.unshift(snap);
+      _savePEArchives();
+      // clear the live records for this cycle
+      Object.keys(PE_EVALS).forEach(function(k){ if (k.endsWith('_' + qk)) delete PE_EVALS[k]; });
+      _savePEEvals();
+      // reset the cycle so it can be opened fresh again
+      PE_QUARTERS[qk] = { open:false, done:false, partial:false, evalsCount:0, year:q.year, label:q.label };
+      // a new cycle always starts with results hidden
+      if (PE_CONFIG){ PE_CONFIG.resultsVisible = false; _savePEConfig(); }
+      toast('<i class="ti ti-archive ti-green"></i> "' + snap.label + '" archived — cycle reset for a new round', 'ok');
+      var el = document.getElementById('hc-body'); if (el) renderPEAdmin(el);
+    }
+
+    // Download a full-detail JSON of one archived cycle (complete records).
+    function peExportArchive(id){
+      var a = PE_ARCHIVES.find(function(x){ return x.id === id; }); if (!a) return;
+      try {
+        var blob = new Blob([JSON.stringify(a, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = 'kabi_cycle_' + (a.label || a.qk).replace(/[^a-z0-9]+/gi, '_') + '.json';
+        document.body.appendChild(link); link.click();
+        setTimeout(function(){ document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
+        toast('<i class="ti ti-download ti-green"></i> Archive exported', 'ok');
+      } catch(e){ toast('Export failed', 'err'); }
+    }
+
+    function peDeleteArchive(id){
+      var a = PE_ARCHIVES.find(function(x){ return x.id === id; }); if (!a) return;
+      if (!confirm('Permanently delete the archived snapshot "' + a.label + '" (' + a.evalCount + ' evals)? This cannot be undone. Export it first if you may need it.')) return;
+      PE_ARCHIVES = PE_ARCHIVES.filter(function(x){ return x.id !== id; });
+      _savePEArchives();
+      var el = document.getElementById('hc-body'); if (el) renderPEAdmin(el);
+    }
+
+    // Render the "Archived Cycles" list (used inside Cycle Control).
+    function _peRenderArchivesList(){
+      if (!PE_ARCHIVES.length) return '';
+      var rows = PE_ARCHIVES.map(function(a){
+        var d = '';
+        try { d = new Date(a.archivedAtISO).toLocaleDateString('en', { day:'2-digit', month:'short', year:'numeric' }); } catch(e){ d = ''; }
+        return '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px">'
+          + '<div style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:rgba(0,194,224,.12);color:var(--brand-accent,#00c2e0);flex-shrink:0"><i class="ti ti-archive"></i></div>'
+          + '<div style="flex:1;min-width:150px">'
+          +   '<div style="font-size:12px;font-weight:800;color:var(--text-primary)">' + a.label + '</div>'
+          +   '<div style="font-size:9.5px;color:var(--text-dim);margin-top:2px">' + a.evalCount + ' evaluation' + (a.evalCount === 1 ? '' : 's') + ' · archived ' + d + ' · by ' + a.archivedBy + '</div>'
+          + '</div>'
+          + '<button onclick="peExportArchive(\'' + a.id + '\')" style="font-size:10.5px;font-weight:700;padding:7px 12px;border-radius:8px;border:1px solid var(--brand-accent,#00c2e0);background:transparent;color:var(--brand-accent,#00c2e0);cursor:pointer"><i class="ti ti-download"></i> Export</button>'
+          + '<button onclick="peDeleteArchive(\'' + a.id + '\')" title="Delete archive" style="font-size:10.5px;font-weight:700;padding:7px 10px;border-radius:8px;border:1px solid rgba(248,113,113,.3);background:transparent;color:#f87171;cursor:pointer"><i class="ti ti-trash"></i></button>'
+          + '</div>';
+      }).join('');
+      return '<div style="margin-top:20px">'
+        + '<h4 style="font-size:12px;font-weight:800;color:var(--text-primary);margin-bottom:4px"><i class="ti ti-archive"></i> Archived Cycles (' + PE_ARCHIVES.length + ')</h4>'
+        + '<p style="font-size:10px;color:var(--text-muted);margin-bottom:12px">Completed cycles kept in full detail. Export a full-detail record anytime.</p>'
+        + '<div style="display:flex;flex-direction:column;gap:8px">' + rows + '</div>'
+        + '</div>';
+    }
+
     // v66.11.0: Auto-save draft evaluation when navigating away
     function peAutoSaveDraft() {
       if (!peEvalState || !peEvalState.empId || !peEvalState.quarter) return;
@@ -25674,13 +25800,16 @@
       <div style="background:rgba(59,182,145,.04);border:1px solid rgba(59,182,145,.2);border-radius:14px;padding:20px;margin-bottom:22px">
         <h4 style="font-size:13px;font-weight:800;color:#3BB691;margin-bottom:4px"><i class=\"ti ti-trophy ti-amber\"></i> Employee Visibility</h4>
         <p style="font-size:10px;color:var(--text-muted);margin-bottom:14px">Authorize employees to view their performance evaluation results on their Dashboard.</p>
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;background:${PE_CONFIG.resultsVisible ? 'rgba(59,182,145,.1)' : 'rgba(255,255,255,.03)'};border:1px solid ${PE_CONFIG.resultsVisible ? '#3BB691' : 'rgba(255,255,255,.08)'};border-radius:8px">
-          <input type="checkbox" ${PE_CONFIG.resultsVisible ? 'checked' : ''} onchange="peToggleResultsVisible(this.checked)" style="accent-color:#3BB691;width:18px;height:18px;cursor:pointer">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 16px;background:${PE_CONFIG.resultsVisible ? 'rgba(59,182,145,.1)' : 'rgba(255,255,255,.03)'};border:1px solid ${PE_CONFIG.resultsVisible ? '#3BB691' : 'rgba(255,255,255,.08)'};border-radius:10px">
           <div>
             <span style="font-size:12px;font-weight:700;color:${PE_CONFIG.resultsVisible ? '#3BB691' : 'var(--text-primary)'}">Release Results to Employees</span>
             <div style="font-size:9px;color:var(--text-dim);margin-top:2px">${PE_CONFIG.resultsVisible ? '<i class=\"ti ti-circle-check ti-green\"></i> Results are visible to employees' : '<i class=\"ti ti-lock\"></i> Results are hidden from employees'}</div>
           </div>
-        </label>
+          <label class="inv-switch" style="flex-shrink:0" title="${PE_CONFIG.resultsVisible ? 'On — results released' : 'Off — results hidden'}">
+            <input type="checkbox" ${PE_CONFIG.resultsVisible ? 'checked' : ''} onchange="peToggleResultsVisible(this.checked)">
+            <span class="inv-slider"></span>
+          </label>
+        </div>
       </div>
 
       <!-- Justification Mode -->
@@ -25702,19 +25831,25 @@
       <!-- Cycle Control -->
       <h3 style="font-size:15px;font-weight:800;color:var(--white);margin-bottom:6px"><i class=\"ti ti-folder-open\"></i> Cycle Control</h3>
       <p style="font-size:11px;color:var(--text-muted);margin-bottom:14px">Open one evaluation cycle at a time. Closing triggers manager notifications and saves historical data.</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">${Object.entries(PE_QUARTERS).map(([qk, q]) => {
+      <div style="display:flex;gap:12px;flex-wrap:wrap">${Object.entries(PE_QUARTERS).map(([qk, q]) => {
         const evalsCount = Object.keys(PE_EVALS).filter(k => k.endsWith('_' + qk) && PE_EVALS[k] && !PE_EVALS[k].isDraft).length;
         const icon = q.open ? '<i class=\"ti ti-circle-filled ti-green\"></i>' : q.done ? '<i class=\"ti ti-circle-check ti-green\"></i>' : q.partial ? '<i class=\"ti ti-circle-filled ti-amber\"></i>' : '<i class=\"ti ti-circle\"></i>';
         const status = q.open ? 'OPEN' : q.done ? `COMPLETED (${evalsCount})` : q.partial ? `INCOMPLETE (${evalsCount}/${PE_EMPLOYEES.length})` : (evalsCount > 0 ? `CLOSED (${evalsCount} evals)` : 'NOT STARTED');
-        return `<button class="pe-qtr-btn ${q.open ? 'open' : 'closed'}" onclick="peToggleQ('${qk}')" style="min-width:220px">
-          <span style="font-size:16px">${icon}</span>
-          <div style="text-align:left">
-            <strong style="font-size:13px">${qk}</strong>
-            <div style="font-size:9px;opacity:.75;margin-top:2px">${q.label}</div>
-          </div>
-          <span style="margin-left:auto;font-size:9px;font-weight:700">${status}</span>
-        </button>`;
-      }).join('')}</div>`;
+        const statusColor = q.open ? '#22c55e' : q.done ? '#22c55e' : q.partial ? '#f59e0b' : (evalsCount > 0 ? '#ef4444' : 'var(--text-muted)');
+        const canArchive = !q.open && evalsCount > 0;
+        return `<div style="display:flex;flex-direction:column;gap:6px;min-width:230px">
+          <button class="pe-qtr-btn ${q.open ? 'open' : 'closed'}" onclick="peToggleQ('${qk}')" style="width:100%">
+            <span style="font-size:16px">${icon}</span>
+            <div style="text-align:left">
+              <strong style="font-size:13px">${qk}</strong>
+              <div style="font-size:9px;opacity:.7;margin-top:2px">${q.label}</div>
+            </div>
+            <span style="margin-left:auto;font-size:9px;font-weight:800;color:${statusColor}">${status}</span>
+          </button>
+          ${canArchive ? `<button onclick="peArchiveCycle('${qk}')" title="Save this cycle's records in full, then reset it for a new round" style="font-size:10px;font-weight:700;padding:8px 12px;border-radius:9px;border:1px solid rgba(0,194,224,.3);background:rgba(0,194,224,.06);color:var(--brand-accent,#00c2e0);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><i class="ti ti-archive"></i> Archive &amp; Reset for new cycle</button>` : ''}
+        </div>`;
+      }).join('')}</div>
+      ${_peRenderArchivesList()}`;
     }
 
     // ═══ v75: Target Audience is now driven by the canonical 5-level model ═══
