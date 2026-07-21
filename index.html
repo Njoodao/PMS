@@ -8893,6 +8893,7 @@
         navItems.push({ key: 'team', icon: sideIcons.team, label: 'My Team' });
         if (u.kpiAccess) {
           navItems.push({ key: 'kpi', icon: sideIcons.kpi, label: 'KPI Framework' });
+          navItems.push({ key: 'kpi_architect', icon: sideIcons.kpi, label: 'KPI Architect' });
           navItems.push({ key: 'eval', icon: sideIcons.eval, label: 'Evaluate Team' });
         }
         // Dept Insights / Team Tracker — only if enabled for this manager
@@ -8982,6 +8983,145 @@
       renderEmployeeDashboard();
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // KPI ARCHITECT (v77) — single-page generate & validate for managers.
+    // Function + Level (assigned only) → AI Generate → 4 KPI cards where the
+    // manager sets the target and can edit any KPI with AI review. Advisory:
+    // the AI grounds structure/suggestions; the manager owns the final set.
+    // ═══════════════════════════════════════════════════════════════════
+    var _kpiArchState = { fnKey: '', level: 'Entry', set: [] };
+    var _KPI_ARCH_CATS = {
+      leading: { name: 'Leading', color: '#00c2e0', bg: 'rgba(0,194,224,.1)' },
+      process: { name: 'Process', color: '#216AB1', bg: 'rgba(33,106,177,.1)' },
+      lagging: { name: 'Lagging', color: '#6d5bd0', bg: 'rgba(109,91,208,.1)' },
+      health:  { name: 'Health',  color: '#12a17a', bg: 'rgba(18,161,122,.1)' }
+    };
+    function _kpiArchAssignedFns() {
+      try {
+        var perms = (typeof getPermissions === 'function') ? getPermissions(me.role, me.permissions) : null;
+        var keys = (perms === null) ? Object.keys(FNS) : perms.filter(function (k) { return FNS[k]; });
+        return keys.length ? keys : Object.keys(FNS || {});
+      } catch (e) { return Object.keys(FNS || {}); }
+    }
+    function _kpiArchPeriod() { try { return (window.kabiEvalPeriod ? window.kabiEvalPeriod() : '').replace(/\s*\(.*\)\s*$/, ''); } catch (e) { return ''; } }
+    function _kpiArchMetricTitle(t) {
+      var s = String(t || '').split(/\s+[—–-]\s+/)[0].split(/\s*\(/)[0].trim();
+      return s || String(t || '').slice(0, 48);
+    }
+    function _kpiArchTargetGuess(t) {
+      var m = String(t || '').match(/([0-9][0-9.,]*)\s*(%|days?|hrs?|hours?|per|min|x)?/i);
+      return m ? m[1].replace(/,/g, '') : '';
+    }
+    function _kpiArchWhy(cat, level) {
+      var lv = level || 'this level';
+      if (cat === 'leading') return 'Leading indicator — predicts future results for ' + lv + '; set an ambitious yet reachable target for the period.';
+      if (cat === 'lagging') return 'Outcome metric, in scope for ' + lv + '; align the target to your plan for the period.';
+      if (cat === 'health')  return 'Health metric — guards against quality/risk issues; a threshold that stays steady across periods.';
+      return 'Process metric, in scope for ' + lv + '; a rate/ratio — the threshold stays constant across periods.';
+    }
+    function _kpiArchBuildSet(fnKey, level) {
+      var fm = (typeof _FN_METRICS !== 'undefined') ? _FN_METRICS[fnKey] : null;
+      var metrics = (fm && Array.isArray(fm.kpis)) ? fm.kpis.slice(0, 4) : [];
+      var src = (fm && fm.source) ? fm.source : 'KABi library';
+      var period = _kpiArchPeriod() || 'the current cycle';
+      var order = ['process', 'health', 'leading', 'lagging'];
+      var _unitWord = function (t) { return t === '%' ? '%' : (t === 'days' ? 'days' : (t === 'SAR' ? 'SAR' : (t === 'hrs' || t === 'hours' ? 'hours' : ''))); };
+      var _unitParen = function (t) { return t === '%' ? ' (%)' : (t === 'days' ? ' (days)' : (t === 'SAR' ? ' (SAR)' : (t === 'count' ? '' : (t ? ' (' + t + ')' : '')))); };
+      return metrics.map(function (m, i) {
+        var name = (typeof m === 'string') ? m : (m && m.name) || String(m);
+        var desc = (typeof m === 'object' && m.desc) ? m.desc : '';
+        var unit = (typeof m === 'object' && m.type) ? m.type : '';
+        var cat = order[i % 4];
+        var uw = _unitWord(unit);
+        // Honest statement — no invented number; the manager fills the target.
+        var statement = 'Set a target for ' + name.charAt(0).toLowerCase() + name.slice(1) + (desc ? ' (' + desc + ')' : '') + (uw ? ', as a ' + uw : '') + ', for ' + (level || 'this') + '-level work within ' + period + (src ? ', measured from ' + src : '') + '.';
+        return { statement: statement, title: name, category: cat, target: '', unit: _unitParen(unit), source: src, why: _kpiArchWhy(cat, level), edited: '', validated: false };
+      });
+    }
+    function renderKpiArchitectPage(container) {
+      if (!container) return;
+      var fns = _kpiArchAssignedFns();
+      if (!_kpiArchState.fnKey || fns.indexOf(_kpiArchState.fnKey) < 0) _kpiArchState.fnKey = fns[0] || '';
+      var levels = (typeof _KABI_LEVEL_ORDER !== 'undefined') ? _KABI_LEVEL_ORDER : ['Entry', 'Intermediate', 'First-level management', 'Advanced', 'Executive'];
+      if (levels.indexOf(_kpiArchState.level) < 0) _kpiArchState.level = levels[0];
+      var _sel = 'width:100%;padding:10px 12px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:9px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;cursor:pointer';
+      var fnOpts = fns.map(function (k) { var nm = (FNS[k] && FNS[k].name) ? FNS[k].name + (FNS[k].dept ? ' · ' + String(FNS[k].dept).replace(' Department', '') : '') : k; return '<option value="' + k + '"' + (k === _kpiArchState.fnKey ? ' selected' : '') + '>' + nm + '</option>'; }).join('');
+      var lvOpts = levels.map(function (l) { return '<option value="' + l + '"' + (l === _kpiArchState.level ? ' selected' : '') + '>' + l + '</option>'; }).join('');
+      container.innerHTML = ''
+        + '<div style="background:linear-gradient(135deg,rgba(0,194,224,.06),rgba(33,106,177,.03));border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:18px 20px;margin-bottom:18px">'
+        +   '<div style="display:flex;align-items:center;gap:9px;margin-bottom:4px"><i class="ti ti-robot" style="color:var(--cyan);font-size:18px"></i><strong style="font-size:15px;color:var(--text-primary)">KPI Architect</strong><span style="font-size:9px;font-weight:800;color:var(--cyan);background:rgba(0,194,224,.12);border:1px solid rgba(0,194,224,.25);padding:2px 8px;border-radius:20px">ADVISORY</span></div>'
+        +   '<p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">Generate a balanced, level- and period-appropriate KPI set. The AI proposes structure and grounds numbers — <strong style="color:var(--text-primary)">you set the target.</strong></p>'
+        +   '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">'
+        +     '<div style="flex:1;min-width:200px"><label style="font-size:11px;font-weight:700;color:var(--text-primary);display:block;margin-bottom:5px">Function</label><select style="' + _sel + '" onchange="_kpiArchState.fnKey=this.value;_kpiArchState.set=[];renderKpiArchitectPage(document.getElementById(\'emp-side-body\'))">' + fnOpts + '</select></div>'
+        +     '<div style="min-width:160px"><label style="font-size:11px;font-weight:700;color:var(--text-primary);display:block;margin-bottom:5px">Level</label><select style="' + _sel + '" onchange="_kpiArchState.level=this.value;_kpiArchState.set=[];renderKpiArchitectPage(document.getElementById(\'emp-side-body\'))">' + lvOpts + '</select></div>'
+        +     '<button onclick="kpiArchGenerate()" style="padding:11px 20px;border-radius:9px;border:none;background:linear-gradient(135deg,#0891a8,#216AB1);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px"><i class="ti ti-sparkles"></i> AI Generate</button>'
+        +   '</div>'
+        + '</div>'
+        + '<div id="kpi-arch-results"></div>';
+      kpiArchRenderResults();
+    }
+    function kpiArchGenerate() {
+      _kpiArchState.set = _kpiArchBuildSet(_kpiArchState.fnKey, _kpiArchState.level);
+      var fnName = (FNS[_kpiArchState.fnKey] && FNS[_kpiArchState.fnKey].name) || _kpiArchState.fnKey;
+      toast('<i class="ti ti-circle-check ti-green"></i> KPI Architect drafted ' + _kpiArchState.set.length + ' KPIs for ' + fnName + ' · ' + _kpiArchState.level, 'ok');
+      kpiArchRenderResults();
+    }
+    function kpiArchRenderResults() {
+      var box = document.getElementById('kpi-arch-results'); if (!box) return;
+      var set = _kpiArchState.set || [];
+      if (!set.length) {
+        box.innerHTML = '<div style="text-align:center;padding:48px 20px;color:var(--text-muted)"><div style="width:44px;height:44px;border-radius:12px;background:rgba(0,194,224,.1);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:var(--cyan);font-size:20px"><i class="ti ti-sparkles"></i></div>Pick a function and level, then <strong style="color:var(--text-primary)">AI Generate</strong> to draft a balanced KPI set.</div>';
+        return;
+      }
+      var fnName = (FNS[_kpiArchState.fnKey] && FNS[_kpiArchState.fnKey].name) || _kpiArchState.fnKey;
+      var period = _kpiArchPeriod();
+      var head = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin:22px 0 12px"><strong style="font-size:14px;color:var(--text-primary)">Generated set · <span style="color:var(--cyan)">' + fnName + ' · ' + _kpiArchState.level + '</span></strong><span style="font-size:11px;color:var(--text-muted)">Coverage › Leading · Process · Lagging · Health</span></div>';
+      var cards = set.map(function (k, i) {
+        var cat = _KPI_ARCH_CATS[k.category] || _KPI_ARCH_CATS.process;
+        var stmt = k.edited || k.statement;
+        return '<div style="background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 10px 26px -16px rgba(10,31,82,.22))">'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><strong style="font-size:14px;color:var(--text-primary)">' + k.title + '</strong><span style="flex-shrink:0;font-size:9px;font-weight:800;padding:3px 10px;border-radius:20px;background:' + cat.bg + ';color:' + cat.color + ';border:1px solid ' + cat.color + '33">' + cat.name + '</span></div>'
+          + '<p style="font-size:12.5px;color:var(--text-muted);line-height:1.55;margin:6px 0 12px">' + stmt + (period && stmt.indexOf(period) < 0 ? ' <span style="color:var(--cyan)">· within ' + period + '</span>' : '') + '</p>'
+          + '<div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">'
+          +   '<div><label style="font-size:10px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Target' + (k.unit || '') + ' — you set this</label><input placeholder="set a target" value="' + String(k.target || '').replace(/"/g, '&quot;') + '" oninput="_kpiArchState.set[' + i + '].target=this.value" style="width:150px;padding:8px 12px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:8px;color:var(--text-primary);font-size:14px;font-weight:700;font-family:inherit;outline:none"></div>'
+          +   '<div style="font-size:10.5px;color:var(--text-muted)"><span style="color:var(--text-dim)">Source</span> <strong style="color:var(--text-primary)">' + k.source + '</strong></div>'
+          +   '<button onclick="kpiArchEditToggle(' + i + ')" style="margin-left:auto;font-size:10.5px;font-weight:700;padding:7px 12px;border-radius:8px;border:1px solid var(--glass-border,#e5eaf3);background:transparent;color:var(--text-primary);cursor:pointer;font-family:inherit"><i class="ti ti-pencil"></i> Edit</button>'
+          + '</div>'
+          + '<div id="kpi-arch-edit-' + i + '" style="display:none;margin-top:12px">'
+          +   '<label style="font-size:10px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:5px"><i class="ti ti-pencil"></i> Edit KPI statement</label>'
+          +   '<textarea id="kpi-arch-ta-' + i + '" oninput="_kpiArchState.set[' + i + '].edited=this.value" style="width:100%;min-height:64px;padding:10px 12px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:8px;color:var(--text-primary);font-size:12.5px;font-family:inherit;outline:none;resize:vertical">' + (k.edited || k.statement) + '</textarea>'
+          +   '<button onclick="kpiArchValidate(' + i + ')" style="margin-top:8px;font-size:10.5px;font-weight:700;padding:8px 14px;border-radius:8px;border:1px solid rgba(0,194,224,.3);background:rgba(0,194,224,.08);color:var(--cyan);cursor:pointer;font-family:inherit"><i class="ti ti-circle-check ti-green"></i> AI review & validate</button>'
+          + '</div>'
+          + '<div style="margin-top:12px;padding:10px 13px;border-radius:9px;background:rgba(127,140,170,.06);border:1px solid var(--glass-border,rgba(127,140,170,.14));font-size:11px;color:var(--text-muted);line-height:1.5"><strong style="color:var(--text-primary)">Why:</strong> ' + k.why + '</div>'
+          + '</div>';
+      }).join('');
+      var note = '<div style="margin-top:6px;padding:12px 16px;border-radius:10px;background:rgba(127,140,170,.05);border:1px dashed var(--glass-border,rgba(127,140,170,.22));font-size:11px;color:var(--text-muted);line-height:1.55"><i class="ti ti-info-circle"></i> <strong style="color:var(--text-primary)">Advisory</strong> — sources shown above; the AI did not invent data. You own the target and the final set.</div>';
+      box.innerHTML = head + cards + note;
+    }
+    function kpiArchEditToggle(i) {
+      var el = document.getElementById('kpi-arch-edit-' + i); if (!el) return;
+      el.style.display = (el.style.display === 'none') ? 'block' : 'none';
+      if (el.style.display === 'block') { var ta = document.getElementById('kpi-arch-ta-' + i); if (ta) ta.focus(); }
+    }
+    function kpiArchValidate(i) {
+      var k = (_kpiArchState.set || [])[i]; if (!k) return;
+      var text = ((document.getElementById('kpi-arch-ta-' + i) || {}).value || k.edited || k.statement || '').trim();
+      if (!text) { toast('KPI is empty — nothing to validate', 'err'); return; }
+      if (!window.KABi || !KABi.Agents || !KABi.Agents.kpiArchitect || typeof KABi.Agents.kpiArchitect.validate !== 'function' || !KABi.UI || typeof KABi.UI.openKpiValidateModal !== 'function') {
+        toast('KPI Architect validator not loaded — please refresh', 'err'); return;
+      }
+      var siblings = (_kpiArchState.set || []).map(function (s, j) { return j === i ? '' : (s.edited || s.statement || ''); });
+      var result;
+      try { result = KABi.Agents.kpiArchitect.validate(text, _kpiArchState.fnKey, siblings); }
+      catch (e) { console.error('[KABi] kpiArch validate threw:', e); toast('Validation failed — see console', 'err'); return; }
+      KABi.UI.openKpiValidateModal({ fnKey: _kpiArchState.fnKey, si: 0, li: i, kpiText: text, result: result });
+      k.validated = true;
+    }
+    window.renderKpiArchitectPage = renderKpiArchitectPage;
+    window.kpiArchGenerate = kpiArchGenerate;
+    window.kpiArchEditToggle = kpiArchEditToggle;
+    window.kpiArchValidate = kpiArchValidate;
+
     // Render the body content based on empSideTab
     function empRenderTabContent() {
       const body = document.getElementById('emp-side-body');
@@ -8992,6 +9132,8 @@
         empRenderMyTeamPage(body);
       } else if (empSideTab === 'kpi') {
         empRenderKPIFrameworkPage(body);
+      } else if (empSideTab === 'kpi_architect') {
+        renderKpiArchitectPage(body);
       } else if (empSideTab === 'eval') {
         empRenderEvaluateTeamPage(body);
       } else if (empSideTab === 'inviews') {
