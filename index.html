@@ -6613,6 +6613,22 @@
       return PE_EMPLOYEES.filter(e => (e.mgr || '').toLowerCase() === lc && !e.isFormer);
     }
 
+    // v79: The SINGLE evaluator of an employee — their line manager by default,
+    // OR a delegated evaluator (emp.assignedEvaluator) if one is set. Because this
+    // is one field, every employee always has exactly ONE evaluator.
+    function peEvaluatorOf(emp) {
+      if (!emp) return '';
+      return String(emp.assignedEvaluator || emp.mgr || '').toLowerCase();
+    }
+    // Employees a given person is responsible for evaluating this cycle (their
+    // reports whose evaluation hasn't been delegated away, PLUS anyone delegated
+    // TO them). Replaces the raw direct-reports list on the Evaluate Team page.
+    function peGetEvaluatees(email) {
+      if (!email || typeof PE_EMPLOYEES === 'undefined') return [];
+      const lc = email.toLowerCase();
+      return PE_EMPLOYEES.filter(e => !e.isFormer && peEvaluatorOf(e) === lc);
+    }
+
     // Returns ALL reports recursively (direct + indirect, excluding self)
     function peGetAllReports(email) {
       if (!email) return [];
@@ -9287,15 +9303,27 @@
       }).join('');
       var note = '<div style="margin-top:6px;padding:12px 16px;border-radius:10px;background:rgba(127,140,170,.05);border:1px dashed var(--glass-border,rgba(127,140,170,.22));font-size:11px;color:var(--text-muted);line-height:1.55"><i class="ti ti-info-circle"></i> <strong style="color:var(--text-primary)">Advisory</strong> — sources shown above; the AI did not invent data. You own the target and the final set.</div>';
       var submitBar;
-      if (_kpiArchState.submitted) {
+      // Look up the just-submitted submission to reflect its 1:1-gate state.
+      var _subRec = (_kpiArchState.submittedSubId != null)
+        ? subs.find(function (x) { return String(x.id) === String(_kpiArchState.submittedSubId); })
+        : null;
+      if (_kpiArchState.submitted && _subRec && _subRec.status === 'awaiting_1on1') {
+        // Gated on the manager's 1:1 — NOT yet in HC review.
+        submitBar = '<div style="margin-top:16px;padding:16px 18px;border-radius:12px;background:rgba(155,129,188,.09);border:1px solid rgba(155,129,188,.3)">'
+          + '<div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap"><i class="ti ti-users" style="color:#9B81BC;font-size:22px"></i>'
+          + '<div style="flex:1;min-width:180px"><strong style="font-size:13px;color:var(--text-primary)">Awaiting your 1:1 with the team member</strong>'
+          + '<div style="font-size:11px;color:var(--text-muted);margin-top:1px">Saved as a draft. These KPIs will <strong style="color:var(--text-primary)">not go to HC</strong> until you confirm the 1:1 discussion.</div></div>'
+          + '<button onclick="openOneOnOneGate(' + _subRec.id + ')" style="padding:10px 18px;border-radius:9px;border:none;background:linear-gradient(135deg,#7c3aed,#9B81BC);color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px;white-space:nowrap"><i class="ti ti-calendar-event"></i> Complete 1:1 step</button>'
+          + '</div></div>';
+      } else if (_kpiArchState.submitted) {
         submitBar = '<div style="margin-top:16px;padding:15px 18px;border-radius:12px;background:rgba(18,161,122,.08);border:1px solid rgba(18,161,122,.28);display:flex;align-items:center;gap:12px">'
           + '<i class="ti ti-circle-check" style="color:#12a17a;font-size:22px"></i>'
-          + '<div><strong style="font-size:13px;color:var(--text-primary)">Submitted to HC — awaiting approval</strong>'
+          + '<div><strong style="font-size:13px;color:var(--text-primary)">1:1 done — sent to HC for review</strong>'
           + '<div style="font-size:11px;color:var(--text-muted);margin-top:1px">Your KPI set for ' + fnName + ' · ' + _kpiArchState.level + ' is now in the HC review queue. HC approval makes it the official basis for the cycle.</div></div></div>';
       } else {
         submitBar = '<div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'
-          + '<span style="font-size:11px;color:var(--text-muted)"><i class="ti ti-shield-check" style="color:#12a17a"></i> On submit, an AI coherence check runs — then HC reviews &amp; approves.</span>'
-          + '<button onclick="kpiArchSubmit()" style="padding:12px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#0d9960,#12a17a);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:8px;box-shadow:0 6px 18px -6px rgba(18,161,122,.6)"><i class="ti ti-send"></i> Submit to HC →</button></div>';
+          + '<span style="font-size:11px;color:var(--text-muted)"><i class="ti ti-shield-check" style="color:#12a17a"></i> On submit: an AI coherence check runs, then you hold a 1:1 with your team member — <strong style="color:var(--text-primary)">then</strong> it goes to HC.</span>'
+          + '<button onclick="kpiArchSubmit()" style="padding:12px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#0d9960,#12a17a);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:8px;box-shadow:0 6px 18px -6px rgba(18,161,122,.6)"><i class="ti ti-mail"></i> Submit →</button></div>';
       }
       box.innerHTML = head + cards + note + submitBar;
     }
@@ -9373,7 +9401,8 @@
         _levelKey: fnKey + '::' + (level || 'Staff Level'),
         secSels: { 0: [0, 1, 2, 3] },
         selKPIs: selKPIs,
-        status: 'pending',
+        status: 'awaiting_1on1',
+        oneOnOne: { done: false },
         source: 'architect',
         ceoOwned: me.role === 'ceo' && (typeof CEO_OWNED_FNS !== 'undefined' && CEO_OWNED_FNS.includes(fnKey))
       };
@@ -9395,8 +9424,10 @@
       }
       _commitKpiSubmission(submission, f);
       _kpiArchState.submitted = true;
-      toast('<i class="ti ti-circle-check ti-green"></i> Submitted to HC — ' + f.name + (level ? ' (' + level + ')' : ''), 'ok');
+      _kpiArchState.submittedSubId = submission.id;
       kpiArchRenderResults();
+      // v79: open the mandatory 1:1 step — KPIs stay out of HC review until confirmed.
+      if (typeof openOneOnOneGate === 'function') openOneOnOneGate(submission.id);
     }
 
     window.renderKpiArchitectPage = renderKpiArchitectPage;
@@ -10315,10 +10346,73 @@
     }
 
     // ─── Evaluate Team Tab ───
+    // v79 (optional): a manager may delegate the evaluation of any team member
+    // (direct or indirect) to one of their direct reports. `assignedEvaluator` is a
+    // single field, so each employee is always evaluated by exactly ONE evaluator.
+    function peDelegateEval(evaluateeEmail, evaluatorEmail) {
+      if (!evaluateeEmail || !evaluatorEmail) { toast('Pick both an evaluator and a team member', 'err'); return; }
+      if (evaluateeEmail.toLowerCase() === evaluatorEmail.toLowerCase()) { toast('An employee can’t evaluate themselves', 'err'); return; }
+      var ev = _empByEmail(evaluateeEmail), er = _empByEmail(evaluatorEmail);
+      if (!ev || !er) { toast('Employee not found', 'err'); return; }
+      var myChain = peGetAllReports(me.email).map(function (e) { return (e.email || '').toLowerCase(); });
+      var myDirects = peGetDirectReports(me.email).map(function (e) { return (e.email || '').toLowerCase(); });
+      if (myChain.indexOf(evaluateeEmail.toLowerCase()) < 0) { toast('You can only delegate your own team members', 'err'); return; }
+      if (myDirects.indexOf(evaluatorEmail.toLowerCase()) < 0) { toast('The evaluator must be one of your direct reports', 'err'); return; }
+      ev.assignedEvaluator = er.email;          // single field ⇒ exactly one evaluator per employee
+      if (typeof _peSaveEmployees === 'function') _peSaveEmployees();
+      toast('<i class="ti ti-circle-check ti-green"></i> ' + er.name + ' will now evaluate ' + ev.name, 'ok');
+      empRenderTabContent();
+    }
+    function peRevokeEvalDelegation(evaluateeEmail) {
+      var ev = _empByEmail(evaluateeEmail); if (!ev) return;
+      delete ev.assignedEvaluator;
+      if (typeof _peSaveEmployees === 'function') _peSaveEmployees();
+      toast('Delegation removed — you evaluate ' + (ev.name || 'them') + ' again', 'ok');
+      empRenderTabContent();
+    }
+    function _peRenderEvalDelegation() {
+      var directs = peGetDirectReports(me.email).filter(function (e) { return !e.isFormer; });
+      var chain = peGetAllReports(me.email).filter(function (e) { return !e.isFormer; });
+      if (directs.length < 1 || chain.length < 2) return '';   // nothing meaningful to delegate
+      var _empName = function (email) { var x = _empByEmail(email); return x ? x.name : email; };
+      var delegated = chain.filter(function (e) { return e.assignedEvaluator && String(e.assignedEvaluator).toLowerCase() !== String(e.mgr || '').toLowerCase(); });
+      var rows = delegated.map(function (e) {
+        return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:9px">'
+          + '<i class="ti ti-arrow-right" style="color:#6d5bd0"></i>'
+          + '<div style="flex:1;min-width:0;font-size:11.5px;color:var(--text-primary)"><strong>' + _empName(e.assignedEvaluator) + '</strong> evaluates <strong>' + e.name + '</strong> <span style="color:var(--text-muted)">· ' + (e.title || '') + '</span></div>'
+          + '<button onclick="peRevokeEvalDelegation(\'' + e.email + '\')" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.06);color:#f87171;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">Revoke</button>'
+          + '</div>';
+      }).join('');
+      var _sel = 'padding:8px 10px;border-radius:8px;border:1px solid var(--glass-border,#e5eaf3);background:var(--glass,#fff);color:var(--text-primary);font-size:12px;font-family:inherit;outline:none;max-width:200px';
+      var evateeOpts = chain.map(function (e) { return '<option value="' + e.email + '">' + e.name + ' · ' + (e.title || '') + '</option>'; }).join('');
+      var evatorOpts = directs.map(function (e) { return '<option value="' + e.email + '">' + e.name + '</option>'; }).join('');
+      return '<details class="pe-scoring-ref" style="margin-bottom:16px;background:rgba(109,91,208,.05);border:1px solid rgba(109,91,208,.22);border-radius:12px;overflow:hidden">'
+        + '<summary style="cursor:pointer;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;list-style:none;user-select:none">'
+        +   '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:14px"><i class="ti ti-users-group"></i></span><strong style="font-size:12px;color:var(--text-primary)">Delegate evaluations</strong><span style="font-size:9.5px;color:var(--text-muted)">optional · one evaluator per employee</span>' + (delegated.length ? '<span style="font-size:9px;font-weight:800;padding:2px 8px;border-radius:10px;background:rgba(109,91,208,.14);color:#6d5bd0">' + delegated.length + ' active</span>' : '') + '</div>'
+        +   '<span class="pe-ref-arrow" style="font-size:10px;color:var(--text-dim);font-weight:700">▼</span>'
+        + '</summary>'
+        + '<div style="padding:0 14px 14px 14px">'
+        +   '<p style="font-size:11px;color:var(--text-muted);line-height:1.55;margin:0 0 12px">Hand the evaluation of any team member to one of your direct reports (e.g. a team lead). Each employee can be evaluated by <strong style="color:var(--text-primary)">only one</strong> evaluator — assigning here moves that responsibility, and the delegate sees them in their own Evaluate Team list.</p>'
+        +   (rows ? '<div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px">' + rows + '</div>' : '')
+        +   '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+        +     '<span style="font-size:10.5px;color:var(--text-muted)">Let</span>'
+        +     '<select id="deleg-evaluator" style="' + _sel + '">' + evatorOpts + '</select>'
+        +     '<span style="font-size:10.5px;color:var(--text-muted)">evaluate</span>'
+        +     '<select id="deleg-evaluatee" style="' + _sel + '">' + evateeOpts + '</select>'
+        +     '<button onclick="peDelegateEval(document.getElementById(\'deleg-evaluatee\').value, document.getElementById(\'deleg-evaluator\').value)" style="padding:8px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,#7c3aed,#6d5bd0);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">Assign</button>'
+        +   '</div>'
+        + '</div>'
+        + '</details>';
+    }
+    window.peDelegateEval = peDelegateEval;
+    window.peRevokeEvalDelegation = peRevokeEvalDelegation;
+
     function empRenderEvaluateTeamPage(body) {
       const emp = PE_EMPLOYEES.find(e => e.email === me.email);
       if (!emp) { body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted)">No data</div>'; return; }
-      const reports = peGetDirectReports(emp.email);
+      // v79: evaluate the people ASSIGNED to me (direct reports minus any delegated
+      // away, plus anyone delegated to me) — one evaluator per employee.
+      const reports = peGetEvaluatees(emp.email);
       const openQKey = (typeof peGetOpenQ === 'function') ? peGetOpenQ() : null;
       const qConfig = openQKey ? PE_QUARTERS[openQKey] : null;
       const cycleConfig = (typeof PE_CYCLE_CONFIG !== 'undefined') ? PE_CYCLE_CONFIG : {};
@@ -10429,6 +10523,8 @@
             </div>
           </div>
         </details>
+
+        ${(typeof _peRenderEvalDelegation === 'function') ? _peRenderEvalDelegation() : ''}
 
         ${reports.length === 0 ? `
           <div style="padding:40px;text-align:center;color:var(--text-muted);background:rgba(10,31,82,.3);border:1px dashed rgba(255,255,255,.1);border-radius:14px">
@@ -16578,10 +16674,120 @@
       }
       subs.push(submission);
       _saveSubs(); // persist to localStorage immediately
-      try {
-        sendEmail({ fnKey: submission.fnKey, fnName: submission.fnName, email: me.email, name: me.name, dept: (f && f.dept) || submission.dept, ts: submission.ts, selKPIs: submission.selKPIs });
-      } catch (e) { console.warn('[KPI submit] email failed:', e); }
+      // v79: HC is notified ONLY when the submission actually enters review
+      // (status 'pending'). While it is gated behind the manager's 1:1
+      // ('awaiting_1on1'), no HC email fires — that is sent by peConfirm1on1.
+      if (submission.status === 'pending') {
+        try {
+          sendEmail({ fnKey: submission.fnKey, fnName: submission.fnName, email: me.email, name: me.name, dept: (f && f.dept) || submission.dept, ts: submission.ts, selKPIs: submission.selKPIs });
+        } catch (e) { console.warn('[KPI submit] email failed:', e); }
+      }
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // v79: MANDATORY 1:1 GATE — after a manager submits KPIs, the set is held at
+    // status 'awaiting_1on1'. It will NOT move to HC review until the manager
+    // confirms they discussed the KPIs 1:1 with their team member. The gate offers
+    // an Outlook meeting link + a confirmation checkbox. HC can track the status.
+    // ═══════════════════════════════════════════════════════════════════
+    function _outlookMeetingUrl(subject, body, attendees) {
+      var p = 'path=/calendar/action/compose&rru=addevent'
+        + '&subject=' + encodeURIComponent(subject || '')
+        + '&body=' + encodeURIComponent(body || '');
+      if (attendees) p += '&to=' + encodeURIComponent(attendees);
+      return 'https://outlook.office.com/calendar/0/deeplink/compose?' + p;
+    }
+    // Direct reports covered by a submission (its function; level if it matches).
+    function _sub1on1Reports(s) {
+      try {
+        var reps = (typeof peGetDirectReports === 'function') ? peGetDirectReports(s.email || me.email) : [];
+        return (reps || []).filter(function (e) {
+          if (!e || e.isFormer) return false;
+          var ef = (typeof _normFn === 'function') ? _normFn(e.fn) : e.fn;
+          return ef === s.fnKey;
+        });
+      } catch (e) { return []; }
+    }
+    // Confirm the 1:1 happened → move the submission into HC review + notify HC.
+    function peConfirm1on1(subId) {
+      var s = subs.find(function (x) { return String(x.id) === String(subId); });
+      if (!s) { toast('Submission not found', 'err'); return; }
+      if (s.status !== 'awaiting_1on1') return;
+      s.oneOnOne = s.oneOnOne || {};
+      s.oneOnOne.done = true;
+      s.oneOnOne.doneAt = new Date().toISOString();
+      s.oneOnOne.doneBy = me ? me.email : '';
+      s.status = 'pending';                       // now enters HC review & approval
+      _saveSubs();
+      var f = FNS[s.fnKey];
+      try { sendEmail({ fnKey: s.fnKey, fnName: s.fnName, email: s.email, name: s.name, dept: (f && f.dept) || s.dept, ts: s.ts, selKPIs: s.selKPIs }); } catch (e) { console.warn('[1:1] HC email failed', e); }
+      var ov = document.getElementById('kabi-1on1-modal'); if (ov) ov.style.display = 'none';
+      toast("<i class='ti ti-circle-check ti-green'></i> 1:1 confirmed — KPIs sent to HC for review &amp; approval", 'ok');
+      try { if (typeof _kpiArchState !== 'undefined') _kpiArchState.submitted = true; } catch (e) {}
+      try { if (typeof empRenderTabContent === 'function' && document.getElementById('emp-side-body')) empRenderTabContent(); } catch (e) {}
+      try { if (me && me.role === 'pm_super_admin' && typeof renderHC === 'function') renderHC(); } catch (e) {}
+    }
+    // The professional post-submit 1:1 step (modal). Opened right after submission,
+    // and re-openable later from the manager's "awaiting 1:1" state.
+    function openOneOnOneGate(subId) {
+      var s = subs.find(function (x) { return String(x.id) === String(subId); });
+      if (!s) return;
+      var reps = _sub1on1Reports(s);
+      var repNames = reps.map(function (e) { return e.name; }).filter(Boolean);
+      var repEmails = reps.map(function (e) { return e.email; }).filter(Boolean).join(';');
+      var whoLabel = repNames.length ? repNames.join(', ') : 'your team member';
+      var kpiLines = (s.selKPIs || []).map(function (k) { return '• ' + (k.final || k.edited || ''); }).join('\n');
+      var mtgSubject = 'KPI 1:1 — ' + (s.fnName || '') + (s.level ? ' (' + s.level + ')' : '');
+      var mtgBody = 'Hi ' + (repNames[0] || '') + ',\n\nLet\'s meet 1:1 to walk through and align on your KPIs for this cycle:\n\n' + kpiLines + '\n\nOpen to your input before these are finalized. Thanks.';
+      var outlookUrl = _outlookMeetingUrl(mtgSubject, mtgBody, repEmails);
+      var done = !!(s.oneOnOne && s.oneOnOne.done) || s.status !== 'awaiting_1on1';
+
+      var ov = document.getElementById('kabi-1on1-modal');
+      if (!ov) { ov = document.createElement('div'); ov.id = 'kabi-1on1-modal'; document.body.appendChild(ov); ov.onclick = function (e) { if (e.target === ov) ov.style.display = 'none'; }; }
+      ov.style.cssText = 'position:fixed;inset:0;z-index:9600;background:rgba(10,31,82,.55);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:38px 16px;font-family:var(--font)';
+      ov.innerHTML = '<div style="width:100%;max-width:520px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:18px;overflow:hidden;box-shadow:0 30px 80px -20px rgba(10,31,82,.55)">'
+        // header
+        + '<div style="padding:22px 24px;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 60%,#060f2a));color:var(--brand-on-primary,#fff);position:relative">'
+        +   '<div style="display:inline-flex;align-items:center;gap:6px;font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.16);padding:4px 10px;border-radius:20px;margin-bottom:10px">Final step before HC review</div>'
+        +   '<div style="font-size:20px;font-weight:900;line-height:1.2">Hold your 1:1 with ' + escapeHtml(whoLabel) + '</div>'
+        +   '<div style="font-size:12.5px;opacity:.85;margin-top:6px;line-height:1.5">You\'ve drafted the KPIs for <strong>' + escapeHtml(s.fnName || '') + (s.level ? ' · ' + escapeHtml(s.level) : '') + '</strong>. Before HC reviews them, discuss and align with your team member 1:1 — this is what makes the evaluation fair and shared.</div>'
+        + '</div>'
+        // body
+        + '<div style="padding:22px 24px">'
+        // gate note
+        +   '<div style="display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:11px;background:rgba(245,158,11,.09);border:1px solid rgba(245,158,11,.3);margin-bottom:18px">'
+        +     '<i class="ti ti-alert-triangle" style="color:#F59E0B;font-size:17px;margin-top:1px"></i>'
+        +     '<div style="font-size:12px;color:var(--text-primary);line-height:1.5">These KPIs <strong>will not be sent to HC for review</strong> until you confirm the 1:1 discussion below.</div>'
+        +   '</div>'
+        // step 1 — schedule
+        +   '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">'
+        +     '<span style="width:26px;height:26px;border-radius:50%;background:rgba(0,194,224,.12);color:var(--cyan);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0">1</span>'
+        +     '<div style="flex:1"><div style="font-size:13px;font-weight:800;color:var(--text-primary)">Schedule the 1:1</div><div style="font-size:11px;color:var(--text-muted)">Opens Outlook with the invite pre-filled' + (repNames.length ? ' for ' + escapeHtml(whoLabel) : '') + '.</div></div>'
+        +     '<a href="' + outlookUrl + '" target="_blank" rel="noopener" style="padding:9px 15px;border-radius:9px;background:#0F6CBD;color:#fff;font-size:12px;font-weight:800;text-decoration:none;font-family:inherit;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;flex-shrink:0"><i class="ti ti-calendar-event"></i> Outlook meeting</a>'
+        +   '</div>'
+        // step 2 — confirm
+        +   '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:6px">'
+        +     '<span style="width:26px;height:26px;border-radius:50%;background:rgba(18,161,122,.12);color:#12a17a;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0">2</span>'
+        +     '<div style="flex:1"><div style="font-size:13px;font-weight:800;color:var(--text-primary)">Confirm the discussion</div>'
+        +       '<label style="display:flex;align-items:flex-start;gap:9px;margin-top:9px;padding:11px 13px;border-radius:10px;background:rgba(127,140,170,.06);border:1px solid var(--glass-border,#e5eaf3);cursor:pointer">'
+        +         '<input type="checkbox" id="kabi-1on1-chk"' + (done ? ' checked disabled' : '') + ' onchange="var b=document.getElementById(\'kabi-1on1-confirm\');b.disabled=!this.checked;b.style.opacity=this.checked?\'1\':\'.5\'" style="width:16px;height:16px;accent-color:#12a17a;margin-top:1px;flex-shrink:0;cursor:pointer">'
+        +         '<span style="font-size:12px;color:var(--text-primary);line-height:1.5">I have held the 1:1 with <strong>' + escapeHtml(whoLabel) + '</strong> and we discussed &amp; aligned on these KPIs.</span>'
+        +       '</label>'
+        +     '</div>'
+        +   '</div>'
+        // actions
+        +   '<div style="display:flex;gap:9px;justify-content:flex-end;margin-top:20px">'
+        +     '<button type="button" onclick="document.getElementById(\'kabi-1on1-modal\').style.display=\'none\'" style="padding:10px 16px;border-radius:9px;border:1px solid var(--glass-border,#e5eaf3);background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">' + (done ? 'Close' : 'Do it later') + '</button>'
+        +     (done
+              ? '<div style="padding:10px 16px;border-radius:9px;background:rgba(18,161,122,.1);border:1px solid rgba(18,161,122,.3);color:#12a17a;font-size:12px;font-weight:800;display:inline-flex;align-items:center;gap:6px"><i class="ti ti-circle-check ti-green"></i> Sent to HC review</div>'
+              : '<button type="button" id="kabi-1on1-confirm" disabled onclick="peConfirm1on1(' + s.id + ')" style="padding:10px 18px;border-radius:9px;border:none;background:linear-gradient(135deg,#0d9960,#12a17a);color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;opacity:.5;display:inline-flex;align-items:center;gap:7px"><i class="ti ti-mail"></i> Confirm &amp; send to HC</button>')
+        +   '</div>'
+        + '</div>'
+        + '</div>';
+      ov.style.display = 'flex';
+    }
+    window.peConfirm1on1 = peConfirm1on1;
+    window.openOneOnOneGate = openOneOnOneGate;
 
     /* v63: Actual submission logic (called after coherence check passes/overrides) */
     /* v66.6: Paired-aware — produces ONE submission with per-KPI scope + pairedFnKey */
@@ -16630,7 +16836,8 @@
         _levelKey: primary + '::' + (window._kpiSelectedLevel ? (window._kpiSelectedLevel[primary] || 'Entry') : 'Staff Level'),
         secSels,
         selKPIs,
-        status: 'pending',
+        status: 'awaiting_1on1',
+        oneOnOne: { done: false },
         ceoOwned: me.role === 'ceo' && (typeof CEO_OWNED_FNS !== 'undefined' && CEO_OWNED_FNS.includes(primary))
       };
       // v66.6: paired metadata
@@ -16677,9 +16884,9 @@
       // access to. Before this change, submitting Level A silently erased the
       // tabs and made Levels B/C unreachable ("one submit covers all levels").
       openFn(primary);
-      // (email already sent inside _commitKpiSubmission)
-      var _submittedLvl = submission.level || '';
-      toast('<i class="ti ti-circle-check ti-green"></i> Submitted to HC — ' + (submission.fnName || '') + (_submittedLvl ? ' (' + _submittedLvl + ')' : ''), 'ok');
+      // v79: open the mandatory 1:1 step. HC is notified only after the manager
+      // confirms the 1:1 (peConfirm1on1) — nothing is emailed on submit now.
+      if (typeof openOneOnOneGate === 'function') openOneOnOneGate(submission.id);
     }
 
     function sendEmail(s) {
@@ -18624,6 +18831,7 @@
       // Compute per-status counts for chip badges
       var counts = {
         all:      subs.length,
+        awaiting_1on1: subs.filter(function (s) { return s.status === 'awaiting_1on1'; }).length,
         pending:  subs.filter(function (s) { return s.status === 'pending'; }).length,
         approved: subs.filter(function (s) { return s.status === 'approved'; }).length,
         rejected: subs.filter(function (s) { return s.status === 'rejected'; }).length
@@ -18669,6 +18877,7 @@
         +   '</div>'
         +   '<div style="display:flex;gap:6px;flex-wrap:wrap">'
         +     '<button onclick="subsSetStatus(\'all\')" style="' + chipCss(state.status === 'all', '#1EAFD9') + '">All <span style="opacity:.7">' + counts.all + '</span></button>'
+        +     '<button onclick="subsSetStatus(\'awaiting_1on1\')" style="' + chipCss(state.status === 'awaiting_1on1', '#9B81BC') + '"><i class="ti ti-users"></i> Awaiting 1:1 <span style="opacity:.7">' + counts.awaiting_1on1 + '</span></button>'
         +     '<button onclick="subsSetStatus(\'pending\')" style="' + chipCss(state.status === 'pending', '#F59E0B') + '">Pending <span style="opacity:.7">' + counts.pending + '</span></button>'
         +     '<button onclick="subsSetStatus(\'approved\')" style="' + chipCss(state.status === 'approved', '#4ade80') + '">Approved <span style="opacity:.7">' + counts.approved + '</span></button>'
         +     '<button onclick="subsSetStatus(\'rejected\')" style="' + chipCss(state.status === 'rejected', '#f87171') + '">Rejected <span style="opacity:.7">' + counts.rejected + '</span></button>'
@@ -18691,7 +18900,7 @@
         var isExpanded = state.expanded.has(s.id);
         var kpiCount = (s.selKPIs || []).length;
         var _overrideCount = Array.isArray(s.aiOverrides) ? s.aiOverrides.length : 0;
-        var statusColor = s.status === 'approved' ? '#4ade80' : s.status === 'rejected' ? '#f87171' : '#F59E0B';
+        var statusColor = s.status === 'approved' ? '#4ade80' : s.status === 'rejected' ? '#f87171' : s.status === 'awaiting_1on1' ? '#9B81BC' : '#F59E0B';
         var initial = (s.name || '?').charAt(0).toUpperCase();
 
         // Compact header — always visible, clickable to toggle
@@ -18710,7 +18919,9 @@
           +     '</div>'
           +   '</div>'
           +   '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">'
-          +     '<span class="status s' + s.status[0] + '">' + s.status + '</span>'
+          +     (s.status === 'awaiting_1on1'
+                  ? '<span style="padding:3px 9px;border-radius:20px;background:rgba(155,129,188,.15);color:#9B81BC;border:1px solid rgba(155,129,188,.4);font-size:9px;font-weight:800;white-space:nowrap"><i class="ti ti-users"></i> Awaiting 1:1</span>'
+                  : '<span class="status s' + s.status[0] + '">' + s.status + '</span>')
           +     '<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;background:rgba(255,255,255,.04);color:var(--text-muted);font-size:10px;transition:transform .2s;transform:rotate(' + (isExpanded ? 180 : 0) + 'deg)">▼</span>'
           +   '</div>'
           + '</div>';
@@ -18785,6 +18996,10 @@
             + '<button class="btn-primary" style="padding:8px 16px;font-size:12px" onclick="event.stopPropagation();confirmSub(' + s.id + ',\'approved\')"><i class="ti ti-check ti-green"></i> Approve</button>'
             + '<button class="btn-ghost" style="padding:8px 14px;font-size:12px;border-color:rgba(248,113,113,.3);color:#f87171" onclick="event.stopPropagation();confirmSub(' + s.id + ',\'rejected\')"><i class="ti ti-x ti-rose"></i> Reject</button>'
             + '</div>';
+        } else if (s.status === 'awaiting_1on1') {
+          actionsHtml = '<div style="background:rgba(155,129,188,.07);border:1px solid rgba(155,129,188,.28);border-radius:8px;padding:12px 16px;font-size:12.5px;color:var(--text-primary);line-height:1.5">'
+            + '<i class="ti ti-users" style="color:#9B81BC"></i> <strong>Awaiting the manager\'s 1:1.</strong> ' + (s.name || 'The manager') + ' must discuss these KPIs with the employee before they enter review. It will appear under <strong>Pending</strong> once the 1:1 is confirmed.'
+            + '</div>' + superAdminActions;
         } else if (s.status === 'approved') {
           actionsHtml = '<div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(34,197,94,.08);border:1px solid rgba(74,222,128,.25);border-radius:8px;font-size:13px;font-weight:700;color:#4ade80">'
             + '<i class="ti ti-circle-check ti-green"></i> Approved — Decision is final</div>' + superAdminActions;
