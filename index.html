@@ -205,7 +205,7 @@
     .kpi-ov-hint{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--sc);opacity:.6;transition:opacity .15s;margin-top:5px}
     .kpi-ov-stat:hover .kpi-ov-hint,.kpi-ov-stat.on .kpi-ov-hint{opacity:1}
     /* v75: Well-being mood-pulse buttons */
-    .wb-mood-btn{min-width:60px;padding:9px 8px 7px;border-radius:12px;border:1.5px solid var(--glass-border,#e5eaf3);background:var(--surface-2,#eef2f9);display:inline-flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;transition:transform .16s,border-color .16s,background .16s;font-family:inherit;color:var(--text-muted)}
+    .wb-mood-btn{min-width:0;padding:9px 6px 7px;border-radius:12px;border:1.5px solid var(--glass-border,#e5eaf3);background:var(--surface-2,#eef2f9);display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;transition:transform .16s,border-color .16s,background .16s;font-family:inherit;color:var(--text-muted)}
     .wb-mood-btn:hover{transform:translateY(-2px)}
     .wb-mood-btn .m-ic{font-size:19px;line-height:1}
     .wb-mood-btn .m-lb{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px}
@@ -4983,7 +4983,6 @@
           </div>
           <div class="tb-menu-role" id="tb-menu-role">—</div>
           <button class="tb-menu-item" onclick="closeUserMenu();openProfile()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"/></svg> Profile</button>
-          <button class="tb-menu-item" onclick="closeUserMenu();kabiOpenGuide(true)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2 -3 3 -3 3"/><path d="M12 17h.01"/></svg> Guide</button>
           <button class="tb-menu-item danger" onclick="logout()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2"/><path d="M9 12h12l-3 -3"/><path d="M18 15l3 -3"/></svg> Sign out</button>
         </div>
         <!-- Notifications popover -->
@@ -7406,7 +7405,8 @@
         empSideTab = 'dashboard'; showPg('pg-employee'); renderEmployeeDashboard();
       }
       else { showPg('pg-home'); renderHome(); }
-      try { kabiMaybeShowOnboarding(me); } catch (e) {}
+      // Onboarding guide cancelled per request — no auto-show, no menu entry.
+      // (kabiOpenGuide/kabiMaybeShowOnboarding remain defined but are not triggered.)
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -9148,34 +9148,46 @@
         }
         const _deptLine = isCEO ? 'Chief Executive Officer' : (_deptClean + (_fnClean ? ' · ' + _fnClean : ''));
 
+        // Adaptive contrast — text is white on a dark brand card, dark on a light one,
+        // driven by the luminance of the chosen brand primary colour.
+        const _kabiHexLum = function (hex) { hex = (hex || '').replace('#', '').trim(); if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join(''); var n = parseInt(hex, 16); if (isNaN(n)) return 0; var r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255; return 0.299 * r + 0.587 * g + 0.114 * b; };
+        const _bpHex = (((window.Brand && Brand.get) ? Brand.get().primary : '') || '#0a1f52').trim() || '#0a1f52';
+        const _bpLight = _kabiHexLum(_bpHex) > 0.6;
+        const _ct    = _bpLight ? '#0f172a' : '#ffffff';
+        const _ctDim = _bpLight ? 'rgba(15,23,42,.60)' : 'rgba(255,255,255,.62)';
+        const _ctLbl = _bpLight ? 'rgba(15,23,42,.55)' : 'var(--brand-accent,#00c2e0)';
+        const _cChip = _bpLight ? 'rgba(15,23,42,.06)' : 'rgba(255,255,255,.14)';
+        const _cBord = _bpLight ? 'rgba(15,23,42,.12)' : 'rgba(255,255,255,.18)';
+
         let _scoreSection = '';
         if (isCEO) {
           const _teamSize = PE_EMPLOYEES.filter(e => (e.mgr || '').toLowerCase() === me.email.toLowerCase() && !e.isFormer).length;
-          _scoreSection = `<div style="font-size:10px;font-weight:800;color:var(--brand-accent,#00c2e0);text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Direct Reports</div><div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:32px;font-weight:900;color:var(--brand-on-primary,#fff);font-family:var(--mono);line-height:1">${_teamSize}</span><span style="font-size:12px;color:var(--brand-on-primary,#fff);opacity:.55">executives</span></div>`;
+          _scoreSection = `<div style="font-size:10px;font-weight:800;color:${_ctLbl};text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Direct Reports</div><div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:32px;font-weight:900;color:${_ct};font-family:var(--mono);line-height:1">${_teamSize}</span><span style="font-size:12px;color:${_ctDim}">executives</span></div>`;
         } else {
           const _fs = peGetFinalScore(emp.id);
           const _cls = peClassifyScore(_fs);
           const _rel = PE_CONFIG && PE_CONFIG.resultsVisible;
           if (_rel && _fs !== null && _cls) {
-            _scoreSection = `<div style="font-size:10px;font-weight:800;color:var(--brand-accent,#00c2e0);text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Final Score</div><div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><div style="font-size:33px;font-weight:900;color:var(--brand-on-primary,#fff);font-family:var(--mono);line-height:1;letter-spacing:-.5px">${_fs.toFixed(0)}%<span style="opacity:.42;font-weight:800"> / 120%</span></div><span style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:20px;background:${_cls.color}2e;color:${_cls.color};font-size:11px;font-weight:800">${_cls.label}</span></div>`;
+            _scoreSection = `<div style="font-size:10px;font-weight:800;color:${_ctLbl};text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Final Score</div><div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><div style="font-size:33px;font-weight:900;color:${_ct};font-family:var(--mono);line-height:1;letter-spacing:-.5px">${_fs.toFixed(0)}%<span style="opacity:.42;font-weight:800"> / 120%</span></div><span style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:20px;background:${_cls.color}2e;color:${_cls.color};font-size:11px;font-weight:800">${_cls.label}</span></div>`;
           } else {
-            _scoreSection = `<div style="font-size:10px;font-weight:800;color:var(--brand-accent,#00c2e0);text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Final Score</div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:19px;font-weight:800;color:#fbbf24"><i class="ti ti-hourglass"></i> Pending</span></div><div style="font-size:10px;color:var(--brand-on-primary,#fff);opacity:.5;margin-top:4px">${_fs === null ? 'Not evaluated yet' : 'Not yet published by HC'}</div>`;
+            _scoreSection = `<div style="font-size:10px;font-weight:800;color:${_ctLbl};text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Final Score</div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:19px;font-weight:800;color:#fbbf24"><i class="ti ti-hourglass"></i> Pending</span></div><div style="font-size:10px;color:${_ctDim};margin-top:4px">${_fs === null ? 'Not evaluated yet' : 'Not yet published by HC'}</div>`;
           }
         }
 
         const _profileCardHtml = `
-          <div class="emp-hero-card" style="flex:1;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),rgba(6,16,44,.92));border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:22px 24px;position:relative;overflow:hidden;box-shadow:0 18px 44px -22px rgba(10,31,82,.7);box-sizing:border-box">
-            <div style="position:absolute;top:-30px;right:-30px;width:170px;height:170px;background:radial-gradient(circle,rgba(255,255,255,.08),transparent 62%);pointer-events:none"></div>
-            <div style="display:flex;align-items:center;gap:15px;position:relative">
-              <div style="width:60px;height:60px;border-radius:16px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:var(--brand-on-primary,#fff);flex-shrink:0">${initials}</div>
-              <div style="min-width:0">
-                <h3 style="font-size:19px;font-weight:900;color:var(--brand-on-primary,#fff);margin:0;letter-spacing:-.3px">${emp.name}</h3>
-                <div style="font-size:12.5px;color:var(--brand-on-primary,#fff);opacity:.62;margin-top:3px">${_deptLine}</div>
+          <div class="emp-hero-card" style="flex:1;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 80%,#000));border:1px solid ${_cBord};border-radius:18px;padding:22px 24px;position:relative;overflow:hidden;box-shadow:0 18px 44px -22px rgba(10,31,82,.7);box-sizing:border-box">
+            <div style="position:absolute;top:-30px;right:-30px;width:170px;height:170px;background:radial-gradient(circle,${_bpLight ? 'rgba(15,23,42,.05)' : 'rgba(255,255,255,.08)'},transparent 62%);pointer-events:none"></div>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;position:relative">
+              <div style="display:flex;align-items:center;gap:15px;min-width:0;flex:1">
+                <div style="width:60px;height:60px;border-radius:16px;background:${_cChip};border:1px solid ${_cBord};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:${_ct};flex-shrink:0">${initials}</div>
+                <div style="min-width:0">
+                  <h3 style="font-size:19px;font-weight:900;color:${_ct};margin:0;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${emp.name}</h3>
+                  <div style="font-size:12.5px;color:${_ctDim};margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_deptLine}</div>
+                  <div style="margin-top:9px"><span style="display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:20px;background:${_lsColor}26;color:${_lsColor};border:1px solid ${_lsColor}55;font-size:11px;font-weight:800">${levelIcon} ${isCEO ? 'Executive' : _lvl}</span></div>
+                </div>
               </div>
+              <div style="text-align:right;flex-shrink:0">${_scoreSection}</div>
             </div>
-            <div style="margin-top:14px"><span style="display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:20px;background:${_lsColor}26;color:${_lsColor};border:1px solid ${_lsColor}55;font-size:11px;font-weight:800">${levelIcon} ${isCEO ? 'Executive' : _lvl}</span></div>
-            <div style="border-top:1px solid rgba(255,255,255,.1);margin:16px 0 14px"></div>
-            ${_scoreSection}
           </div>`;
 
         // Compact Well-being card — sits BESIDE the hero card; records the mood signal.
@@ -9198,7 +9210,7 @@
                   <div style="flex:1;min-width:0"><h4 style="font-size:13px;font-weight:800;color:var(--text-primary);margin:0">Well-being check-in</h4><p style="font-size:10px;color:var(--text-muted);margin:2px 0 0">A quick pulse before your week</p></div>
                   ${_todayMood ? '<span style="padding:3px 8px;border-radius:20px;background:rgba(18,161,122,.12);color:#12a17a;font-size:8px;font-weight:800;white-space:nowrap"><i class="ti ti-check ti-green"></i> Logged</span>' : ''}
                 </div>
-                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px">
                   ${_moods.map(function (m) { var sel = _todayMood === m.label; return '<button class="ai-mood-btn wb-mood-btn' + (sel ? ' sel' : '') + '" onclick="empAIRespondMood(\'' + m.label + '\',event)" title="' + m.label + '"' + (sel ? ' style="border-color:' + m.color + ';background:' + m.color + '1a"' : '') + '><span class="m-ic" style="color:' + m.color + '"><i class="ti ' + m.ic + '"></i></span><span class="m-lb">' + m.label + '</span></button>'; }).join('')}
                 </div>
                 <div id="ai-mood-response" style="display:none;margin-top:10px;padding:10px 12px;border-radius:10px;border:1px solid var(--glass-border,#e5eaf3);background:var(--surface-2,#eef2f9);font-size:10.5px;color:var(--text-primary);line-height:1.5"></div>
@@ -15955,10 +15967,7 @@
         bySection[groupKey].items.push(k);
       });
       const kpisFormatted = Object.values(bySection).map(sec => {
-        const items = sec.items.map((k, i) => {
-          const editNote = k.edited ? `\n   ↳ Edited to: "${k.edited}"` : '';
-          return `  ${i + 1}. ${k.orig}${editNote}`;
-        }).join('\n');
+        const items = sec.items.map((k, i) => `  ${i + 1}. ${k.edited || k.orig}`).join('\n');
         return `[ ${sec.title} ]\n${items}`;
       }).join('\n\n');
 
@@ -17107,9 +17116,10 @@
           im.style.setProperty('background', 'transparent', 'important');
           im.style.setProperty('padding', '0', 'important');
           im.style.setProperty('border-radius', '0', 'important');
-          im.style.setProperty('height', '30px', 'important');
+          im.style.setProperty('height', '38px', 'important');
           im.style.setProperty('width', 'auto', 'important');
-          im.style.setProperty('max-width', '180px', 'important');
+          im.style.setProperty('max-width', '240px', 'important');
+          im.style.setProperty('max-height', '44px', 'important');
           im.style.setProperty('object-fit', 'contain');
         });
       } else {
@@ -18184,13 +18194,13 @@
         bySection[k.si].items.push(k);
       });
       const kpisFormatted = Object.values(bySection).map(sec => {
-        const items = sec.items.map((k, i) => `  ${i + 1}. ${k.orig}${k.edited ? '\n     ↳ Your edit: "' + k.edited + '"' : ''}`).join('\n');
+        const items = sec.items.map((k, i) => `  ${i + 1}. ${k.edited || k.orig}`).join('\n');
         return `[ ${sec.title} ]\n${items}`;
       }).join('\n\n');
 
       const decisionBlock = isApprove
-        ? `STATUS: APPROVED <i class="ti ti-circle-check ti-green"></i>\n\nYour KPI selections for "${s.fnName}" have been approved by Human Capital.`
-        : `STATUS: REJECTED <i class="ti ti-x ti-rose"></i>\n\nYour KPI selections for "${s.fnName}" have been rejected by Human Capital.\n\nRejection Reason:\n${reason}\n\nPlease review the feedback and resubmit.`;
+        ? `STATUS: APPROVED\n\nYour KPI selections for "${s.fnName}" have been approved by Human Capital.`
+        : `STATUS: REJECTED\n\nYour KPI selections for "${s.fnName}" have been rejected by Human Capital.\n\nRejection Reason:\n${reason}\n\nPlease review the feedback and resubmit.`;
 
       const msg = `${decisionBlock}\n\n───────────────────────\nFunction: ${s.fnName}\nDepartment: ${s.dept}\nOriginal submission: ${s.ts}\n\nYour Selected KPIs:\n\n${kpisFormatted}\n\n───────────────────────\nKABi Performance Appraisal Portal`;
 
@@ -22241,7 +22251,7 @@
           <div style="flex:1;min-width:240px">
             <h3 style="font-size:15px;font-weight:900;color:var(--white)">Account Security</h3>
             <p style="font-size:11px;color:var(--text-muted);margin-top:4px;line-height:1.55">
-              Change passwords <strong style="color:#fbbf24">per user</strong> or apply a single password to multiple accounts. Each employee should rotate to a unique password after first login.
+              Change passwords <strong style="color:#fbbf24">per user</strong>. Each employee should rotate to a unique password after first login.
             </p>
           </div>
         </div>
@@ -22267,20 +22277,6 @@
         </div>
       </div>
 
-      <!-- Bulk apply shared password -->
-      <div style="background:rgba(0,194,224,.04);border:1px solid rgba(0,194,224,.15);border-radius:10px;padding:14px;margin-bottom:14px">
-        <h4 style="font-size:11px;font-weight:800;color:var(--cyan);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px"><i class=\"ti ti-refresh\"></i> Bulk: Apply One Password to Multiple Accounts</h4>
-        <p style="font-size:10px;color:var(--text-muted);margin-bottom:10px">Useful for initial onboarding. Select accounts in the list below, enter a password, then click "Apply to Selected".</p>
-        <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end">
-          <div>
-            <label style="font-size:9px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">New Shared Password</label>
-            <input id="pe-sec-bulk-pass" type="text" placeholder="e.g., kabi2026" style="width:100%;padding:8px 10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--white);font-size:11px;font-family:monospace;outline:none">
-          </div>
-          <button onclick="peSecBulkSelectAll()" style="padding:8px 12px;border-radius:6px;border:1px solid rgba(0,194,224,.3);background:rgba(0,194,224,.06);color:var(--cyan);font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap"><i class=\"ti ti-checkbox\"></i> Select All Employees</button>
-          <button onclick="peSecApplyBulk()" style="padding:8px 14px;border-radius:6px;border:none;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#050d1f;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap"><i class=\"ti ti-key\"></i> Apply to Selected</button>
-        </div>
-      </div>
-
       <!-- Search -->
       <div style="position:relative;margin-bottom:10px">
         <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text-muted);pointer-events:none"><i class=\"ti ti-search\"></i></span>
@@ -22293,9 +22289,8 @@
           <table style="width:100%;border-collapse:collapse">
             <thead style="position:sticky;top:0;background:rgba(10,31,82,.95);backdrop-filter:blur(8px);z-index:1">
               <tr>
-                <th style="padding:10px 12px;text-align:left;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;width:30px"><input type="checkbox" onchange="document.querySelectorAll('.pe-sec-row-chk').forEach(c=>c.checked=this.checked)" style="accent-color:var(--cyan);cursor:pointer"></th>
                 <th style="padding:10px 12px;text-align:left;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">User</th>
-                <th style="padding:10px 12px;text-align:right;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Status · Reset</th>
+                <th style="padding:10px 34px 10px 12px;text-align:right;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;width:140px">Status · Reset</th>
               </tr>
             </thead>
             <tbody>
@@ -22311,12 +22306,11 @@
                   ? `<button onclick="event.stopPropagation();peResetPwd('${acc.email}','${acc.name}')" title="Account active — click to reset password" style="margin-left:6px;padding:1px 5px;border-radius:4px;border:1px solid rgba(30,175,217,.25);background:rgba(30,175,217,.08);color:var(--cyan);font-size:10px;cursor:pointer;font-family:inherit;vertical-align:middle"><i class=\"ti ti-key\"></i></button>`
                   : `<span title="Account not activated yet — employee hasn't logged in to set a password" style="margin-left:6px;font-size:10px;color:var(--text-dim);vertical-align:middle;cursor:default"><i class="ti ti-hourglass"></i></span>`;
                 return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
-                  <td style="padding:8px 12px"><input type="checkbox" class="pe-sec-row-chk" data-email="${acc.email}" style="accent-color:var(--cyan);cursor:pointer"></td>
                   <td style="padding:8px 12px">
-                    <div style="font-size:11px;color:var(--white);font-weight:600">${acc.name}${sysBadge}${kpiBadge}</div>
+                    <div style="font-size:11px;color:var(--text-primary);font-weight:600">${acc.name}${sysBadge}${kpiBadge}</div>
                     <div style="font-size:9px;color:var(--text-muted);margin-top:1px">${acc.email} · ${acc.title}</div>
                   </td>
-                  <td style="padding:8px 12px;text-align:right;white-space:nowrap">${acctIcon}</td>
+                  <td style="padding:8px 34px 8px 12px;text-align:right;white-space:nowrap">${acctIcon}</td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -24091,9 +24085,9 @@
       // Performance-only export panel — Bulk Upload + Export Employees moved
       // to People & Access (they're admin concerns, not performance).
       const actionDiv = document.createElement('div');
-      actionDiv.style.cssText = 'padding:20px;background:rgba(10,31,82,.5);border:1px solid rgba(255,255,255,.08);border-radius:14px;backdrop-filter:blur(12px)';
+      actionDiv.style.cssText = 'padding:20px;background:var(--glass,#ffffff);border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 10px 26px -16px rgba(10,31,82,.22))';
       actionDiv.innerHTML = `
-        <h4 style="font-size:14px;font-weight:800;color:var(--white);margin-bottom:4px;display:flex;align-items:center;gap:9px">
+        <h4 style="font-size:14px;font-weight:800;color:var(--text-primary);margin-bottom:4px;display:flex;align-items:center;gap:9px">
           <span style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--cyan),#3b72ff);display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff"><i class=\"ti ti-download\"></i></span>
           Evaluation Data Export
         </h4>
@@ -28567,7 +28561,7 @@
             <button onclick="peSaveInitiativeTargets()" style="padding:6px 12px;border-radius:6px;border:none;background:linear-gradient(135deg,#4ade80,#22c55e);color:#fff;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit"><i class=\"ti ti-device-floppy\"></i> Save Targets</button>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px" class="pe-init-targets-grid">
+        <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px" class="pe-init-targets-grid">
           ${['Executive', 'Advanced', 'First-level management', 'Intermediate', 'Entry'].map((level) => {
             const target = INITIATIVE_TARGETS[level];
             const levelIcon = kabiLevelIcon(level);
@@ -28579,13 +28573,13 @@
             else if (target && typeof target === 'object') total = (parseInt(target.academic, 10) || 0) + (parseInt(target.general, 10) || 0);
             else total = 0;
             return `
-            <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px">
-              <span style="font-size:18px;flex-shrink:0">${levelIcon}</span>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:10px;color:${levelColor};font-weight:800;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${levelLabel}</div>
-                <div style="font-size:8.5px;color:var(--text-dim);margin-top:1px">initiatives / year</div>
+            <div style="background:${levelColor}0d;border:1px solid ${levelColor}2e;border-radius:10px;padding:12px 8px;display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center">
+              <span style="font-size:20px;line-height:1">${levelIcon}</span>
+              <div style="width:100%;min-width:0">
+                <div style="font-size:9.5px;color:${levelColor};font-weight:800;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${levelLabel}">${levelLabel}</div>
+                <div style="font-size:8px;color:var(--text-dim);margin-top:1px">initiatives / year</div>
               </div>
-              <input id="init-tgt-${slug}" type="number" min="0" max="50" value="${total}" oninput="peMarkInitTargetsDirty()" style="width:54px;padding:6px 8px;background:${levelColor}14;border:1px solid ${levelColor}40;border-radius:6px;color:${levelColor};font-size:14px;font-weight:900;font-family:inherit;outline:none;text-align:center;flex-shrink:0">
+              <input id="init-tgt-${slug}" type="number" min="0" max="50" value="${total}" oninput="peMarkInitTargetsDirty()" style="width:58px;padding:6px 8px;background:${levelColor}1f;border:1px solid ${levelColor}45;border-radius:6px;color:${levelColor};font-size:15px;font-weight:900;font-family:inherit;outline:none;text-align:center">
             </div>`;
           }).join('')}
         </div>
@@ -30257,25 +30251,25 @@
           'Jordan':      { name: 'Jordan',    flag: '<i class="ti ti-map-pin" title="Jordan"></i>', gradient: 'linear-gradient(135deg,rgba(153,27,27,.3),rgba(0,0,0,.4) 55%,rgba(10,31,82,.6))', accent: '#dc2626', border: 'rgba(220,38,38,.3)' },
           'Palestine':   { name: 'Palestine', flag: '<i class="ti ti-map-pin" title="Palestine"></i>', gradient: 'linear-gradient(135deg,rgba(21,128,61,.3),rgba(185,28,28,.18) 45%,rgba(10,31,82,.6))', accent: '#15803d', border: 'rgba(21,128,61,.35)' },
           'Dubai':       { name: 'UAE',       flag: '<i class="ti ti-map-pin" title="UAE"></i>', gradient: 'linear-gradient(135deg,rgba(21,128,61,.3),rgba(248,248,248,.05) 45%,rgba(10,31,82,.6))', accent: '#dc2626', border: 'rgba(21,128,61,.3)' },
-        }[loc] || { name: loc, flag: '<i class=\"ti ti-map-pin\"></i>', gradient: 'linear-gradient(135deg,rgba(10,31,82,.6),rgba(0,194,224,.05))', accent: 'var(--cyan)', border: 'rgba(0,194,224,.15)' };
-        return `<div style="position:relative;background:${flagMeta.gradient};border:1px solid ${flagMeta.border};border-radius:12px;padding:14px;backdrop-filter:blur(10px);overflow:hidden">
-          <div style="position:absolute;top:-6px;right:-6px;font-size:54px;opacity:.15;filter:grayscale(.2);pointer-events:none;line-height:1;user-select:none">${flagMeta.flag}</div>
+        }[loc] || { name: loc, flag: '<i class=\"ti ti-map-pin\"></i>', gradient: '', accent: '#00c2e0', border: 'rgba(0,194,224,.15)' };
+        return `<div style="position:relative;background:linear-gradient(135deg,${flagMeta.accent}22,${flagMeta.accent}0a);border:1px solid ${flagMeta.accent}45;border-radius:12px;padding:14px;overflow:hidden">
+          <div style="position:absolute;top:-4px;right:-2px;font-size:50px;opacity:.10;pointer-events:none;line-height:1;user-select:none;color:${flagMeta.accent}">${flagMeta.flag}</div>
           <div style="position:relative;display:flex;align-items:center;gap:6px;margin-bottom:8px">
-            <span style="font-size:16px">${flagMeta.flag}</span>
-            <div style="font-size:11px;color:var(--white);font-weight:800;letter-spacing:.2px">${flagMeta.name}</div>
+            <span style="font-size:15px;color:${flagMeta.accent}">${flagMeta.flag}</span>
+            <div style="font-size:11px;color:var(--text-primary);font-weight:800;letter-spacing:.2px">${flagMeta.name}</div>
           </div>
           <div style="position:relative;display:flex;justify-content:center;gap:16px;align-items:baseline;margin-bottom:6px">
             <div style="text-align:center">
               <div style="font-size:20px;font-weight:900;color:${lrc.color};line-height:1">${ls.avg ? ls.avg.toFixed(1) : '-'}</div>
               <div style="font-size:8px;color:var(--text-muted);margin-top:3px">out of 5</div>
             </div>
-            <div style="width:1px;align-self:stretch;background:rgba(255,255,255,.08)"></div>
+            <div style="width:1px;align-self:stretch;background:var(--glass-border,rgba(127,127,127,.15))"></div>
             <div style="text-align:center">
-              <div style="font-size:20px;font-weight:900;color:#a78bfa;line-height:1">${ls.avg ? pePct(ls.avg) + '%' : '-'}</div>
+              <div style="font-size:20px;font-weight:900;color:#8b5cf6;line-height:1">${ls.avg ? pePct(ls.avg) + '%' : '-'}</div>
               <div style="font-size:8px;color:var(--text-muted);margin-top:3px">out of 120%</div>
             </div>
           </div>
-          <div style="position:relative;font-size:9px;color:rgba(255,255,255,.5);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06);text-align:center">${ls.count} employees · ${ls.evals} evaluations</div>
+          <div style="position:relative;font-size:9px;color:var(--text-muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--glass-border,rgba(127,127,127,.12));text-align:center">${ls.count} employees · ${ls.evals} evaluations</div>
         </div>`;
       }).join('')}
     </div>
