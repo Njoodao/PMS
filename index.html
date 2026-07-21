@@ -2,10 +2,10 @@
 <html lang="en">
 
 <head>
-<!-- UI font: Aptos → Calibri (Windows/Office system fonts, no download). JetBrains Mono for numbers/IDs. -->
+<!-- UI font: Cairo everywhere — text AND numbers (loaded from Google Fonts). -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <!-- KABi Supabase Backend Integration v1.1 + LIGHT mode default    -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -117,8 +117,8 @@
       --shadow-card: 0 4px 24px rgba(2, 10, 30, .4);
 
       /* ── Design Guide tokens (KABi Design Guide) ────────────────────── */
-      --font: 'Aptos', 'Calibri', 'Segoe UI', system-ui, -apple-system, sans-serif;
-      --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+      --font: 'Cairo', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      --mono: 'Cairo', 'Segoe UI', system-ui, sans-serif;
       --accent: #00c2e0;      /* == --cyan */
       --accent-deep: #0891a8;
       --violet: #6d5bd0;
@@ -15087,9 +15087,10 @@
       ico.innerHTML = paired ? FNS[pairKeys[0]].icon : f.icon;
       ico.style.background = p.light;
       document.getElementById('fn-title').textContent = paired ? fnGetMergedLabel(primary) : f.name;
+      var _lvlNow = (window._kpiSelectedLevel && window._kpiSelectedLevel[primary]) || 'Entry';
       const subText = paired
-        ? (f.dept + ' · ' + p.label + ' Pillar · <i class=\"ti ti-link\"></i> Paired — 4-KPI shared budget')
-        : (f.dept + ' · ' + p.label + ' Pillar' + (isCEOOwner ? ' · <i class=\"ti ti-briefcase\"></i> CEO-Owned KPIs' : ''));
+        ? (f.dept + ' · ' + p.label + ' Pillar · ' + _lvlNow + ' level · Paired — 4-KPI shared budget')
+        : (f.dept + ' · ' + p.label + ' Pillar · ' + _lvlNow + ' level' + (isCEOOwner ? ' · CEO-Owned KPIs' : ''));
       document.getElementById('fn-sub').textContent = subText;
       // v66.6: paired-aware submission lookup
       // v67.9: ignore superseded (re-submitted after rejection) entries — pick the active one
@@ -15511,6 +15512,7 @@
       ">${sectionCounterTxt}</span>` : ''}
       ${editable ? `<button onclick="KABi.UI.kpiGenerate.open('${fnKey}',${si})" title="Generate 4 KPI suggestions using AI (Claude)" style="margin-left:8px;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;background:linear-gradient(135deg,#216AB1,#3D3185);color:#fff;border:none;display:inline-flex;align-items:center;gap:5px;box-shadow:0 2px 8px rgba(33,106,177,.25)"><i class=\"ti ti-sparkles ti-cyan\"></i> AI Generate</button>` : ''}
     </div>
+    ${editable ? `<div style="font-size:9px;color:var(--text-dim);margin:2px 2px 10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><i class="ti ti-layout-grid"></i> A balanced set covers <strong style="color:#00c2e0;cursor:help;border-bottom:1px dotted currentColor" title="Leading — a forward-looking indicator that predicts future results (e.g. activity volume, pipeline, effort). It moves before the outcome does.">Leading</strong> · <strong style="color:#216AB1;cursor:help;border-bottom:1px dotted currentColor" title="Process — measures how efficiently the work is done (e.g. cycle time, throughput, on-time delivery, adherence to the process).">Process</strong> · <strong style="color:#6d5bd0;cursor:help;border-bottom:1px dotted currentColor" title="Lagging — an outcome measured after the fact — the actual result (e.g. revenue, renewals, adoption, satisfaction).">Lagging</strong> · <strong style="color:#12a17a;cursor:help;border-bottom:1px dotted currentColor" title="Health — a quality, risk or stability indicator that guards against problems (e.g. defect rate, uptime, error rate, compliance).">Health</strong></div>` : ''}
     ${pairedBanner}
     <div class="kpi-list" id="kpi-list-${fnKey}-${si}"></div>`;
       const list = w.querySelector('.kpi-list');
@@ -17014,6 +17016,16 @@
         var st = document.getElementById('brand-vars-style');
         if (!st) { st = document.createElement('style'); st.id = 'brand-vars-style'; document.head.appendChild(st); }
         var accRgbaWeak = _rgbaFromHex(b.accent, .10), accRgbaFaint = _rgbaFromHex(b.accent, .06);
+        // ── Automatic on-brand ink: brand surfaces (the sidebar) are painted with the
+        //    brand primary, so their TEXT must follow the brand's luminance — light ink
+        //    on a dark brand, dark ink on a light brand. This keeps dark-coloured boxes
+        //    reading as "dark mode" and light-coloured boxes as "light mode" automatically.
+        var _bpH = (b.primary || '#0a1f52').replace('#', '').trim();
+        if (_bpH.length === 3) _bpH = _bpH.split('').map(function (c) { return c + c; }).join('');
+        var _bpN = parseInt(_bpH, 16); if (isNaN(_bpN)) _bpN = 0x0a1f52;
+        var _bpLum = (0.299 * (_bpN >> 16 & 255) + 0.587 * (_bpN >> 8 & 255) + 0.114 * (_bpN & 255)) / 255;
+        var _onAuto = _bpLum > 0.6 ? '#0f172a' : '#ffffff';
+        var _onDim  = _bpLum > 0.6 ? 'rgba(15,23,42,.62)' : 'rgba(255,255,255,.62)';
         st.textContent = ':root, body, body.light-mode {'
           + '--navy:' + b.primary + ' !important;'
           + '--cyan:' + b.accent + ' !important;'
@@ -17021,11 +17033,19 @@
           + '--accent-deep:' + b.accent + ' !important;'
           + '--brand-primary:' + b.primary + ' !important;'
           + '--brand-accent:' + b.accent + ' !important;'
+          + '--brand-ink:' + _onAuto + ';'
           + '}'
           // structural navy surfaces (many are hardcoded #0a1f52) → brand primary
           + '.hc-side-nav, body.light-mode .hc-side-nav { background:' + b.primary + ' !important; }'
           + 'body [style*="background:#0a1f52"] { background:' + b.primary + ' !important; }'
           + 'body [style*="background: #0a1f52"] { background:' + b.primary + ' !important; }'
+          // Sidebar labels read against the brand fill. The #app ID prefix out-specifies
+          // the hardcoded `body.light-mode .hc-side-nav .hc-side-item` white rule, so the
+          // ink follows the brand luminance in BOTH themes (active .on keeps its accent,
+          // except on a light brand where white-on-light would vanish).
+          + '#app .hc-side-nav .hc-side-item:not(.on){ color:' + _onDim + ' !important; }'
+          + '#app .hc-side-nav .hc-side-item:not(.on):hover{ color:' + _onAuto + ' !important; background:' + (_bpLum > 0.6 ? 'rgba(15,23,42,.06)' : 'rgba(255,255,255,.06)') + ' !important; }'
+          + (_bpLum > 0.6 ? '#app .hc-side-nav .hc-side-item.on{ color:' + _onAuto + ' !important; }#app .hc-side-nav .hc-side-head{ color:' + _onDim + ' !important; }#app .hc-side-nav .hc-side-section{ color:' + _onDim + ' !important; }' : '')
           // theme background glow → brand accent
           + 'body.light-mode::before { background: radial-gradient(ellipse 80% 60% at 50% -20%, ' + accRgbaWeak + ' 0%, transparent 65%), radial-gradient(ellipse 60% 40% at 100% 100%, ' + accRgbaFaint + ' 0%, transparent 60%) !important; }';
         try { document.title = b.productName + ' — ' + b.companyName; } catch (e) {}
@@ -20486,6 +20506,10 @@
     let PE_CONFIG = {
       justMode: 'per-item',
       resultsVisible: false,
+      // v77: Super Admin controls whether managers may raise a "Request Score
+      // Adjustment" after submitting an evaluation. Default on. When on, a manager
+      // may request an adjustment ONCE per evaluation.
+      allowScoreAdjustment: true,
       // v67.21: Well-being Check-in visibility per level.
       // Super Admin can toggle each level on/off. Default: all visible.
       wellbeingVisible: {
@@ -25823,6 +25847,16 @@
             <span class="inv-slider"></span>
           </label>
         </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 16px;margin-top:10px;background:${PE_CONFIG.allowScoreAdjustment !== false ? 'rgba(0,194,224,.08)' : 'rgba(255,255,255,.03)'};border:1px solid ${PE_CONFIG.allowScoreAdjustment !== false ? 'rgba(0,194,224,.3)' : 'rgba(255,255,255,.08)'};border-radius:10px">
+          <div>
+            <span style="font-size:12px;font-weight:700;color:${PE_CONFIG.allowScoreAdjustment !== false ? 'var(--cyan)' : 'var(--text-primary)'}">Allow &ldquo;Request Score Adjustment&rdquo;</span>
+            <div style="font-size:9px;color:var(--text-dim);margin-top:2px">${PE_CONFIG.allowScoreAdjustment !== false ? '<i class=\"ti ti-circle-check ti-green\"></i> Managers may request one adjustment per submitted evaluation' : '<i class=\"ti ti-lock\"></i> Hidden — managers cannot request score adjustments'}</div>
+          </div>
+          <label class="inv-switch" style="flex-shrink:0" title="${PE_CONFIG.allowScoreAdjustment !== false ? 'On — managers can request' : 'Off — hidden'}">
+            <input type="checkbox" ${PE_CONFIG.allowScoreAdjustment !== false ? 'checked' : ''} onchange="peToggleScoreAdjustment(this.checked)">
+            <span class="inv-slider"></span>
+          </label>
+        </div>
       </div>
 
       <!-- Justification Mode -->
@@ -26287,6 +26321,14 @@
           message:'Your performance evaluation results are now available. Please log in to your KABi Dashboard to review them.\n\nWe encourage you to schedule a 1:1 meeting with your direct manager to discuss your results and future development goals.\n\nYour growth matters to us — this is a great opportunity to reflect and plan ahead.',
           onSend: render });
       } else { toast('Results hidden from employees',  'ok'); render(); }
+    }
+
+    // v77: Super Admin show/hide the manager "Request Score Adjustment" option.
+    function peToggleScoreAdjustment(checked) {
+      PE_CONFIG.allowScoreAdjustment = checked;
+      try { _savePEConfig(); } catch (e) {}
+      toast(checked ? '<i class="ti ti-circle-check ti-green"></i> Managers can request score adjustments' : '<i class="ti ti-ban ti-rose"></i> Score-adjustment requests hidden from managers', 'ok');
+      renderPEAdmin(document.getElementById('hc-body'));
     }
 
     // v67.21: Toggle Well-being Check-in visibility per level (Super Admin only)
@@ -29403,8 +29445,11 @@
         html += `<span style="font-size:10px;color:#fbbf24;padding:5px 10px;border-radius:6px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2)"><i class="ti ti-hourglass"></i> Edit request pending</span>`;
       } else if (approvedReq) {
         html += `<button onclick="closePEModal();peStartEval('${empId}','${approvedReq.sections.join(',')}')" style="padding:5px 12px;border-radius:6px;border:none;background:rgba(74,222,128,.15);color:#4ade80;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit"><i class=\"ti ti-lock-open\"></i> Edit Approved — Modify</button>`;
-      } else if (!ev.isDraft) {
+      } else if (!ev.isDraft && editCount === 0 && (typeof PE_CONFIG === 'undefined' || PE_CONFIG.allowScoreAdjustment !== false)) {
+        // v77: only when HC allows it (Super Admin toggle) AND never requested before (once only).
         html += `<button onclick="peRequestEdit('${empId}','${quarter}')" class="pe-edit-req-btn"><i class=\"ti ti-pencil\"></i> Request Score Adjustment</button>`;
+      } else if (!ev.isDraft && editCount > 0 && !hasPendingReq && !approvedReq) {
+        html += `<span style="font-size:10px;color:var(--text-dim);padding:5px 10px;border-radius:6px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)"><i class="ti ti-pencil-off"></i> Adjustment already requested</span>`;
       }
       if (editCount > 0) {
         html += `<span style="font-size:9px;color:var(--text-dim);margin-left:auto"><i class=\"ti ti-notes\"></i> ${editCount} edit request(s) total</span>`;
@@ -31135,7 +31180,17 @@
           if (_byPolicy) _sugSource = _byPolicy;
           else if (_pol === 'former') _sugSource = { sugs: [] };
         }
+        // v77: once the manager has submitted their KPIs (an active, non-rejected
+        // submission exists), drop the "Suggest KPIs" quick-suggestion.
+        var _mgrKpisSubmitted = (function () {
+          try {
+            if (typeof subs === 'undefined' || !Array.isArray(subs) || !me || !me.email) return false;
+            var em = (me.email || '').toLowerCase();
+            return subs.some(function (s) { return s && (s.email || '').toLowerCase() === em && s.status !== 'rejected' && !s.superseded; });
+          } catch (e) { return false; }
+        })();
         var _sugs = (_sugSource.sugs || []).filter(function (s) {
+          if (s.id === 'kpi' && _mgrKpisSubmitted) return false;
           if (!_ctx) return true;
           var cap = _SUG_CAP[s.id];
           return !cap || kabiCan(_ctx, cap);
@@ -32508,8 +32563,15 @@
     /* v73: unify the UI font — inline Poppins/FSAlbert (non-Arabic) fall back to the
        app font. Email-template faces (Calibri/Arial) and Arabic ('FS Albert Arabic')
        are NOT matched, so they keep their own faces. */
-    [style*="'Poppins'"], [style*="Poppins,"], [style*="'FSAlbert'"], [style*="FSAlbert,"] {
+    [style*="'Poppins'"], [style*="Poppins,"], [style*="'FSAlbert'"], [style*="FSAlbert,"],
+    [style*="JetBrains"], [style*="monospace"], [style*="'Aptos'"], [style*="Aptos,"],
+    [style*="Calibri"], [style*="Segoe UI"] {
       font-family: var(--font) !important;
+    }
+    /* Form controls don't inherit the page font by default (UA falls back to Arial) —
+       force Cairo on every control so numbers/inputs/buttons match the rest. */
+    button, input, textarea, select, optgroup, option {
+      font-family: var(--font);
     }
     /* v73j: Branding designer 2-column — sticky preview stacks on narrow screens */
     @media (max-width: 1080px) {
@@ -39409,8 +39471,8 @@
         // Poppins/Arial as fallback). Previously used Poppins first, which
         // broke visual consistency with the rest of the portal (declared
         // @font-face 'FSAlbert' at file head; body uses it via L92).
-        '#kabi-kpi-validate-modal *{box-sizing:border-box;font-family:\'FSAlbert\',Poppins,Arial,sans-serif!important}' +
-        '#kabi-kpi-validate-modal .kpiv-card{border-radius:16px!important;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.18);font-family:\'FSAlbert\',Poppins,Arial,sans-serif!important}' +
+        '#kabi-kpi-validate-modal *{box-sizing:border-box;font-family:var(--font)!important}' +
+        '#kabi-kpi-validate-modal .kpiv-card{border-radius:16px!important;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.18);font-family:var(--font)!important}' +
         // Header is the SAME in both themes (KABi Mid Blue brand band)
         '#kabi-kpi-validate-modal .kpiv-header{padding:18px 22px 14px!important;background:linear-gradient(135deg,#216AB1,#1EAFD9)!important;border-radius:16px 16px 0 0!important}' +
         '#kabi-kpi-validate-modal .kpiv-header,#kabi-kpi-validate-modal .kpiv-header *{color:#fff!important}' +
@@ -39445,7 +39507,7 @@
         '#kabi-kpi-validate-modal .kpiv-rewrite{margin:14px 20px 0;padding:14px 16px;border-radius:10px!important}' +
         '#kabi-kpi-validate-modal .kpiv-rewrite-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px}' +
         '#kabi-kpi-validate-modal .kpiv-rewrite-text{font-size:13px;font-weight:600;line-height:1.55;padding:10px 12px;border-radius:8px;margin-bottom:10px}' +
-        '#kabi-kpi-validate-modal .kpiv-btn{padding:10px 18px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:\'FSAlbert\',Poppins,Arial,sans-serif!important;transition:all .15s;border:none}' +
+        '#kabi-kpi-validate-modal .kpiv-btn{padding:10px 18px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:var(--font)!important;transition:all .15s;border:none}' +
         '#kabi-kpi-validate-modal .kpiv-btn-primary{background:linear-gradient(135deg,#216AB1,#1EAFD9)!important;color:#fff!important;box-shadow:0 4px 14px rgba(30,175,217,.3);flex:1;min-width:140px}' +
         '#kabi-kpi-validate-modal .kpiv-btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(30,175,217,.45)}' +
         '#kabi-kpi-validate-modal .kpiv-btn-secondary{flex:1;min-width:140px}' +
