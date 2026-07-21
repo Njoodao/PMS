@@ -7239,9 +7239,26 @@
     // profile-picture upload with professional male/female default icons)
     // ═══════════════════════════════════════════════════════════════════
     const _AVATAR_PREFIX = 'kabi_avatar_';
-    function _getAvatar(email) { try { return email ? (localStorage.getItem(_AVATAR_PREFIX + email.toLowerCase()) || '') : ''; } catch (e) { return ''; } }
-    function _setAvatar(email, url) { try { if (email) localStorage.setItem(_AVATAR_PREFIX + email.toLowerCase(), url); } catch (e) {} }
-    function _delAvatar(email) { try { if (email) localStorage.removeItem(_AVATAR_PREFIX + email.toLowerCase()); } catch (e) {} }
+    // v78: profile photos are stored on the SHARED employee record (emp.photo) so
+    // everyone who views that person sees the photo — not just the uploader's own
+    // browser. The localStorage copy is a fast per-browser cache / fallback.
+    function _getAvatar(email) {
+      try {
+        if (!email) return '';
+        var ls = localStorage.getItem(_AVATAR_PREFIX + email.toLowerCase());
+        if (ls) return ls;
+        var emp = _empByEmail(email);         // shared record — visible to every user
+        return (emp && emp.photo) ? emp.photo : '';
+      } catch (e) { return ''; }
+    }
+    function _setAvatar(email, url) {
+      try { if (email) localStorage.setItem(_AVATAR_PREFIX + email.toLowerCase(), url); } catch (e) {}
+      try { var emp = _empByEmail(email); if (emp) { emp.photo = url; if (typeof _peSaveEmployees === 'function') _peSaveEmployees(); } } catch (e) {}
+    }
+    function _delAvatar(email) {
+      try { if (email) localStorage.removeItem(_AVATAR_PREFIX + email.toLowerCase()); } catch (e) {}
+      try { var emp = _empByEmail(email); if (emp && emp.photo) { delete emp.photo; if (typeof _peSaveEmployees === 'function') _peSaveEmployees(); } } catch (e) {}
+    }
     function _empByEmail(email) { return (email && typeof PE_EMPLOYEES !== 'undefined') ? PE_EMPLOYEES.find(function (e) { return (e.email || '').toLowerCase() === email.toLowerCase(); }) : null; }
     // Professional default avatars (used when no photo is uploaded).
     function _genderIconSvg(gender) {
@@ -7307,6 +7324,14 @@
     // ── PROFILE modal (details + change password + avatar upload) ──
     function openProfile() {
       if (!me) return;
+      // v78: users with the sidebar shell see Profile as a sidebar TAB (not a modal).
+      if (['employee', 'manager', 'ceo', 'ceo_exec'].indexOf(me.role) >= 0
+          && typeof empSwitchTab === 'function'
+          && document.getElementById('pg-employee')
+          && document.getElementById('pg-employee').style.display !== 'none') {
+        empSwitchTab('profile');
+        return;
+      }
       var emp = _empByEmail(me.email);
       var gender = emp ? emp.gender : '';
       var rd = (typeof ROLE_DEFS !== 'undefined' && ROLE_DEFS[me.role]) || { label: me.role };
@@ -7329,15 +7354,44 @@
         + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">'
         + '<div><h2 style="font-size:20px;font-weight:900;color:var(--text-primary);margin:0">My Profile</h2><div style="font-size:12px;color:var(--text-muted);margin-top:2px">Your personal information</div></div>'
         + '<button onclick="closeProfile()" style="width:34px;height:34px;border-radius:9px;border:1px solid var(--glass-border,#e5eaf3);background:var(--glass,#fff);color:var(--text-muted);font-size:17px;cursor:pointer;font-family:inherit">×</button></div>'
-        // profile card
-        + '<div style="' + _cardCss + '">'
+        + _buildProfileInner()
+        + '</div>';
+      ov.style.display = 'flex';
+    }
+    function closeProfile() { var ov = document.getElementById('profile-modal'); if (ov) ov.style.display = 'none'; }
+    // Profile card + change-password card — shared by the modal (super-admin) and
+    // the sidebar Profile tab (employee/manager/CEO). Single source of truth.
+    function _buildProfileInner() {
+      var emp = _empByEmail(me.email);
+      var gender = emp ? emp.gender : '';
+      var rd = (typeof ROLE_DEFS !== 'undefined' && ROLE_DEFS[me.role]) || { label: me.role };
+      var title = emp ? (emp.title || rd.label) : rd.label;
+      var dept = emp ? (emp.dept || '—') : '—';
+      var fnName = (emp && emp.fn && typeof FNS !== 'undefined' && FNS[emp.fn]) ? FNS[emp.fn].name : '—';
+      var mgr = emp ? (emp.mgrName || '—') : '—';
+      var hire = emp ? (emp.hireDate || '—') : '—';
+      var tenureStr = '—';
+      try { if (emp && emp.hireDate) { var days = (typeof peTenureDays === 'function') ? peTenureDays(emp) : null; if (days != null) tenureStr = (days / 365).toFixed(1) + ' yr'; } } catch (e) {}
+      var hasPhoto = !!_getAvatar(me.email);
+      var _pend = (_pendingAvatar && _pendingAvatar.email === me.email) ? _pendingAvatar.url : null;
+      var _cardCss = 'background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:22px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 10px 26px -16px rgba(10,31,82,.22));margin-bottom:16px';
+      var _inp = 'width:100%;height:40px;padding:0 13px;background:rgba(127,140,170,.06);border:1px solid var(--glass-border,#e5eaf3);border-radius:9px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none';
+      var _lab = 'font-size:11px;font-weight:700;color:var(--text-primary);display:block;margin-bottom:6px';
+      return '<div style="' + _cardCss + '">'
         + '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:6px">'
-        + '<div class="u-avatar" style="width:74px;height:74px;border-radius:50%;font-size:30px;flex-shrink:0">' + _avatarInner(me.email, gender) + '</div>'
+        + '<div class="u-avatar" style="width:74px;height:74px;border-radius:50%;font-size:30px;flex-shrink:0;overflow:hidden;position:relative">' + (_pend ? '<img src="' + _pend + '" alt="" style="width:100%;height:100%;object-fit:cover">' : _avatarInner(me.email, gender)) + '</div>'
         + '<div style="flex:1;min-width:160px"><div style="font-size:19px;font-weight:900;color:var(--text-primary)">' + (me.name || '') + '</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">' + title + '</div>'
         + '<div style="margin-top:9px"><span style="display:inline-flex;align-items:center;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:800;background:' + (rd.bg || 'rgba(0,194,224,.12)') + ';color:' + (rd.color || 'var(--cyan)') + ';border:1px solid ' + (rd.border || 'rgba(0,194,224,.25)') + '">' + (((me.role === "manager" || me.role === "employee") && emp) ? (function(){ try { return kabiNormalizeLevel(emp.level); } catch(e){ return rd.label; } })() : rd.label) + '</span></div>'
-        + '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><label style="display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:8px;border:1px solid var(--glass-border,#e5eaf3);background:rgba(127,140,170,.06);font-size:11px;font-weight:700;color:var(--text-primary);cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h2a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1a2 2 0 0 0 2 2h2a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2"/><path d="M9 13a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg> Upload photo (optional)<input type="file" accept="image/*" onchange="profileUploadAvatar(this)" style="display:none"></label>'
-        + (hasPhoto ? '<button onclick="profileRemoveAvatar()" style="padding:7px 13px;border-radius:8px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.06);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Remove</button>' : '') + '</div></div></div>'
+        + '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center">'
+        + (_pend
+            ? '<button onclick="profileSaveAvatar()" style="padding:7px 15px;border-radius:8px;border:none;background:linear-gradient(135deg,#0d9960,#12a17a);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px"><i class="ti ti-device-floppy"></i> Save photo</button>'
+              + '<button onclick="profileDiscardAvatar()" style="padding:7px 13px;border-radius:8px;border:1px solid var(--glass-border,#e5eaf3);background:transparent;color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Discard</button>'
+              + '<div style="width:100%;font-size:10px;color:var(--text-muted);margin-top:2px"><i class="ti ti-eye"></i> Preview — not saved yet. Click <strong style="color:var(--text-primary)">Save photo</strong> to apply it everywhere.</div>'
+            : '<label style="display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:8px;border:1px solid var(--glass-border,#e5eaf3);background:rgba(127,140,170,.06);font-size:11px;font-weight:700;color:var(--text-primary);cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h2a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1a2 2 0 0 0 2 2h2a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2"/><path d="M9 13a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg> ' + (hasPhoto ? 'Change photo' : 'Upload photo (optional)') + '<input type="file" accept="image/*" onchange="profileUploadAvatar(this)" style="display:none"></label>'
+              + (hasPhoto ? '<button onclick="profileRemoveAvatar()" style="padding:7px 13px;border-radius:8px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.06);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Remove</button>' : ''))
+        + '</div></div></div>'
         + '<div style="margin-top:16px;border-top:1px solid var(--glass-border,rgba(127,140,170,.16));padding-top:4px">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0 2px"><span style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">Your details</span><button type="button" onclick="profileReportWrongData()" style="background:none;border:none;color:var(--cyan);font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;padding:0;display:inline-flex;align-items:center;gap:5px"><i class="ti ti-alert-triangle"></i> Wrong data?</button></div>'
         + (function () {
             var rows = [['Email', me.email || '—']];
             if (dept !== '—') rows.push(['Department', dept]);
@@ -7351,7 +7405,6 @@
             }).join('');
           })()
         + '</div></div>'
-        // password card
         + '<div style="' + _cardCss + ';margin-bottom:0">'
         + '<h3 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0 0 4px">Change password</h3>'
         + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Update the password you use to sign in. <strong style="color:var(--text-primary)">All fields are required.</strong></div>'
@@ -7359,19 +7412,48 @@
         + '<input id="pf-cur" type="password" placeholder="Current password" style="' + _inp + ';margin-bottom:14px">'
         + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="pf-pw-grid"><div><label style="' + _lab + '">New password *</label><input id="pf-new" type="password" placeholder="New password (min 6 characters)" style="' + _inp + '"></div><div><label style="' + _lab + '">Confirm *</label><input id="pf-cf" type="password" placeholder="Confirm new password" style="' + _inp + '"></div></div>'
         + '<button onclick="profileChangePassword()" style="margin-top:16px;padding:11px 20px;border-radius:9px;border:none;background:var(--brand-primary,#0a1f52);color:var(--brand-on-primary,#fff);font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Update password</button>'
-        + '</div></div>';
-      ov.style.display = 'flex';
+        + '</div>';
     }
-    function closeProfile() { var ov = document.getElementById('profile-modal'); if (ov) ov.style.display = 'none'; }
+    // Profile as a sidebar tab (employee/manager/CEO).
+    function empRenderProfilePage(container) {
+      if (!container) return;
+      container.innerHTML = '<div style="margin-bottom:16px"><h2 style="font-size:20px;font-weight:900;color:var(--text-primary);margin:0">My Profile</h2><div style="font-size:12px;color:var(--text-muted);margin-top:2px">Your personal information</div></div>'
+        + _buildProfileInner();
+    }
+    window.empRenderProfilePage = empRenderProfilePage;
+    // v78: photo upload is now STAGED — the user previews it, then clicks "Save photo"
+    // to commit. Saving persists to the shared employee record so it shows across the
+    // system and to everyone who views this person's profile.
+    var _pendingAvatar = null;   // { email, url } — an uploaded-but-unsaved photo
+    function _profileRerender() {
+      var pgEmp = document.getElementById('pg-employee');
+      var body = document.getElementById('emp-side-body');
+      if (body && pgEmp && pgEmp.style.display !== 'none' && typeof empSideTab !== 'undefined' && empSideTab === 'profile' && typeof empRenderProfilePage === 'function') {
+        empRenderProfilePage(body);           // light re-render of the Profile tab (keeps you in place)
+      } else {
+        openProfile();                        // modal (super-admin) rebuild
+      }
+    }
     function profileUploadAvatar(input) {
       var f = input.files && input.files[0]; if (!f) return;
       if (!/^image\//.test(f.type)) { toast('Choose an image file', 'err'); return; }
       if (f.size > 1024 * 1024) { toast('Image must be under 1 MB', 'err'); return; }
       var rd = new FileReader();
-      rd.onload = function () { _setAvatar(me.email, rd.result); _refreshTopbarUser(me); openProfile(); toast("<i class='ti ti-circle-check ti-green'></i> Profile photo updated", 'ok'); };
+      rd.onload = function () { _pendingAvatar = { email: me.email, url: rd.result }; _profileRerender(); };
       rd.readAsDataURL(f);
     }
-    function profileRemoveAvatar() { _delAvatar(me.email); _refreshTopbarUser(me); openProfile(); }
+    function profileSaveAvatar() {
+      if (!_pendingAvatar || _pendingAvatar.email !== me.email) return;
+      _setAvatar(me.email, _pendingAvatar.url);   // persists to localStorage + the shared employee record
+      _pendingAvatar = null;
+      _refreshTopbarUser(me);
+      _profileRerender();
+      toast("<i class='ti ti-circle-check ti-green'></i> Profile photo saved — it now shows across the system", 'ok');
+    }
+    function profileDiscardAvatar() { _pendingAvatar = null; _profileRerender(); }
+    function profileRemoveAvatar() { _pendingAvatar = null; _delAvatar(me.email); _refreshTopbarUser(me); _profileRerender(); toast('Profile photo removed', 'ok'); }
+    window.profileSaveAvatar = profileSaveAvatar;
+    window.profileDiscardAvatar = profileDiscardAvatar;
     // Forgot current password → for security, only HC can reset. Direct the user to HC.
     function profileForgotPassword() {
       var hc = (typeof HC_MAIL !== 'undefined' && HC_MAIL) ? HC_MAIL : 'your HR Business Partner';
@@ -7395,6 +7477,47 @@
       ov.style.display = 'flex';
     }
     window.profileForgotPassword = profileForgotPassword;
+    // v78: "Wrong data?" — employee details are HC-managed and read-only here, so a
+    // correction request is routed to Human Capital (email), pre-filled with the
+    // person's current details so HC knows exactly what to check.
+    function profileReportWrongData() {
+      if (!me) return;
+      var hc = (typeof HC_MAIL !== 'undefined' && HC_MAIL) ? HC_MAIL : 'your HR Business Partner';
+      var emp = _empByEmail(me.email);
+      var dept = emp ? (emp.dept || '—') : '—';
+      var fnName = (emp && emp.fn && typeof FNS !== 'undefined' && FNS[emp.fn]) ? FNS[emp.fn].name : '—';
+      var mgr = emp ? (emp.mgrName || '—') : '—';
+      var hire = emp ? (emp.hireDate || '—') : '—';
+      var subject = 'Employee data correction request — ' + (me.name || me.email);
+      var body = 'Hi Human Capital,\n\nPlease review and correct my profile details. My current details on file are:\n\n'
+        + 'Name: ' + (me.name || '') + '\n'
+        + 'Email: ' + (me.email || '') + '\n'
+        + 'Department: ' + dept + '\n'
+        + 'Function: ' + fnName + '\n'
+        + 'Manager: ' + mgr + '\n'
+        + 'Hire date: ' + hire + '\n\n'
+        + 'What needs correcting:\n- \n\nThank you.';
+      var mailto = 'mailto:' + hc + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+      var ov = document.getElementById('pf-wrongdata-modal');
+      if (!ov) { ov = document.createElement('div'); ov.id = 'pf-wrongdata-modal'; document.body.appendChild(ov); ov.onclick = function (e) { if (e.target === ov) ov.style.display = 'none'; }; }
+      ov.style.cssText = 'position:fixed;inset:0;z-index:9600;background:rgba(10,31,82,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;font-family:var(--font)';
+      ov.innerHTML = '<div style="width:100%;max-width:410px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:16px;overflow:hidden;box-shadow:0 30px 70px -20px rgba(10,31,82,.5)">'
+        + '<div style="padding:20px 22px;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 62%,#060f2a));color:var(--brand-on-primary,#fff)">'
+        +   '<div style="width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:11px"><i class="ti ti-alert-triangle"></i></div>'
+        +   '<div style="font-size:17px;font-weight:900;line-height:1.2">Report incorrect details</div>'
+        + '</div>'
+        + '<div style="padding:20px 22px;font-size:13px;line-height:1.6;color:var(--text-primary)">'
+        +   'Your profile details (department, function, manager, hire date…) are maintained by <strong>Human Capital</strong> and can’t be edited here. Send HC a correction request and they’ll update your record:'
+        +   '<div style="margin-top:12px;padding:11px 14px;border-radius:10px;background:rgba(0,194,224,.08);border:1px solid rgba(0,194,224,.22);font-weight:800;color:var(--cyan);word-break:break-all"><i class="ti ti-mail"></i> ' + hc + '</div>'
+        + '</div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;padding:0 22px 20px">'
+        +   '<button type="button" onclick="document.getElementById(\'pf-wrongdata-modal\').style.display=\'none\'" style="padding:9px 16px;border-radius:9px;border:1px solid var(--glass-border,#e5eaf3);background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Close</button>'
+        +   '<a href="' + mailto + '" onclick="document.getElementById(\'pf-wrongdata-modal\').style.display=\'none\'" style="padding:9px 16px;border-radius:9px;background:var(--brand-primary,#0a1f52);color:var(--brand-on-primary,#fff);font-size:12px;font-weight:800;font-family:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:6px"><i class="ti ti-mail"></i> Email HC</a>'
+        + '</div>'
+        + '</div>';
+      ov.style.display = 'flex';
+    }
+    window.profileReportWrongData = profileReportWrongData;
     function profileChangePassword() {
       if (!me) return;
       var email = me.email;
@@ -8865,6 +8988,8 @@
         kpiSub:    `<i class="ti ti-chart-bar" style="font-size:16px;color:rgba(29,87,163,.7)"></i>`,
         evalSub:   `<i class="ti ti-star" style="font-size:16px;color:rgba(155,129,188,.7)"></i>`,
         map:       `<i class="ti ti-map-pin" style="font-size:20px;color:rgba(37,87,232,.9)"></i>`,
+        notif:     `<i class="ti ti-bell" style="font-size:20px;color:rgba(167,139,250,.9)"></i>`,
+        profile:   `<i class="ti ti-user" style="font-size:20px;color:rgba(98,198,211,.9)"></i>`,
       };
 
       const navItems = [
@@ -8914,8 +9039,11 @@
       // (Previously staff had no sidebar and were rendered straight to dashboard.)
       if (!isMgr && !isCEO) {
         navItems.push({ key: 'whereami', icon: sideIcons.map, label: 'Where Are You?' });
-        if (empSideTab !== 'whereami') empSideTab = 'dashboard';
       }
+      // v78: Notification Center + My Profile for EVERY user (bottom of the sidebar).
+      navItems.push({ key: 'notifications', icon: sideIcons.notif, label: 'Notification Center' });
+      navItems.push({ key: 'profile', icon: sideIcons.profile, label: 'My Profile' });
+      if (!isMgr && !isCEO && ['dashboard', 'whereami', 'notifications', 'profile'].indexOf(empSideTab) < 0) empSideTab = 'dashboard';
 
       container.innerHTML = `
         <div class="hc-side-layout">
@@ -9324,7 +9452,7 @@
         Object.keys(PILLARS).forEach(function (pk) {
           var p = PILLARS[pk];
           if (p.ceoOnly && !isCEOv) return;
-          var cnt = Object.values(FNS).filter(function (f) { return f.pillar === pk && (isCEOv || !f.ceoOnly); }).length;
+          var cnt = Object.values(FNS).filter(function (f) { return f.pillar === pk && !f.disabled && (isCEOv || !f.ceoOnly); }).length;
           var mine = !!ctx.pillarSet[pk];
           html += '<button onclick="whereGo(\'' + pk + '\')" style="text-align:left;cursor:pointer;position:relative;background:var(--glass,#fff);border:1px solid ' + (mine ? p.color : 'var(--glass-border,#e5eaf3)') + ';border-radius:14px;padding:16px 18px;box-shadow:' + _cardSh + ';' + (mine ? 'outline:3px solid ' + p.color + '1f;outline-offset:-1px;' : '') + 'font-family:inherit;transition:transform .12s" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'none\'">'
             + (mine ? '<span style="position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px;background:' + p.color + '1a;color:' + p.color + ';border:1px solid ' + p.color + '55"><i class="ti ti-map-pin"></i> You are here</span>' : '')
@@ -9342,6 +9470,7 @@
         var byDept = {};
         Object.keys(FNS).forEach(function (k) {
           var f = FNS[k]; if (f.pillar !== pk) return; if (f.ceoOnly && !isCEOv) return;
+          if (f.disabled) return;   // v78: hide inactive functions (e.g. Customer Support) from the map
           (byDept[f.dept] = byDept[f.dept] || []).push(k);
         });
         var deptKeys = Object.keys(byDept);
@@ -9369,6 +9498,40 @@
     window.empRenderWhereAmIPage = empRenderWhereAmIPage;
     window.whereGo = whereGo;
 
+    // ═══════════════════════════════════════════════════════════════════
+    // NOTIFICATIONS TAB (v78) — a dedicated sidebar page showing ALL of the
+    // user's received notifications (manager notes, meeting requests, HC
+    // messages…). Reuses empRenderNotifCard so behaviour matches the
+    // dashboard panel; available to every user (added to the employee sidebar).
+    // ═══════════════════════════════════════════════════════════════════
+    function empRenderNotificationsPage(container) {
+      if (!container) return;
+      var list = (typeof NOTIFICATIONS !== 'undefined' && NOTIFICATIONS[me.email]) ? NOTIFICATIONS[me.email] : [];
+      var unread = list.filter(function (n) { return !n.read; }).length;
+      var head = '<div style="background:linear-gradient(135deg,rgba(167,139,250,.1),rgba(124,58,237,.04));border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:18px 20px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'
+        + '<div style="display:flex;align-items:center;gap:11px"><div style="width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#a78bfa,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:19px;color:#fff"><i class="ti ti-bell"></i></div>'
+        + '<div><strong style="font-size:16px;color:var(--text-primary)">Notification Center</strong><div style="font-size:12px;color:var(--text-muted)">' + (list.length ? ((unread ? unread + ' unread · ' : '') + list.length + ' total · from your manager & HC') : 'You have no notifications yet') + '</div></div></div>'
+        + (unread ? '<button onclick="empMarkAllRead()" style="padding:8px 14px;border-radius:8px;border:1px solid rgba(167,139,250,.3);background:rgba(167,139,250,.12);color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Mark all read</button>' : '')
+        + '</div>';
+      if (!list.length) {
+        container.innerHTML = head + '<div style="text-align:center;padding:48px 20px;color:var(--text-muted)"><div style="width:46px;height:46px;border-radius:12px;background:rgba(167,139,250,.1);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:#a78bfa;font-size:22px"><i class="ti ti-mailbox"></i></div>You’re all caught up — new messages from your manager or HC will appear here.</div>';
+        return;
+      }
+      container.innerHTML = head
+        + '<div style="background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 10px 26px -16px rgba(10,31,82,.22))">'
+        + list.map(function (n) { return empRenderNotifCard(n); }).join('')
+        + '</div>';
+    }
+    // After a notification action (mark read, meeting accept/decline…), refresh
+    // whichever surface is showing — the Notifications tab if we're on it, else
+    // the dashboard (preserves the original behaviour when called from there).
+    function _empRefreshNotifSurface() {
+      var body = document.getElementById('emp-side-body'); if (!body) return;
+      if (empSideTab === 'notifications' && typeof empRenderNotificationsPage === 'function') empRenderNotificationsPage(body);
+      else empRenderDashboardContent(body);
+    }
+    window.empRenderNotificationsPage = empRenderNotificationsPage;
+
     // Render the body content based on empSideTab
     function empRenderTabContent() {
       const body = document.getElementById('emp-side-body');
@@ -9381,6 +9544,10 @@
         empRenderKPIFrameworkPage(body);
       } else if (empSideTab === 'whereami') {
         empRenderWhereAmIPage(body);
+      } else if (empSideTab === 'notifications') {
+        empRenderNotificationsPage(body);
+      } else if (empSideTab === 'profile') {
+        empRenderProfilePage(body);
       } else if (empSideTab === 'kpi_architect') {
         renderKpiArchitectPage(body);
       } else if (empSideTab === 'eval') {
@@ -10538,6 +10705,36 @@
       }
     }
 
+    // v78: Upcoming birthdays & work anniversaries of a set of employees (direct
+    // reports), within `windowDays` from today. Reads birthDate / hireDate from the
+    // employee records (same fields the personal celebration detector uses). Returns
+    // [{emp, type:'birthday'|'anniversary', years?, daysUntil, date}] sorted soonest-first.
+    function _teamCelebrations(emps, windowDays) {
+      if (windowDays == null) windowDays = 0;   // default & 0 both mean today-only (exact day)
+      var now = new Date();
+      var today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      var out = [];
+      (emps || []).forEach(function (e) {
+        if (!e || e.isFormer) return;
+        [['birthday', e.birthDate], ['anniversary', e.hireDate]].forEach(function (pair) {
+          var kind = pair[0], raw = pair[1];
+          if (!raw) return;
+          var parts = String(raw).split('-'); if (parts.length !== 3) return;
+          var mo = parseInt(parts[1], 10), day = parseInt(parts[2], 10);
+          if (!mo || !day) return;
+          var next = new Date(now.getFullYear(), mo - 1, day);
+          if (next < today0) next = new Date(now.getFullYear() + 1, mo - 1, day);
+          var daysUntil = Math.round((next - today0) / 86400000);
+          if (daysUntil > windowDays) return;
+          var years = null;
+          if (kind === 'anniversary') { years = next.getFullYear() - parseInt(parts[0], 10); if (!years || years < 1) return; }
+          out.push({ emp: e, type: kind, years: years, daysUntil: daysUntil, date: next });
+        });
+      });
+      out.sort(function (a, b) { return a.daysUntil - b.daysUntil; });
+      return out;
+    }
+
     // ═══ MANAGER DEPARTMENT INSIGHT — per-employee breakdown ═══
     // ═══ MANAGER TEAM CARDS — per-employee performance view ═══
     function _buildMgrTeamCards(deptName) {
@@ -10561,6 +10758,29 @@
         h += '<button onclick="window._teamPeriod=\''+p.v+'\';_mgrRefreshInsight()" style="padding:3px 8px;border-radius:4px;border:none;font-family:inherit;font-size:7px;font-weight:700;cursor:pointer;color:'+(act?'#fff':'var(--text-dim)')+';background:'+(act?'#216AB1':'transparent')+'">'+p.l+'</button>';
       });
       h += '</div></div>';
+
+      // v78: Team celebrations — birthdays & work anniversaries of direct reports TODAY only.
+      var _cels = _teamCelebrations(directs, 0);
+      if (_cels.length) {
+        h += '<div style="margin-bottom:14px;background:linear-gradient(135deg,rgba(155,129,188,.1),rgba(245,158,11,.06));border:1px solid var(--glass-border,#e5eaf3);border-radius:12px;padding:14px 16px">'
+          + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="font-size:15px">🎉</span><strong style="font-size:12.5px;color:var(--text-primary)">Team celebrations</strong><span style="font-size:10px;color:var(--text-muted)">· today</span></div>'
+          + '<div style="display:flex;flex-direction:column;gap:8px">'
+          + _cels.map(function (c) {
+              var isToday = c.daysUntil === 0;
+              var when = isToday ? 'Today' : (c.daysUntil === 1 ? 'Tomorrow' : 'in ' + c.daysUntil + ' days');
+              var isBd = c.type === 'birthday';
+              var accent = isBd ? '#9B81BC' : '#F59E0B';
+              var icon = isBd ? 'ti-cake' : 'ti-trophy';
+              var label = isBd ? 'Birthday' : (c.years + '-year work anniversary');
+              var dateStr = c.date.toLocaleDateString('en', { month: 'short', day: 'numeric' });
+              return '<div style="display:flex;align-items:center;gap:11px;padding:9px 11px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:9px">'
+                + '<span style="width:30px;height:30px;border-radius:8px;background:' + accent + '1a;color:' + accent + ';display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0"><i class="ti ' + icon + '"></i></span>'
+                + '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:800;color:var(--text-primary)">' + (c.emp.name || '') + '</div><div style="font-size:10.5px;color:var(--text-muted)">' + label + ' · ' + dateStr + '</div></div>'
+                + '<span style="font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;background:' + (isToday ? accent : 'rgba(127,140,170,.12)') + ';color:' + (isToday ? '#fff' : 'var(--text-muted)') + '">' + when + '</span>'
+                + '</div>';
+            }).join('')
+          + '</div></div>';
+      }
 
       // v75: performance-band legend (clean chips, prototype-style ranges)
       var _lg = function(c, t){ return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:9px;font-weight:600;color:var(--text-muted)"><span style="width:9px;height:9px;border-radius:3px;background:'+c+';display:inline-block"></span>'+t+'</span>'; };
@@ -10604,7 +10824,8 @@
 
         // Header: avatar + name + score
         h += '<div style="display:flex;align-items:center;gap:11px;margin-bottom:13px">';
-        h += '<div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#216AB1,#3D3185);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0">'+initials+'</div>';
+        var _empPhoto = (typeof _getAvatar === 'function') ? _getAvatar(emp.email) : '';
+        h += '<div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#216AB1,#3D3185);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0;overflow:hidden">'+(_empPhoto?'<img src="'+_empPhoto+'" alt="" style="width:100%;height:100%;object-fit:cover">':initials)+'</div>';
         h += '<div style="flex:1;min-width:0">';
         h += '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:800;color:var(--text-primary)">'+emp.name+'</span>';
         h += '<span style="font-size:7.5px;padding:2px 6px;border-radius:20px;background:'+(isFTE?'rgba(30,175,217,.12)':'rgba(155,129,188,.16)')+';color:'+(isFTE?'#1EAFD9':'#9B81BC')+';font-weight:800;letter-spacing:.3px">'+(isFTE?'FTE':'NON-FTE')+'</span></div>';
@@ -17824,6 +18045,68 @@
       });
     }
     function _brandDraftSetQuiet(k, v) { _brandDraftGet()[k] = v; _brandRefreshDirtyUI(); }  // text inputs (oninput) — no full re-render, but keep Save in sync
+
+    // v78: A few controls that users kept reporting as "not reflected" now apply
+    // LIVE — persisted + applied to the whole app instantly, no Save step needed.
+    // (Sidebar icon colour, Employee card text colour, Header text.) The draft is
+    // kept in sync so the rest of the Save/Discard flow is unaffected.
+    function _brandLiveApply(patch) {
+      Brand.set(patch);                                    // merge over saved + persist + apply live
+      if (_brandDraft) Object.assign(_brandDraft, patch);  // keep any open draft consistent
+      renderBranding(document.getElementById('settings-body'));  // reflect the selected segment + preview
+    }
+    function _brandLiveText(k, v) {
+      Brand.set(_defObj(k, v));                            // persist just this field + apply live
+      if (_brandDraft) _brandDraft[k] = v;
+      _brandUpdateInAppPreview();                          // refresh preview without losing the caret
+    }
+    function _defObj(k, v) { var o = {}; o[k] = v; return o; }
+    function _brandUpdateInAppPreview() {
+      var box = document.getElementById('brand-inapp-preview');
+      if (box) box.innerHTML = _buildInAppPreview(_brandDraftGet());
+    }
+    // A compact "what your users will see" preview — topbar (logo + header text),
+    // sidebar (icons in the chosen colour) and an employee card (text in the chosen
+    // colour) — all painted with the brand primary, exactly like the live app.
+    function _buildInAppPreview(b) {
+      var primary = b.primary || '#0a1f52';
+      var _h = primary.replace('#', ''); if (_h.length === 3) _h = _h.split('').map(function (c) { return c + c; }).join('');
+      var _n = parseInt(_h, 16); if (isNaN(_n)) _n = 0x0a1f52;
+      var lum = (0.299 * (_n >> 16 & 255) + 0.587 * (_n >> 8 & 255) + 0.114 * (_n & 255)) / 255;
+      // sidebar icon colour
+      var sic = b.sidebarIconColor || 'colored';
+      var iconCol = sic === 'white' ? '#ffffff' : sic === 'black' ? '#0f172a' : null; // null = colored palette
+      var palette = ['#62c6d3', '#3faa7e', '#1d57a3', '#9b81bc'];
+      // card text colour
+      var ctc = b.cardTextColor || 'auto';
+      var cardLight = ctc === 'white' ? true : ctc === 'black' ? false : (lum <= 0.6);
+      var cardInk = cardLight ? '#ffffff' : '#0f172a';
+      var cardDim = cardLight ? 'rgba(255,255,255,.72)' : 'rgba(15,23,42,.66)';
+      var sideInk = lum > 0.6 ? 'rgba(15,23,42,.7)' : 'rgba(255,255,255,.72)';
+      var headerTxt = (b.headerText && String(b.headerText).trim()) || (b.productName && String(b.productName).trim()) || 'Performance System';
+      var logoBadge = b.companyLogoUrl
+        ? '<img src="' + b.companyLogoUrl + '" style="height:20px;max-width:70px;object-fit:contain">'
+        : '<span style="width:22px;height:22px;border-radius:6px;background:' + (b.accent || '#00c2e0') + ';color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">' + ((b.logoText || 'K')) + '</span>';
+      var navRows = [['ti-home', 'Dashboard'], ['ti-users', 'My Team'], ['ti-map-pin', 'Where Are You?'], ['ti-bell', 'Notifications']];
+      var nav = navRows.map(function (r, i) {
+        var col = iconCol || palette[i % palette.length];
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px' + (i === 0 ? ';background:rgba(255,255,255,' + (lum > 0.6 ? '.5' : '.12') + ');border-radius:7px' : '') + '"><i class="ti ' + r[0] + '" style="font-size:15px;color:' + col + '"></i><span style="font-size:10.5px;color:' + (i === 0 ? (lum > 0.6 ? '#0f172a' : '#fff') : sideInk) + ';font-weight:' + (i === 0 ? '800' : '600') + '">' + r[1] + '</span></div>';
+      }).join('');
+      return ''
+        + '<div style="border:1px solid var(--glass-border,#e5eaf3);border-radius:12px;overflow:hidden;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 10px 26px -16px rgba(10,31,82,.22))">'
+        // topbar
+        + '<div style="display:flex;align-items:center;gap:9px;padding:9px 12px;background:' + primary + '">' + logoBadge + '<span style="width:1px;height:16px;background:rgba(255,255,255,.25)"></span><span style="font-size:11px;font-weight:800;color:' + (lum > 0.6 ? '#0f172a' : '#fff') + '">' + headerTxt + '</span></div>'
+        + '<div style="display:flex;min-height:150px">'
+        // sidebar
+        + '<div style="width:150px;padding:10px 8px;background:' + primary + ';display:flex;flex-direction:column;gap:3px">' + nav + '</div>'
+        // body with an employee card
+        + '<div style="flex:1;padding:12px;background:var(--surface-2,#eef2f9);display:flex;align-items:flex-start">'
+        + '<div style="width:100%;border-radius:12px;padding:14px;background:linear-gradient(135deg,' + primary + ',' + primary + ');box-shadow:0 6px 18px -10px rgba(0,0,0,.4)">'
+        + '<div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:' + cardInk + '">SS</div>'
+        + '<div><div style="font-size:12.5px;font-weight:800;color:' + cardInk + '">Sara Sabbagh</div><div style="font-size:10px;color:' + cardDim + '">Backend Engineering</div></div></div>'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:12px"><span style="font-size:9px;font-weight:800;padding:3px 9px;border-radius:20px;background:rgba(255,255,255,.16);color:' + cardInk + '">Intermediate</span><div style="text-align:right"><div style="font-size:16px;font-weight:900;color:' + cardInk + '">88%</div><div style="font-size:8px;color:' + cardDim + '">SCORE</div></div></div>'
+        + '</div></div></div></div>';
+    }
     function _brandDirty() { return !!(_brandDraft && JSON.stringify(_brandDraft) !== JSON.stringify(Brand.get())); }
     function brandSaveDraft() { if (_brandDraft) { Brand.set(_brandDraft); } _brandDraft = null; renderBranding(document.getElementById('settings-body')); toast("<i class='ti ti-circle-check ti-green'></i> Branding saved &amp; applied", 'ok'); }
     function brandDiscardDraft() { _brandDraft = null; _brandLogoTrans = null; renderBranding(document.getElementById('settings-body')); }
@@ -17947,25 +18230,18 @@
           <input style="${_inp};margin-bottom:12px" value="${(b.companyName || '').replace(/"/g, '&quot;')}" oninput="_brandDraftSetQuiet('companyName',this.value);_brandLivePreviewRefresh()">
           <label style="${_lab}">Product label</label>
           <input style="${_inp};margin-bottom:12px" value="${(b.productName || '').replace(/"/g, '&quot;')}" oninput="_brandDraftSetQuiet('productName',this.value);_brandLivePreviewRefresh()">
-          <label style="${_lab}">Header text (top bar) <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">· empty = uses Product label (applies on Save)</span></label>
-          <input style="${_inp};margin-bottom:12px" value="${(b.headerText || '').replace(/"/g, '&quot;')}" placeholder="Performance System" oninput="_brandDraftSetQuiet('headerText',this.value)">
+          <label style="${_lab}">Header text (top bar) <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly · empty = uses Product label</span></label>
+          <input style="${_inp};margin-bottom:12px" value="${(b.headerText || '').replace(/"/g, '&quot;')}" placeholder="Performance System" oninput="_brandLiveText('headerText',this.value)">
           <label style="${_lab}">Letter mark (used when no logo)</label>
           <input maxlength="2" style="${_inp};width:70px;text-align:center;font-weight:800" value="${(b.logoText || '').replace(/"/g, '&quot;')}" oninput="_brandDraftSetQuiet('logoText',this.value);_brandLivePreviewRefresh()">
           <div style="border-top:1px solid var(--glass-border,rgba(127,140,170,.16));margin:16px 0 12px"></div>
-          <label style="${_lab}">Footer text <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">· the line at the bottom of every page (applies on Save)</span></label>
-          <input style="${_inp};margin-bottom:12px" value="${(b.footerText != null ? b.footerText : '').replace(/"/g, '&quot;')}" placeholder="Performance Management System" oninput="_brandDraftSetQuiet('footerText',this.value)">
-          <div style="display:flex;gap:12px;flex-wrap:wrap">
-            <div style="flex:1;min-width:130px"><label style="${_lab}">Footer link text <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">(empty = hidden)</span></label><input style="${_inp}" value="${(b.footerLinkText != null ? b.footerLinkText : '').replace(/"/g, '&quot;')}" placeholder="kabi.ai" oninput="_brandDraftSetQuiet('footerLinkText',this.value)"></div>
-            <div style="flex:1;min-width:130px"><label style="${_lab}">Footer link URL</label><input style="${_inp}" value="${(b.footerLinkUrl != null ? b.footerLinkUrl : '').replace(/"/g, '&quot;')}" placeholder="https://kabi.ai" oninput="_brandDraftSetQuiet('footerLinkUrl',this.value)"></div>
-          </div>
-          <div style="border-top:1px solid var(--glass-border,rgba(127,140,170,.16));margin:16px 0 12px"></div>
-          <label style="${_lab}">Sidebar icon colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">· applies on Save</span></label>
+          <label style="${_lab}">Sidebar icon colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly</span></label>
           <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:8px;overflow:hidden;margin-bottom:14px">
-            ${[['colored','Colored'],['black','Black'],['white','White']].map(function(o){ var on=(b.sidebarIconColor||'colored')===o[0]; return '<button onclick="_brandDraftPatch({sidebarIconColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
+            ${[['colored','Colored'],['black','Black'],['white','White']].map(function(o){ var on=(b.sidebarIconColor||'colored')===o[0]; return '<button onclick="_brandLiveApply({sidebarIconColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
           </div>
-          <label style="${_lab}">Employee card text colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">· applies on Save</span></label>
+          <label style="${_lab}">Employee card text colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly</span></label>
           <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:8px;overflow:hidden">
-            ${[['auto','Auto'],['white','White'],['black','Black']].map(function(o){ var on=(b.cardTextColor||'auto')===o[0]; return '<button onclick="_brandDraftPatch({cardTextColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
+            ${[['auto','Auto'],['white','White'],['black','Black']].map(function(o){ var on=(b.cardTextColor||'auto')===o[0]; return '<button onclick="_brandLiveApply({cardTextColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
           </div>
         </div>
         <!-- Logo -->
@@ -18090,6 +18366,10 @@
       </div><!-- /brand-col-left -->
       <!-- Live preview (theme-accurate) — sticky right column, stays visible while editing any section -->
       <div class="brand-col-right" style="position:sticky;top:70px;align-self:start">
+        <div style="margin-bottom:14px">
+          <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">In-app preview <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">· what your users see</span></div>
+          <div id="brand-inapp-preview">${_buildInAppPreview(b)}</div>
+        </div>
         <div id="brand-preview">${_buildBrandPreview(b)}</div>
         <button id="brand-save-btn2" onclick="brandSaveDraft()" ${_dirty ? '' : 'disabled'} style="width:100%;margin-top:12px;padding:12px;border-radius:9px;border:none;background:var(--brand-primary,#0a1f52);color:var(--brand-on-primary,#fff);font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;opacity:${_dirty ? '1' : '.5'}"><i class="ti ti-device-floppy"></i> Save changes</button>
       </div>
@@ -21899,7 +22179,7 @@
       markNotifRead(me.email, notifId);
       // Re-render without disrupting scroll
       const body = document.getElementById('emp-side-body');
-      if (body) empRenderDashboardContent(body);
+      if (body) _empRefreshNotifSurface();
     }
 
     // Toggle collapse/expand of the notifications panel (persists across re-renders via window state)
@@ -21960,7 +22240,7 @@
       list.forEach(n => n.read = true);
       toast('All notifications marked as read',  'ok');
       const body = document.getElementById('emp-side-body');
-      if (body) empRenderDashboardContent(body);
+      if (body) _empRefreshNotifSurface();
     }
 
     function empAcceptMeetingSlot(notifId, slotIdx) {
@@ -21993,7 +22273,7 @@
       }
       toast(`<i class="ti ti-circle-check ti-green"></i> Meeting confirmed for ${formatSlotDate(slot.date)} at ${formatSlotTime(slot.time)}`, 'ok');
       const body = document.getElementById('emp-side-body');
-      if (body) empRenderDashboardContent(body);
+      if (body) _empRefreshNotifSurface();
     }
 
     function empDeclineMeeting(notifId) {
@@ -22017,7 +22297,7 @@
       }
       toast('Meeting declined — your manager was notified', 'ok');
       const body = document.getElementById('emp-side-body');
-      if (body) empRenderDashboardContent(body);
+      if (body) _empRefreshNotifSurface();
     }
 
     function empProposeNewTime(notifId) {
@@ -22043,7 +22323,7 @@
       }
       toast('New time proposed — your manager was notified', 'ok');
       const body = document.getElementById('emp-side-body');
-      if (body) empRenderDashboardContent(body);
+      if (body) _empRefreshNotifSurface();
     }
 
     // Helper: find the manager of an employee (for profile action)
