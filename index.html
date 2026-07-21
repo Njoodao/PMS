@@ -6050,6 +6050,10 @@
       });
       // v72: apply the stored white-label brand (title + sign-in page identity/colours)
       try { if (window.Brand && Brand.apply) Brand.apply(); } catch (e) {}
+      // v80: pull the deployment's SHARED brand from the backend so branding set by
+      // the Super Admin reaches every user on every device. Falls back to the local
+      // copy if the backend is unreachable (applied above already).
+      try { if (window.Brand && Brand.fetchShared) Brand.fetchShared(); } catch (e) {}
     });
 
     // ══════════════════════════════════════════════════════════════
@@ -17994,7 +17998,38 @@
         var next = Object.assign({}, Brand.get(), patch || {});
         try { localStorage.setItem(_BRAND_LS_KEY, JSON.stringify(next)); } catch (e) {}
         Brand.apply();
+        Brand.pushShared();   // v80: persist to the shared backend so it reaches every device
         return next;
+      },
+      // v80: shared, cross-device branding via the integration backend. Both are
+      // best-effort — if the backend is unreachable the app keeps working from the
+      // per-browser localStorage copy (no regression, purely additive).
+      _base: function () { return (window.KABI_PROXY_URL || 'http://localhost:8100').replace(/\/+$/, ''); },
+      // GET the deployment's shared brand and apply it (called on load, on every device).
+      fetchShared: function () {
+        try {
+          return fetch(Brand._base() + '/branding', { method: 'GET' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+              if (d && d.brand && typeof d.brand === 'object') {
+                try { localStorage.setItem(_BRAND_LS_KEY, JSON.stringify(d.brand)); } catch (e) {}
+                Brand.apply();
+                Brand._sharedOk = true;
+              }
+              return d;
+            })
+            .catch(function () { Brand._sharedOk = false; return null; });
+        } catch (e) { return Promise.resolve(null); }
+      },
+      // PUT the current brand to the backend (Super-Admin action; server re-checks).
+      pushShared: function () {
+        try {
+          var hdrs = { 'Content-Type': 'application/json' };
+          try { if (window.me && me.email) hdrs['X-KABi-User'] = me.email; } catch (e) {}
+          return fetch(Brand._base() + '/branding', { method: 'PUT', headers: hdrs, body: JSON.stringify({ brand: Brand.get() }) })
+            .then(function (r) { Brand._sharedOk = r.ok; return r.ok; })
+            .catch(function () { Brand._sharedOk = false; return false; });
+        } catch (e) { return Promise.resolve(false); }
       },
       apply: function () {
         var b = Brand.get();
@@ -18384,7 +18419,7 @@
     function _brandDirty() { return !!(_brandDraft && JSON.stringify(_brandDraft) !== JSON.stringify(Brand.get())); }
     function brandSaveDraft() { if (_brandDraft) { Brand.set(_brandDraft); } _brandDraft = null; renderBranding(document.getElementById('settings-body')); toast("<i class='ti ti-circle-check ti-green'></i> Branding saved &amp; applied", 'ok'); }
     function brandDiscardDraft() { _brandDraft = null; _brandLogoTrans = null; renderBranding(document.getElementById('settings-body')); }
-    function brandResetDefaults() { if (!confirm('Reset all branding to the default KABi look?')) return; localStorage.removeItem(_BRAND_LS_KEY); _brandDraft = null; _brandLogoTrans = null; Brand.apply(); renderBranding(document.getElementById('settings-body')); toast('Branding reset to defaults', 'ok'); }
+    function brandResetDefaults() { if (!confirm('Reset all branding to the default KABi look?')) return; localStorage.removeItem(_BRAND_LS_KEY); _brandDraft = null; _brandLogoTrans = null; Brand.apply(); try { Brand.pushShared(); } catch (e) {} renderBranding(document.getElementById('settings-body')); toast('Branding reset to defaults', 'ok'); }
 
     function brandSetLogo(input) {
       var f = input.files && input.files[0]; if (!f) return;
@@ -18482,7 +18517,7 @@
       const _THEMES = [['split', 'Split panel', 'Brand panel left, sign-in right — the classic formal look'], ['centered', 'Centered', 'One clean card centered over the brand background'], ['gradient', 'Bold gradient', 'Full-screen colour canvas with a floating sign-in card'], ['photo', 'Photo', 'Your own photo full-screen with a dark overlay and floating card']];
       const _themePrev = { split: `<div style="display:flex;height:100%"><div style="flex:1;background:${_pg}"></div><div style="flex:1;background:#fff"></div></div>`, centered: `<div style="height:100%;background:${_pg};display:flex;align-items:center;justify-content:center"><div style="width:46%;height:52%;background:#fff;border-radius:3px"></div></div>`, gradient: `<div style="height:100%;background:${_pg};display:flex;align-items:center;justify-content:center"><div style="width:40%;height:46%;background:rgba(255,255,255,.95);border-radius:3px"></div></div>`, photo: b.loginBgImage ? `<div style="height:100%;background:linear-gradient(rgba(8,15,30,.45),rgba(8,15,30,.65)),url(${b.loginBgImage});background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center"><div style="width:40%;height:46%;background:rgba(255,255,255,.92);border-radius:3px"></div></div>` : `<div style="height:100%;background:repeating-linear-gradient(45deg,#334155 0 8px,#3d4d64 8px 16px);display:flex;align-items:center;justify-content:center"><div style="width:40%;height:46%;background:rgba(255,255,255,.9);border-radius:3px"></div></div>` };
       el.innerHTML = peTabHead('<i class="ti ti-palette"></i>', 'Branding',
-        'White-label the portal — names, logo, colours, sign-up access, and the sign-in page. The preview updates live; nothing is applied until you click <strong style="color:var(--cyan)">Save changes</strong>.',
+        'White-label the portal — names, logo, colours, sign-up access, and the sign-in page. Changes are saved to the KABi backend, so they reach <strong style="color:var(--cyan)">every user on every device</strong> (they fall back to this browser only if the backend is offline).',
         '', '#216AB1')
       + `
       <!-- Save / Discard action bar -->

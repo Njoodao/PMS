@@ -42,7 +42,7 @@ from typing import Any, Optional
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import Body, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -143,6 +143,7 @@ async def health() -> dict[str, Any]:
             "roster_loaded": _load_roster() is not None,
             "audit_path": os.getenv("KABI_AUDIT_PATH", "audit.jsonl"),
         },
+        "branding": {"shared": os.path.exists(os.getenv("KABI_BRAND_PATH", "brand.json"))},
     }
 
 
@@ -539,6 +540,57 @@ async def copilot_audit(limit: int = 50, x_kabi_user: Optional[str] = Header(def
     except Exception:
         pass
     return {"count": len(rows), "entries": rows}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SHARED BRANDING (white-label config for the WHOLE deployment)
+# ───────────────────────────────────────────────────────────────────────────
+# The browser app keeps a per-browser localStorage copy of the brand, which is
+# why customisations don't reach other users/devices. This endpoint gives the
+# deployment ONE shared brand: every browser GETs it on load; the Super Admin
+# PUTs it on save. File-backed (KABI_BRAND_PATH) so it survives restarts.
+#
+#   GET /branding  → {"brand": {...}|null}     (public — branding is not secret)
+#   PUT /branding  → save {...} (Super-Admin-gated when a roster is configured)
+# ═══════════════════════════════════════════════════════════════════════════
+_BRAND_PATH = os.getenv("KABI_BRAND_PATH", "brand.json")
+
+
+@app.get("/branding")
+async def get_branding() -> dict[str, Any]:
+    """The deployment's shared brand. Returns {"brand": null} when none is set yet
+    (the app then uses its built-in defaults)."""
+    try:
+        if os.path.exists(_BRAND_PATH):
+            with open(_BRAND_PATH, "r", encoding="utf-8") as f:
+                return {"brand": _json.load(f)}
+    except Exception:
+        pass
+    return {"brand": None}
+
+
+@app.put("/branding")
+async def put_branding(payload: dict = Body(...), x_kabi_user: Optional[str] = Header(default=None)) -> dict[str, Any]:
+    """Save the shared brand. When a roster is configured the write is restricted
+    to a Super Admin (verified server-side via X-KABi-User → roster). Without a
+    roster (POC), the write is accepted so the feature works out of the box."""
+    roster = _load_roster()
+    if roster:
+        ctx = _resolve_auth(x_kabi_user or "", roster)
+        if not ctx.get("is_super_admin"):
+            _audit(ctx.get("corporate_email") or (x_kabi_user or "?"), "set_branding", None, "manage_branding", "deny")
+            raise HTTPException(status_code=403, detail="Branding can only be changed by a Super Admin.")
+    brand = payload.get("brand", payload)  # accept {brand:{...}} or a bare {...}
+    if not isinstance(brand, dict):
+        raise HTTPException(status_code=400, detail="Expected a branding object.")
+    try:
+        with open(_BRAND_PATH, "w", encoding="utf-8") as f:
+            _json.dump(brand, f, ensure_ascii=False)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not save branding: {e}")
+    if roster:
+        _audit(x_kabi_user or "?", "set_branding", None, "manage_branding", "allow")
+    return {"ok": True, "brand": brand}
 
 
 def _safe_json(resp: httpx.Response) -> Any:
