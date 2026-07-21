@@ -2,10 +2,10 @@
 <html lang="en">
 
 <head>
-<!-- Design Guide typefaces: Public Sans (UI) + JetBrains Mono (numbers/IDs). -->
+<!-- UI font: Aptos → Calibri (Windows/Office system fonts, no download). JetBrains Mono for numbers/IDs. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <!-- KABi Supabase Backend Integration v1.1 + LIGHT mode default    -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -117,7 +117,7 @@
       --shadow-card: 0 4px 24px rgba(2, 10, 30, .4);
 
       /* ── Design Guide tokens (KABi Design Guide) ────────────────────── */
-      --font: 'Public Sans', 'FSAlbert', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      --font: 'Aptos', 'Calibri', 'Segoe UI', system-ui, -apple-system, sans-serif;
       --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
       --accent: #00c2e0;      /* == --cyan */
       --accent-deep: #0891a8;
@@ -1835,10 +1835,12 @@
 
     /* ═══ LAYOUT ═════════════════════════════════════ */
     .wrap {
-      max-width: 1160px;
+      max-width: 1440px;          /* v76: wider so content fills big monitors (less empty side space) */
       margin: 0 auto;
-      padding: 40px 32px;
+      padding: 32px clamp(14px, 3vw, 40px);  /* responsive side padding — tight on mobile, roomy on desktop */
     }
+    @media (max-width: 768px) { .wrap { padding: 18px 14px; } }
+    @media (max-width: 480px) { .wrap { padding: 14px 10px; } }
 
     /* ═══ BREADCRUMB ════════════════════════════════ */
     .bc {
@@ -4964,6 +4966,7 @@
           </div>
           <div class="tb-menu-role" id="tb-menu-role">—</div>
           <button class="tb-menu-item" onclick="closeUserMenu();openProfile()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"/></svg> Profile</button>
+          <button class="tb-menu-item" onclick="closeUserMenu();kabiOpenGuide(true)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2 -3 3 -3 3"/><path d="M12 17h.01"/></svg> Guide</button>
           <button class="tb-menu-item danger" onclick="logout()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2"/><path d="M9 12h12l-3 -3"/><path d="M18 15l3 -3"/></svg> Sign out</button>
         </div>
         <!-- Notifications popover -->
@@ -7382,7 +7385,167 @@
         empSideTab = 'dashboard'; showPg('pg-employee'); renderEmployeeDashboard();
       }
       else { showPg('pg-home'); renderHome(); }
+      try { kabiMaybeShowOnboarding(me); } catch (e) {}
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // ONBOARDING GUIDE — self-contained, role-aware, theme + brand aware.
+    // A centered modal that is NEVER anchored to moving DOM, so it cannot
+    // mis-position or leak onto the login screen (the failure mode of the
+    // old 06_kabiDb.js bubble tour). Auto-shows once per user on first login;
+    // reopen anytime from the profile menu. Runs in plain localStorage mode
+    // (no Supabase dependency). Colours come from the brand tokens, so it
+    // reflects the super-admin's Branding, and it styles both light + dark.
+    // ═══════════════════════════════════════════════════════════════════
+    const _OG_SEEN_PREFIX = 'kabi_onboarding_seen_';
+    function _ogBucket(role) {
+      if (role === 'pm_super_admin') return 'admin';
+      if (role === 'ceo' || role === 'ceo_exec') return 'ceo';
+      if (role === 'employee') return 'employee';
+      if (role === 'manager') return 'manager';
+      return 'lead';   // hc_admin + function admins (land on the KPI-definition portal)
+    }
+    function _ogSteps(bucket, first) {
+      const F = first || 'there';
+      const S = {
+        employee: [
+          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: "Here's a quick guide to everything on your KABi Workspace — one card at a time." },
+          { icon: 'ti-user',             title: 'Your Employee Card',       body: 'The card at the top shows your name, department, function, and level. Once HC releases results, your Final Score for the cycle appears here too.' },
+          { icon: 'ti-heart',            title: 'Well-being Check-in',      body: "A quick pulse before your week — tap how you're feeling. It's light-touch, takes seconds, and helps your manager support you." },
+          { icon: 'ti-target',           title: 'My KPI Framework',         body: "After your manager proposes KPIs for your function and HC approves them, they appear here — this is exactly what you'll be evaluated on this cycle." },
+          { icon: 'ti-bulb',             title: 'My Initiatives',           body: 'Completed a course or have an improvement idea? Submit it as an initiative. Your manager reviews it first, then HC gives final approval.' },
+          { icon: 'ti-confetti',         title: "You're all set!",          body: 'Everything lives on this page — explore freely. You can reopen this guide anytime from your profile menu.' }
+        ],
+        manager: [
+          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: "You manage a team on KABi. Here's a tour of your Workspace sidebar." },
+          { icon: 'ti-layout-dashboard', title: 'Dashboard',                body: "Your personal home — your own card, KPIs, and evaluation status, plus an AI Insight summarizing your team's key patterns." },
+          { icon: 'ti-users',            title: 'My Team',                  body: 'Your direct reports live here. Send notes, schedule 1:1s, and — during an open cycle — start their performance reviews.' },
+          { icon: 'ti-target',           title: 'KPI Framework',            body: 'Propose up to 4 KPIs per level for each function you manage. HC approves them, and the approved set becomes the official basis for the cycle.' },
+          { icon: 'ti-clipboard-check',  title: 'Evaluate Team',            body: 'When a cycle opens, score each report across KPIs, digital adoption, and initiatives. The AI Coach assists — the final call is yours.' },
+          { icon: 'ti-chart-line',       title: 'Insights & INVIEWS',       body: "Team insights are grounded in real evaluation data, never mock. Team INVIEWS tracks each report's Technical and Behavioral assessment when a cycle is running." },
+          { icon: 'ti-confetti',         title: "You're all set!",          body: 'Reopen this guide anytime from your profile menu. Have a productive cycle!' }
+        ],
+        ceo: [
+          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: 'Welcome to your Executive View at KABi.' },
+          { icon: 'ti-layout-dashboard', title: 'Executive Dashboard',      body: 'Your executive home — your profile, organization-wide stats, and shortcuts to the KPI and Performance dashboards.' },
+          { icon: 'ti-target',           title: 'KPI Framework',            body: "Full read access across every department and function. Browse any function's KPIs and add comments to share your perspective with HC." },
+          { icon: 'ti-chart-histogram',  title: 'KPI & Performance',        body: 'Live KPI progress and organization-wide evaluation results — by department, level, and cycle, with trends over time.' },
+          { icon: 'ti-sparkles',         title: 'AI Insights',              body: 'Company-wide patterns in performance, KPI health, and retention — grounded in real evaluation data, never mock.' },
+          { icon: 'ti-confetti',         title: "You're all set!",          body: 'Welcome to the executive suite. Reopen this guide anytime from your profile menu.' }
+        ],
+        admin: [
+          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: "You're signed in as HC Super Admin. Here's a tour of your command center." },
+          { icon: 'ti-clipboard-check',  title: 'Performance Evaluation',   body: 'Configure cycles, weights, and scoring logic. Track manager progress, handle edit requests, and release final scores. HC sets up how evaluations run; managers do the scoring.' },
+          { icon: 'ti-target',           title: 'KPI Framework',            body: 'Review and approve manager KPI submissions, and manage the KPI library across every function.' },
+          { icon: 'ti-users',            title: 'People & Access',          body: 'Manage employee records, accounts, access permissions, and password resets — the full employee lifecycle in one place.' },
+          { icon: 'ti-settings',         title: 'Settings & Branding',      body: 'Tune AI, connectors, nudges, and white-label branding — your logo and colours flow across the whole system, including this topbar.' },
+          { icon: 'ti-confetti',         title: "You're all set!",          body: 'Each box has its own tools inside. Reopen this guide anytime from your profile menu.' }
+        ],
+        lead: [
+          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: "Here's a quick guide to your KABi workspace." },
+          { icon: 'ti-target',           title: 'KPI Definition Portal',    body: "Define and manage KPIs for the functions you're responsible for, organized by pillar." },
+          { icon: 'ti-folder',           title: 'Your Functions',           body: 'Pick a function to view and propose its KPIs. Submissions go to HC for approval before they count.' },
+          { icon: 'ti-sparkles',         title: 'AI Assist',                body: 'The KPI generator suggests grounded, level-appropriate KPIs you can refine — never fabricated targets.' },
+          { icon: 'ti-confetti',         title: "You're all set!",          body: 'Explore freely. Reopen this guide anytime from your profile menu.' }
+        ]
+      };
+      return S[bucket] || S.employee;
+    }
+    let _ogIdx = 0, _ogList = [], _ogKeyHandler = null;
+    function _ogInjectStyle() {
+      if (document.getElementById('kabi-og-style')) return;
+      var s = document.createElement('style'); s.id = 'kabi-og-style';
+      s.textContent = [
+        '.kabi-og-back{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(6,12,30,.55);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:kabiOgFade .18s ease}',
+        'body.light-mode .kabi-og-back{background:rgba(15,25,55,.30)}',
+        '@keyframes kabiOgFade{from{opacity:0}to{opacity:1}}',
+        '@keyframes kabiOgPop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}',
+        '.kabi-og-card{width:100%;max-width:460px;border-radius:20px;overflow:hidden;background:#0e1730;border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 70px -20px rgba(0,0,0,.6);animation:kabiOgPop .22s cubic-bezier(.2,.8,.2,1);font-family:var(--font)}',
+        'body.light-mode .kabi-og-card{background:#fff;border:1px solid #e5eaf3;box-shadow:0 30px 70px -24px rgba(10,31,82,.35)}',
+        '.kabi-og-head{position:relative;padding:22px 24px 20px;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 60%,#060f2a));color:var(--brand-on-primary,#fff)}',
+        '.kabi-og-ico{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:24px;background:rgba(255,255,255,.16);color:var(--brand-on-primary,#fff);margin-bottom:12px}',
+        '.kabi-og-title{font-size:19px;font-weight:900;letter-spacing:-.2px;line-height:1.15}',
+        '.kabi-og-x{position:absolute;top:16px;right:16px;width:30px;height:30px;border:none;border-radius:9px;background:rgba(255,255,255,.14);color:var(--brand-on-primary,#fff);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:background .15s}',
+        '.kabi-og-x:hover{background:rgba(255,255,255,.28)}',
+        '.kabi-og-body{padding:20px 24px 8px;font-size:14px;line-height:1.6;color:#cdd8ee;min-height:82px}',
+        'body.light-mode .kabi-og-body{color:#475569}',
+        '.kabi-og-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 24px 20px}',
+        '.kabi-og-dots{display:flex;gap:6px}',
+        '.kabi-og-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.22);transition:all .2s}',
+        'body.light-mode .kabi-og-dot{background:#d3dbe9}',
+        '.kabi-og-dot.on{background:var(--brand-accent,#00c2e0);width:20px;border-radius:4px}',
+        '.kabi-og-btns{display:flex;gap:8px;align-items:center}',
+        '.kabi-og-skip{background:none;border:none;color:#8695b3;font-size:12.5px;font-weight:700;cursor:pointer;padding:8px 4px;min-width:34px;text-align:left}',
+        '.kabi-og-skip:hover{color:#aab6d0}',
+        '.kabi-og-backbtn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#cdd8ee;font-size:13px;font-weight:800;cursor:pointer;padding:9px 15px;border-radius:10px}',
+        'body.light-mode .kabi-og-backbtn{background:#f1f5fb;border:1px solid #e2e8f2;color:#334155}',
+        '.kabi-og-next{background:var(--brand-primary,#0a1f52);color:var(--brand-on-primary,#fff);border:none;font-size:13px;font-weight:800;cursor:pointer;padding:10px 18px;border-radius:10px;display:flex;align-items:center;gap:6px;transition:filter .15s}',
+        '.kabi-og-next:hover{filter:brightness(1.12)}'
+      ].join('');
+      document.head.appendChild(s);
+    }
+    function kabiOpenGuide(force) {
+      try {
+        var u = me; if (!u) return;
+        var first = (u.name || '').split(' ')[0] || 'there';
+        _ogList = _ogSteps(_ogBucket(u.role), first);
+        _ogIdx = 0;
+        _ogInjectStyle();
+        var back = document.getElementById('kabi-og-back');
+        if (!back) {
+          back = document.createElement('div'); back.className = 'kabi-og-back'; back.id = 'kabi-og-back';
+          back.innerHTML = '<div class="kabi-og-card" id="kabi-og-card" role="dialog" aria-modal="true" aria-label="Onboarding guide"></div>';
+          back.addEventListener('click', function (e) { if (e.target === back) kabiCloseGuide(); });
+          document.body.appendChild(back);
+        }
+        back.style.display = 'flex';
+        if (_ogKeyHandler) document.removeEventListener('keydown', _ogKeyHandler);
+        _ogKeyHandler = function (e) {
+          if (e.key === 'Escape') kabiCloseGuide();
+          else if (e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); _ogNext(); }
+          else if (e.key === 'ArrowLeft') { e.preventDefault(); _ogPrev(); }
+        };
+        document.addEventListener('keydown', _ogKeyHandler);
+        _ogRender();
+        try { if (u.email) localStorage.setItem(_OG_SEEN_PREFIX + u.email.toLowerCase(), '1'); } catch (e) {}
+      } catch (e) {}
+    }
+    function _ogRender() {
+      var card = document.getElementById('kabi-og-card'); if (!card) return;
+      var s = _ogList[_ogIdx]; if (!s) return;
+      var last = _ogIdx === _ogList.length - 1;
+      var dots = _ogList.map(function (_, i) { return '<span class="kabi-og-dot' + (i === _ogIdx ? ' on' : '') + '"></span>'; }).join('');
+      card.innerHTML =
+        '<div class="kabi-og-head">'
+        + '<button class="kabi-og-x" onclick="kabiCloseGuide()" aria-label="Close guide"><i class="ti ti-x"></i></button>'
+        + '<div class="kabi-og-ico"><i class="ti ' + s.icon + '"></i></div>'
+        + '<div class="kabi-og-title">' + s.title + '</div>'
+        + '</div>'
+        + '<div class="kabi-og-body">' + s.body + '</div>'
+        + '<div class="kabi-og-foot">'
+        +   '<button class="kabi-og-skip" onclick="kabiCloseGuide()">' + (last ? '' : 'Skip') + '</button>'
+        +   '<div class="kabi-og-dots">' + dots + '</div>'
+        +   '<div class="kabi-og-btns">'
+        +     (_ogIdx > 0 ? '<button class="kabi-og-backbtn" onclick="_ogPrev()">Back</button>' : '')
+        +     '<button class="kabi-og-next" onclick="_ogNext()">' + (last ? 'Done' : 'Next') + ' <i class="ti ' + (last ? 'ti-check' : 'ti-arrow-right') + '"></i></button>'
+        +   '</div>'
+        + '</div>';
+    }
+    function _ogNext() { if (_ogIdx >= _ogList.length - 1) { kabiCloseGuide(); return; } _ogIdx++; _ogRender(); }
+    function _ogPrev() { if (_ogIdx > 0) { _ogIdx--; _ogRender(); } }
+    function kabiCloseGuide() {
+      var back = document.getElementById('kabi-og-back'); if (back) back.style.display = 'none';
+      if (_ogKeyHandler) { document.removeEventListener('keydown', _ogKeyHandler); _ogKeyHandler = null; }
+    }
+    function kabiMaybeShowOnboarding(u) {
+      try {
+        u = u || me; if (!u || !u.email) return;
+        if (localStorage.getItem(_OG_SEEN_PREFIX + u.email.toLowerCase()) === '1') return;
+        setTimeout(function () { kabiOpenGuide(false); }, 700);
+      } catch (e) {}
+    }
+    window.kabiOpenGuide = kabiOpenGuide; window.kabiCloseGuide = kabiCloseGuide;
+    window._ogNext = _ogNext; window._ogPrev = _ogPrev; window.kabiMaybeShowOnboarding = kabiMaybeShowOnboarding;
 
     // Switch between employee view and manager (home) view for dual-portal users.
     function empSwitchToManagerView() {
@@ -8834,36 +8997,79 @@
           try { myKpis = peGetApprovedKPIs(emp.fn) || []; } catch(e){}
         }
 
-        html += `
-        <div class="emp-profile-card" style="margin-bottom:22px;background:linear-gradient(135deg,rgba(10,31,82,.7),rgba(10,31,82,.4));border:1px solid rgba(0,194,224,.2);border-radius:16px;padding:20px;backdrop-filter:blur(14px);position:relative;overflow:hidden">
-          <div style="position:absolute;top:-20px;right:-20px;width:140px;height:140px;background:radial-gradient(circle,rgba(0,194,224,.1),transparent 60%);pointer-events:none"></div>
-          <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;position:relative">
-            <div style="width:66px;height:66px;border-radius:18px;background:linear-gradient(135deg,var(--cyan),#3b72ff);display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:900;color:#fff;flex-shrink:0;box-shadow:0 8px 22px rgba(0,194,224,.3),0 0 0 3px ${_lsColor}33;letter-spacing:-.5px">${initials}</div>
-            <div style="flex:1;min-width:220px">
-              <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:4px">
-                <h3 style="font-size:18px;font-weight:900;color:var(--white);margin:0;letter-spacing:-.3px">${emp.name}</h3>
-                <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:${_lsColor}1f;color:${_lsColor};border:1px solid ${_lsColor}59;font-size:9.5px;font-weight:800;letter-spacing:.2px;white-space:nowrap">${levelIcon} ${_lvl}</span>
+        // v76: redesigned hero card (navy in BOTH themes — new class so the
+        // .emp-profile-card light override doesn't turn it white) with a compact
+        // Well-being card placed BESIDE it. Clean layout: avatar · name ·
+        // dept·function · level pill · divider · big FINAL SCORE + rating chip.
+        const _deptClean = (emp.dept || '').replace(' Department', '');
+        let _fnClean = '';
+        if (emp.fn && !isCEO) {
+          var _fa = Array.isArray(emp.fn) ? emp.fn : [emp.fn];
+          _fnClean = _fa.map(function (rf) { var k = (typeof _normFn === 'function') ? _normFn(rf) : rf; var m = (typeof _FN_METRICS !== 'undefined') ? _FN_METRICS[k] : null; return m ? m.name : rf; }).join(' · ');
+        }
+        const _deptLine = isCEO ? 'Chief Executive Officer' : (_deptClean + (_fnClean ? ' · ' + _fnClean : ''));
+
+        let _scoreSection = '';
+        if (isCEO) {
+          const _teamSize = PE_EMPLOYEES.filter(e => (e.mgr || '').toLowerCase() === me.email.toLowerCase() && !e.isFormer).length;
+          _scoreSection = `<div style="font-size:10px;font-weight:800;color:var(--brand-accent,#00c2e0);text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Direct Reports</div><div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:32px;font-weight:900;color:var(--brand-on-primary,#fff);font-family:var(--mono);line-height:1">${_teamSize}</span><span style="font-size:12px;color:var(--brand-on-primary,#fff);opacity:.55">executives</span></div>`;
+        } else {
+          const _fs = peGetFinalScore(emp.id);
+          const _cls = peClassifyScore(_fs);
+          const _rel = PE_CONFIG && PE_CONFIG.resultsVisible;
+          if (_rel && _fs !== null && _cls) {
+            _scoreSection = `<div style="font-size:10px;font-weight:800;color:var(--brand-accent,#00c2e0);text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Final Score</div><div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><div style="font-size:33px;font-weight:900;color:var(--brand-on-primary,#fff);font-family:var(--mono);line-height:1;letter-spacing:-.5px">${_fs.toFixed(0)}%<span style="opacity:.42;font-weight:800"> / 120%</span></div><span style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:20px;background:${_cls.color}2e;color:${_cls.color};font-size:11px;font-weight:800">${_cls.label}</span></div>`;
+          } else {
+            _scoreSection = `<div style="font-size:10px;font-weight:800;color:var(--brand-accent,#00c2e0);text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Final Score</div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:19px;font-weight:800;color:#fbbf24"><i class="ti ti-hourglass"></i> Pending</span></div><div style="font-size:10px;color:var(--brand-on-primary,#fff);opacity:.5;margin-top:4px">${_fs === null ? 'Not evaluated yet' : 'Not yet published by HC'}</div>`;
+          }
+        }
+
+        const _profileCardHtml = `
+          <div class="emp-hero-card" style="flex:1;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),rgba(6,16,44,.92));border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:22px 24px;position:relative;overflow:hidden;box-shadow:0 18px 44px -22px rgba(10,31,82,.7);box-sizing:border-box">
+            <div style="position:absolute;top:-30px;right:-30px;width:170px;height:170px;background:radial-gradient(circle,rgba(255,255,255,.08),transparent 62%);pointer-events:none"></div>
+            <div style="display:flex;align-items:center;gap:15px;position:relative">
+              <div style="width:60px;height:60px;border-radius:16px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:var(--brand-on-primary,#fff);flex-shrink:0">${initials}</div>
+              <div style="min-width:0">
+                <h3 style="font-size:19px;font-weight:900;color:var(--brand-on-primary,#fff);margin:0;letter-spacing:-.3px">${emp.name}</h3>
+                <div style="font-size:12.5px;color:var(--brand-on-primary,#fff);opacity:.62;margin-top:3px">${_deptLine}</div>
               </div>
-              <div style="font-size:12.5px;color:var(--text-primary);font-weight:600;margin-bottom:5px">${emp.title || ''}</div>
-              <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:10.5px;color:var(--text-muted)">
-                <span style="font-family:var(--mono);letter-spacing:.3px;color:var(--cyan)">${emp.id}</span>
-                ${!isCEO && emp.dept ? '<span style="opacity:.45">•</span><span>' + emp.dept + '</span>' : ''}
-              </div>
-              ${fnDisplay && !isCEO ? '<div style="font-size:9.5px;color:var(--cyan);margin-top:5px;font-weight:600">' + fnDisplay + '</div>' : ''}
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;flex:2;min-width:280px">
-              <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:9px;padding:9px 12px">
-                <div style="font-size:8px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Email</div>
-                <div style="font-size:11px;color:var(--text-primary);word-break:break-all">${emp.email}</div>
+            <div style="margin-top:14px"><span style="display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:20px;background:${_lsColor}26;color:${_lsColor};border:1px solid ${_lsColor}55;font-size:11px;font-weight:800">${levelIcon} ${isCEO ? 'Executive' : _lvl}</span></div>
+            <div style="border-top:1px solid rgba(255,255,255,.1);margin:16px 0 14px"></div>
+            ${_scoreSection}
+          </div>`;
+
+        // Compact Well-being card — sits BESIDE the hero card; records the mood signal.
+        let _wbHtml = '';
+        var _wbShow = (typeof peWellbeingVisible !== 'function') || peWellbeingVisible(me.email);
+        if (_wbShow) {
+          var _todayMood = (typeof _wbTodayMood === 'function') ? _wbTodayMood(me.email) : null;
+          var _moods = [
+            { ic: 'ti-mood-happy', label: 'Great', color: '#12a17a' },
+            { ic: 'ti-mood-smile', label: 'Good', color: '#216ab1' },
+            { ic: 'ti-mood-neutral', label: 'Okay', color: '#c2820b' },
+            { ic: 'ti-mood-sad', label: 'Low', color: '#6d5bd0' },
+            { ic: 'ti-mood-confuzed', label: 'Stressed', color: '#dc4b57' }
+          ];
+          _wbHtml = `
+            <div class="ai-wellbeing-card" style="flex:1;display:flex">
+              <div style="border-radius:16px;padding:16px 18px;width:100%;box-sizing:border-box;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                  <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#00c2e0,#2557e8);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:16px"><i class="ti ti-heart"></i></div>
+                  <div style="flex:1;min-width:0"><h4 style="font-size:13px;font-weight:800;color:var(--text-primary);margin:0">Well-being check-in</h4><p style="font-size:10px;color:var(--text-muted);margin:2px 0 0">A quick pulse before your week</p></div>
+                  ${_todayMood ? '<span style="padding:3px 8px;border-radius:20px;background:rgba(18,161,122,.12);color:#12a17a;font-size:8px;font-weight:800;white-space:nowrap"><i class="ti ti-check ti-green"></i> Logged</span>' : ''}
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  ${_moods.map(function (m) { var sel = _todayMood === m.label; return '<button class="ai-mood-btn wb-mood-btn' + (sel ? ' sel' : '') + '" onclick="empAIRespondMood(\'' + m.label + '\',event)" title="' + m.label + '"' + (sel ? ' style="border-color:' + m.color + ';background:' + m.color + '1a"' : '') + '><span class="m-ic" style="color:' + m.color + '"><i class="ti ' + m.ic + '"></i></span><span class="m-lb">' + m.label + '</span></button>'; }).join('')}
+                </div>
+                <div id="ai-mood-response" style="display:none;margin-top:10px;padding:10px 12px;border-radius:10px;border:1px solid var(--glass-border,#e5eaf3);background:var(--surface-2,#eef2f9);font-size:10.5px;color:var(--text-primary);line-height:1.5"></div>
               </div>
-              ${reportsToHtml}
-              <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:9px;padding:9px 12px">
-                <div style="font-size:8px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Location</div>
-                <div style="font-size:11px;color:var(--text-primary)">${locFlag} ${emp.loc || '—'}</div>
-              </div>
-              ${scoreBoxHtml}
-            </div>
-          </div>
+            </div>`;
+        }
+
+        html += `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;margin-bottom:18px">
+          <div style="flex:1.6;min-width:250px;display:flex">${_profileCardHtml}</div>
+          ${_wbHtml ? '<div style="flex:1;min-width:205px;max-width:380px;display:flex">' + _wbHtml + '</div>' : ''}
         </div>`;
 
         // ─── v67.20 FIX: KPI tracker card removed from the employee's own
@@ -8915,40 +9121,8 @@
       }
 
 
-      // v75: Well-being check-in (interactive mood pulse) + separate AI Nudge.
-      // The pulse records the user's feeling (kabiWellbeingSignal) so the AI
-      // agents can read the team's mood indirectly. Gated by peWellbeingVisible.
-      var _wbShow = (typeof peWellbeingVisible !== 'function') || peWellbeingVisible(me.email);
-      if (_wbShow) {
-        var _todayMood = (typeof _wbTodayMood === 'function') ? _wbTodayMood(me.email) : null;
-        var _moods = [
-          { ic: 'ti-mood-happy',    label: 'Great',    color: '#12a17a' },
-          { ic: 'ti-mood-smile',    label: 'Good',     color: '#216ab1' },
-          { ic: 'ti-mood-neutral',  label: 'Okay',     color: '#c2820b' },
-          { ic: 'ti-mood-sad',      label: 'Low',      color: '#6d5bd0' },
-          { ic: 'ti-mood-confuzed', label: 'Stressed', color: '#dc4b57' }
-        ];
-        html += `
-        <div class="ai-wellbeing-card" style="margin-bottom:16px">
-          <div style="border-radius:16px;padding:18px 20px">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-              <div style="width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#00c2e0,#2557e8);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:20px"><i class="ti ti-heart"></i></div>
-              <div style="flex:1;min-width:0">
-                <h4 style="font-size:14px;font-weight:800;color:var(--text-primary);margin:0">Well-being check-in</h4>
-                <p style="font-size:10.5px;color:var(--text-muted);margin:2px 0 0">A quick pulse before your week</p>
-              </div>
-              ${_todayMood ? '<span style="padding:4px 10px;border-radius:20px;background:rgba(18,161,122,.12);color:#12a17a;font-size:9px;font-weight:800;white-space:nowrap"><i class="ti ti-check ti-green"></i> Logged today</span>' : ''}
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              ${_moods.map(function (m) {
-                var sel = _todayMood === m.label;
-                return '<button class="ai-mood-btn wb-mood-btn' + (sel ? ' sel' : '') + '" onclick="empAIRespondMood(\'' + m.label + '\',event)" title="' + m.label + '"' + (sel ? ' style="border-color:' + m.color + ';background:' + m.color + '1a"' : '') + '><span class="m-ic" style="color:' + m.color + '"><i class="ti ' + m.ic + '"></i></span><span class="m-lb">' + m.label + '</span></button>';
-              }).join('')}
-            </div>
-            <div id="ai-mood-response" style="display:none;margin-top:12px;padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border,#e5eaf3);background:var(--surface-2,#eef2f9);font-size:11px;color:var(--text-primary);line-height:1.55"></div>
-          </div>
-        </div>`;
-      }
+      // v76: Well-being check-in now renders BESIDE the hero card (see the
+      // profile-card block above). This standalone block was removed.
       // AI Nudge — separate card (the advisory line)
       if (nudge) {
         html += `
@@ -14513,9 +14687,10 @@
         'Stressed': { icon: '<i class="ti ti-clipboard-list"></i>', text: "Hang in there — stress is information, not failure. Let's break things down: tell me your top concern and I'll help you find the first small step. You're not alone.", color: '#f87171' }
       };
       const m = messages[mood] || messages['Good'];
-      resp.style.borderColor = m.color + '40';
-      resp.style.background = `linear-gradient(135deg,${m.color}10,${m.color}04)`;
-      resp.innerHTML = `<div style="display:flex;gap:10px;align-items:flex-start"><span style="font-size:18px">${m.icon}</span><div><strong style="color:${m.color};font-size:11px;display:block;margin-bottom:3px">AI Response · Mood: ${mood}</strong><span>${m.text}</span></div></div>`;
+      // v76: cancelled the "AI Response · Mood" message — just a neutral confirmation.
+      resp.style.borderColor = 'var(--glass-border,#e5eaf3)';
+      resp.style.background = 'var(--surface-2,#eef2f9)';
+      resp.innerHTML = '<span style="color:var(--text-muted)"><i class="ti ti-check ti-green"></i> Thanks — your check-in is noted.</span>';
       resp.style.display = 'block';
       // Highlight selected mood button (theme-agnostic: reset to CSS defaults)
       if (evt && evt.currentTarget) {
@@ -16691,6 +16866,7 @@
           + 'body.light-mode::before { background: radial-gradient(ellipse 80% 60% at 50% -20%, ' + accRgbaWeak + ' 0%, transparent 65%), radial-gradient(ellipse 60% 40% at 100% 100%, ' + accRgbaFaint + ' 0%, transparent 60%) !important; }';
         try { document.title = b.productName + ' — ' + b.companyName; } catch (e) {}
         try { _applyBrandToLogin(b); } catch (e) {}
+        try { _applyBrandToTopbar(b); } catch (e) {}
       }
     };
 
@@ -16742,6 +16918,66 @@
         img.onerror = function () { cb(false); };
         img.src = dataUrl;
       } catch (e) { cb(false); }
+    }
+    // ═══ Topbar logo reflects the super-admin's Branding choice ═══
+    // A single uploaded logo must read on BOTH the dark topbar and the light topbar.
+    // We never invert the brand colours; instead we measure the logo's average
+    // luminance once and drop a small contrast chip ONLY when it would otherwise
+    // vanish — a dark logo on the dark theme, or a light logo on the light theme.
+    var _defTopbarLogo = null;      // cached original KABi logo srcs (light + dark)
+    function _analyzeLogo(dataUrl, cb) {
+      try {
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var cv = document.createElement('canvas'); cv.width = 32; cv.height = 32;
+            var ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0, 32, 32);
+            var d = ctx.getImageData(0, 0, 32, 32).data, trans = false, sum = 0, n = 0;
+            for (var i = 0; i < d.length; i += 4) {
+              if (d[i + 3] < 245) trans = true;
+              if (d[i + 3] > 16) { sum += (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255; n++; }
+            }
+            cb({ transparent: trans, luminance: n ? sum / n : 0.5 });
+          } catch (e) { cb({ transparent: false, luminance: 0.5 }); }
+        };
+        img.onerror = function () { cb({ transparent: false, luminance: 0.5 }); };
+        img.src = dataUrl;
+      } catch (e) { cb({ transparent: false, luminance: 0.5 }); }
+    }
+    function _applyBrandToTopbar(b) {
+      var lightImg = document.querySelector('.topbar-logo-light');
+      var darkImg  = document.querySelector('.topbar-logo-dark');
+      if (!lightImg && !darkImg) return;
+      if (!_defTopbarLogo) _defTopbarLogo = { light: lightImg && lightImg.src, dark: darkImg && darkImg.src };
+      var chip = function (im, on, bg) {
+        if (!im) return;
+        im.style.setProperty('background', on ? bg : 'transparent');
+        im.style.setProperty('padding', on ? '3px 8px' : '0');
+        im.style.setProperty('border-radius', on ? '7px' : '0');
+      };
+      if (b.companyLogoUrl) {
+        [lightImg, darkImg].forEach(function (im) {
+          if (!im) return;
+          im.src = b.companyLogoUrl;
+          im.setAttribute('alt', b.companyName || 'Logo');
+          im.style.setProperty('filter', 'none', 'important');   // keep the true brand colours
+          im.style.setProperty('height', '26px', 'important');
+          im.style.setProperty('width', 'auto', 'important');
+          im.style.setProperty('max-width', '170px', 'important');
+          im.style.setProperty('object-fit', 'contain');
+        });
+        _analyzeLogo(b.companyLogoUrl, function (info) {
+          // light-mode img sits on a LIGHT topbar → chip only if the logo is very light
+          chip(lightImg, info.luminance > 0.72, 'rgba(10,22,44,.92)');
+          // dark-mode img sits on a DARK topbar → chip only if the logo is very dark
+          chip(darkImg,  info.luminance < 0.30, '#ffffff');
+        });
+      } else {
+        // No custom logo → restore the default KABi logos + stylesheet-governed styling.
+        [lightImg, darkImg].forEach(function (im) { if (im) im.removeAttribute('style'); });
+        if (lightImg && _defTopbarLogo) { lightImg.src = _defTopbarLogo.light; lightImg.setAttribute('alt', 'KABi'); }
+        if (darkImg  && _defTopbarLogo) { darkImg.src  = _defTopbarLogo.dark;  darkImg.setAttribute('alt', 'KABi'); }
+      }
     }
     // Push brand data onto the real sign-in screen (#auth-screen), live.
     function _applyBrandToLogin(b) {
@@ -23535,7 +23771,7 @@
             <div style="font-size:10px;color:var(--text-muted)">KABi's 5-tier archetype system for rewarding and developing talent</div>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+        <div style="display:flex;flex-direction:column;gap:9px">
           ${[
             { rating: '4.6 – 5.0',   range: '115% – 120%',  archetype: 'Role Model', subtitle: 'Outstanding',              icon: '<i class="ti ti-clipboard-list"></i>', color: '#22d3ee', bg: 'rgba(34,211,238,.12)', border: 'rgba(34,211,238,.4)' },
             { rating: '3.6 – <4.6',  range: '110% – <115%', archetype: 'Hero',       subtitle: 'Exceeding Expectations',    icon: '<i class="ti ti-clipboard-list"></i>', color: '#4ade80', bg: 'rgba(74,222,128,.12)', border: 'rgba(74,222,128,.4)' },
@@ -23543,12 +23779,16 @@
             { rating: '1.6 – <2.6',  range: '85% – <100%',  archetype: 'Red Dot',    subtitle: 'Below Expectation',         icon: '<i class="ti ti-clipboard-list"></i>', color: '#fbbf24', bg: 'rgba(251,191,36,.12)', border: 'rgba(251,191,36,.4)' },
             { rating: '1.0 – <1.6',  range: '70% – <85%',   archetype: 'Anchor',     subtitle: 'Poor',                      icon: '<i class="ti ti-clipboard-list"></i>', color: '#f87171', bg: 'rgba(248,113,113,.12)', border: 'rgba(248,113,113,.4)' },
           ].map(r => `
-            <div style="background:${r.bg};border:2px solid ${r.border};border-radius:12px;padding:16px;text-align:center">
-              <div style="font-size:22px;margin-bottom:4px">${r.icon}</div>
-              <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:4px">Rating ${r.rating}</div>
-              <div style="font-size:17px;font-weight:900;color:${r.color};line-height:1.1">${r.archetype}</div>
-              <div style="font-size:10px;color:${r.color};font-weight:700;margin-top:2px;opacity:.85">(${r.subtitle})</div>
-              <div style="padding-top:10px;margin-top:10px;border-top:1px solid ${r.border};font-size:11px;color:var(--white);font-weight:800">${r.range}</div>
+            <div style="display:flex;align-items:center;gap:14px;background:${r.bg};border:1px solid ${r.border};border-radius:10px;padding:12px 16px">
+              <div style="width:8px;height:34px;border-radius:5px;background:${r.color};flex-shrink:0"></div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:15px;font-weight:900;color:${r.color};line-height:1.15">${r.archetype}</div>
+                <div style="font-size:10.5px;color:${r.color};font-weight:700;opacity:.8;margin-top:1px">${r.subtitle}</div>
+              </div>
+              <div style="text-align:right;flex-shrink:0">
+                <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;font-weight:700">Rating ${r.rating}</div>
+                <div style="font-size:13.5px;font-weight:900;color:var(--text-primary);font-family:var(--mono);margin-top:2px">${r.range}</div>
+              </div>
             </div>`).join('')}
         </div>
       </div>
@@ -25263,7 +25503,7 @@
       <!-- Frequency Selector -->
       <h3 style="font-size:15px;font-weight:800;color:var(--white);margin-bottom:6px"><i class="ti ti-clock"></i>️ Evaluation Frequency</h3>
       <p style="font-size:11px;color:var(--text-muted);margin-bottom:14px">Select the cadence — cycles will rebuild automatically.</p>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:24px">
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:24px">
         ${freqOptions.map(f => `
           <div onclick="peSetFrequency('${f.id}')" style="background:${PE_FREQUENCY === f.id ? 'linear-gradient(135deg,rgba(0,194,224,.15),rgba(37,87,232,.08))' : 'rgba(255,255,255,.02)'};border:2px solid ${PE_FREQUENCY === f.id ? 'var(--cyan)' : 'rgba(255,255,255,.08)'};border-radius:12px;padding:16px;cursor:pointer;transition:all .3s cubic-bezier(.4,0,.2,1);${PE_FREQUENCY === f.id ? 'box-shadow:0 8px 24px rgba(0,194,224,.2)' : ''}">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -25293,7 +25533,7 @@
           </div>
           <div style="grid-column:1/-1">
             <label style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px"><i class=\"ti ti-target\"></i> Target Audience (select one or more)</label>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
               ${_peAudienceOptions().map(opt => {
                 const checked = targets.includes(opt.v);
                 return `<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${checked ? 'rgba(0,194,224,.12)' : 'rgba(255,255,255,.03)'};border:1px solid ${checked ? 'var(--cyan)' : 'rgba(255,255,255,.08)'};border-radius:8px;cursor:pointer;transition:all .2s">
@@ -25546,7 +25786,7 @@
         <!-- INVIEWS Frequency Selector -->
         <div style="margin-bottom:16px">
           <label style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px"><i class="ti ti-clock"></i>️ INVIEWS Frequency</label>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px">
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
             ${[
               { id: 'quarterly',   label: 'Quarterly',   icon: '<i class="ti ti-clipboard-list"></i>', desc: '4 cycles/year' },
               { id: 'semi-annual', label: 'Semi-Annual', icon: '<i class="ti ti-clipboard-list"></i>', desc: '2 cycles/year' },
@@ -25570,7 +25810,7 @@
         <!-- INVIEWS Target Audience - Multi-select -->
         <div>
           <label style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px"><i class=\"ti ti-target\"></i> Target Audience (select one or more)</label>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
             ${_peAudienceOptions().map(opt => {
               const targets = Array.isArray(cfg.targetAudiences) ? cfg.targetAudiences : ['all'];
               const checked = targets.includes(opt.v);
@@ -25619,26 +25859,25 @@
 
       <!-- v75: Assessment Links — 5 Technical (per canonical level) + 1 Behavioral (unified) -->
       <div style="background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 8px 22px -16px rgba(10,31,82,.2))">
-        <h4 style="font-size:14px;font-weight:800;color:var(--text-primary);margin-bottom:4px;display:flex;align-items:center;gap:7px"><i class=\"ti ti-link\"></i> Assessment links</h4>
-        <p style="font-size:11px;color:var(--text-muted);margin-bottom:16px">Technical links vary by level; the behavioural link is unified for all employees.</p>
+        <h4 style="font-size:14px;font-weight:800;color:var(--text-primary);margin:0 0 14px;display:flex;align-items:center;gap:7px"><i class=\"ti ti-link\"></i> Assessment links</h4>
         ${(function () {
           var _slug = { 'Entry': 'entry', 'Intermediate': 'intermediate', 'First-level management': 'first-level', 'Advanced': 'advanced', 'Executive': 'executive' };
           return _KABI_LEVEL_ORDER.map(function (level) {
             var url = (cfg.technicalLinks && cfg.technicalLinks[level]) || '';
             var s = _slug[level] || level.toLowerCase().replace(/[^a-z]+/g, '-');
-            return '<div style="margin-bottom:14px">'
-              + '<label style="display:block;font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:6px">Technical — ' + level + '</label>'
-              + '<input type="url" id="inviews-tech-' + s + '" value="' + String(url).replace(/"/g, '&quot;') + '" placeholder="https://inviews.kabi.ai/tech/' + s + '" onchange="peSaveInviewsTechLink(\'' + level.replace(/'/g, "\\'") + '\', this.value)" style="width:100%;padding:11px 13px;background:var(--surface-2,#eef2f9);border:1px solid var(--glass-border,#e5eaf3);border-radius:9px;color:var(--text-primary);font-size:12px;font-family:var(--mono);outline:none;box-sizing:border-box">'
+            return '<div style="margin-bottom:9px">'
+              + '<label style="display:block;font-size:10.5px;font-weight:700;color:var(--text-muted);margin-bottom:5px">Technical — ' + level + '</label>'
+              + '<input type="url" id="inviews-tech-' + s + '" value="' + String(url).replace(/"/g, '&quot;') + '" placeholder="https://inviews.kabi.ai/tech/' + s + '" onchange="peSaveInviewsTechLink(\'' + level.replace(/'/g, "\\'") + '\', this.value)" style="width:100%;padding:9px 12px;background:var(--surface-2,#eef2f9);border:1px solid var(--glass-border,#e5eaf3);border-radius:8px;color:var(--text-primary);font-size:12px;font-family:var(--mono);outline:none;box-sizing:border-box">'
               + '</div>';
           }).join('');
         })()}
-        <div style="margin-bottom:4px">
-          <label style="display:block;font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:6px">Behavioural — all employees (unified)</label>
-          <input type="url" id="inviews-behav" value="${String(cfg.behavioralLink || '').replace(/"/g, '&quot;')}" placeholder="https://inviews.kabi.ai/behavioral" onchange="peSaveInviewsBehavLink(this.value)" style="width:100%;padding:11px 13px;background:var(--surface-2,#eef2f9);border:1px solid var(--glass-border,#e5eaf3);border-radius:9px;color:var(--text-primary);font-size:12px;font-family:var(--mono);outline:none;box-sizing:border-box">
+        <div style="margin-top:10px">
+          <label style="display:block;font-size:10.5px;font-weight:700;color:var(--text-muted);margin-bottom:5px">Behavioural — all employees (unified)</label>
+          <input type="url" id="inviews-behav" value="${String(cfg.behavioralLink || '').replace(/"/g, '&quot;')}" placeholder="https://inviews.kabi.ai/behavioral" onchange="peSaveInviewsBehavLink(this.value)" style="width:100%;padding:9px 12px;background:var(--surface-2,#eef2f9);border:1px solid var(--glass-border,#e5eaf3);border-radius:8px;color:var(--text-primary);font-size:12px;font-family:var(--mono);outline:none;box-sizing:border-box">
         </div>
         <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
           <button onclick="inviewsNotifyAll()" style="padding:9px 16px;background:rgba(0,194,224,.1);color:#0891a8;border:1px solid rgba(0,194,224,.3);border-radius:9px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit"><i class=\"ti ti-mail\"></i> Notify all employees</button>
-          <button onclick="peSaveInviewsSettings()" style="padding:9px 18px;background:linear-gradient(135deg,#0a1f52,#173a86);color:#fff;border:none;border-radius:9px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit"><i class=\"ti ti-device-floppy\"></i> Save settings</button>
+          <button onclick="peSaveInviewsSettings()" style="padding:9px 18px;background:var(--brand-primary,#0a1f52);color:var(--brand-on-primary,#fff);border:none;border-radius:9px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit"><i class=\"ti ti-device-floppy\"></i> Save settings</button>
         </div>
       </div>
 
