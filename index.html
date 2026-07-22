@@ -9992,6 +9992,10 @@
         const _ctLbl = _lightText ? 'var(--brand-accent,#00c2e0)' : 'rgba(15,23,42,.55)';
         const _cChip = _lightText ? 'rgba(255,255,255,.14)' : 'rgba(15,23,42,.06)';
         const _cBord = _lightText ? 'rgba(255,255,255,.18)' : 'rgba(15,23,42,.12)';
+        // v80.7: make the LEVEL badge obvious on the dark card — a SOLID level-colour
+        // pill with luminance-picked ink + a defining border (was faint colour-on-tint).
+        const _lsInk = (_kabiHexLum(_lsColor) > 0.62) ? '#0f172a' : '#ffffff';
+        const _lsBord = _lightText ? 'rgba(255,255,255,.45)' : 'rgba(15,23,42,.25)';
 
         let _scoreSection = '';
         if (isCEO) {
@@ -10019,7 +10023,7 @@
               </div>
             </div>
             <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:auto;padding-top:18px;position:relative">
-              <span style="display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:20px;background:${_lsColor}26;color:${_lsColor};border:1px solid ${_lsColor}55;font-size:11px;font-weight:800;align-self:flex-end">${levelIcon} ${isCEO ? 'Executive' : _lvl}</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:20px;background:${_lsColor} !important;color:${_lsInk} !important;border:1px solid ${_lsBord};font-size:11px;font-weight:800;align-self:flex-end;box-shadow:0 2px 8px -2px rgba(0,0,0,.35)"><span style="color:${_lsInk} !important">${levelIcon}</span> ${isCEO ? 'Executive' : _lvl}</span>
               <div style="text-align:right;flex-shrink:0">${_scoreSection}</div>
             </div>
           </div>`;
