@@ -7331,6 +7331,23 @@
           if (ini) items.push({ icon: 'ti-bulb', t: ini + ' initiative' + (ini > 1 ? 's' : '') + ' to review', s: 'Performance → Initiatives' });
         }
       } catch (e) {}
+      // v80.4: per-user notifications (meeting requests, notes from manager/HC, etc.)
+      // — the SAME source as the dashboard Notifications panel — so unread items also
+      // surface on the top-bar bell at a high level.
+      try {
+        var mine = (typeof NOTIFICATIONS !== 'undefined' && NOTIFICATIONS[me.email]) ? NOTIFICATIONS[me.email] : [];
+        var unread = mine.filter(function (n) { return n && !n.read; });
+        var _strip = function (s) { return String(s || '').replace(/<[^>]*>/g, '').trim(); };
+        unread.slice(0, 8).forEach(function (n) {
+          var icon = 'ti-bell';
+          if (n.type === 'meeting_request') icon = 'ti-calendar';
+          else if (n.type === 'note') icon = 'ti-message';
+          else if (n.type === 'eval_released' || n.type === 'eval') icon = 'ti-clipboard-check';
+          var t = _strip(n.title) || _strip(n.body) || 'New notification';
+          var s = n.fromName ? ('From ' + n.fromName) : (n.type === 'meeting_request' ? 'Meeting request' : 'Notification');
+          items.push({ icon: icon, t: t, s: s, _open: true });
+        });
+      } catch (e) {}
       return items;
     }
     function _updateNotifBadge() {
@@ -7343,7 +7360,12 @@
       var items = _notifItems();
       var head = '<div style="padding:10px 12px 9px;font-size:12px;font-weight:800;color:var(--text-primary);border-bottom:1px solid var(--glass-border,rgba(255,255,255,.08))">Notifications</div>';
       if (!items.length) { body.innerHTML = head + '<div style="padding:24px 14px;text-align:center;color:var(--text-muted);font-size:12px"><i class="ti ti-circle-check ti-green"></i> You’re all caught up</div>'; return; }
-      body.innerHTML = head + items.map(function (i) { return '<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:9px"><span style="color:var(--cyan);font-size:16px;margin-top:1px"><i class="ti ' + i.icon + '"></i></span><div><div style="font-size:12px;font-weight:700;color:var(--text-primary)">' + i.t + '</div><div style="font-size:10.5px;color:var(--text-muted);margin-top:1px">' + i.s + '</div></div></div>'; }).join('');
+      var _canTab = (typeof empSwitchTab === 'function' && document.getElementById('pg-employee') && document.getElementById('pg-employee').style.display !== 'none');
+      body.innerHTML = head + items.map(function (i) {
+        var clickable = i._open && _canTab;
+        var attrs = clickable ? ' onclick="closeNotifPop();empSwitchTab(\'notifications\')" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:9px;cursor:pointer"' : ' style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:9px"';
+        return '<div' + attrs + '><span style="color:var(--cyan);font-size:16px;margin-top:1px"><i class="ti ' + i.icon + '"></i></span><div><div style="font-size:12px;font-weight:700;color:var(--text-primary)">' + i.t + '</div><div style="font-size:10.5px;color:var(--text-muted);margin-top:1px">' + i.s + '</div></div></div>';
+      }).join('');
     }
     // ── PROFILE modal (details + change password + avatar upload) ──
     function openProfile() {
@@ -7463,7 +7485,30 @@
       if (!/^image\//.test(f.type)) { toast('Choose an image file', 'err'); return; }
       if (f.size > 1024 * 1024) { toast('Image must be under 1 MB', 'err'); return; }
       var rd = new FileReader();
-      rd.onload = function () { _pendingAvatar = { email: me.email, url: rd.result }; _profileRerender(); };
+      rd.onload = function () {
+        // v80.4: flatten the upload onto a WHITE background so transparent PNGs
+        // don't show the dark app background through them. Opaque photos (JPEG etc.)
+        // are visually unchanged. Falls back to the raw upload if canvas fails.
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var max = 512;
+            var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+            if (!w || !h) throw new Error('no dims');
+            if (w > max || h > max) { var sc = Math.min(max / w, max / h); w = Math.round(w * sc); h = Math.round(h * sc); }
+            var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+            var ctx = cv.getContext('2d');
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            _pendingAvatar = { email: me.email, url: cv.toDataURL('image/jpeg', 0.92) };
+          } catch (e) {
+            _pendingAvatar = { email: me.email, url: rd.result };
+          }
+          _profileRerender();
+        };
+        img.onerror = function () { _pendingAvatar = { email: me.email, url: rd.result }; _profileRerender(); };
+        img.src = rd.result;
+      };
       rd.readAsDataURL(f);
     }
     function profileSaveAvatar() {
@@ -9044,7 +9089,8 @@
         navItems.push({ key: 'team', icon: sideIcons.team, label: 'My Team' });
         navItems.push({ key: 'whereami', icon: sideIcons.map, label: 'Where Are You?' });
         if (u.kpiAccess) {
-          navItems.push({ key: 'kpi', icon: sideIcons.kpi, label: 'KPI Framework' });
+          // v80.3: 'KPI Framework' removed — it duplicated KPI Architect (which now
+          // fully sets/edits/validates/submits KPIs) and 'Where Are You?' (the map).
           navItems.push({ key: 'kpi_architect', icon: sideIcons.kpi, label: 'KPI Architect' });
           navItems.push({ key: 'eval', icon: sideIcons.eval, label: 'Evaluate Team' });
         }
@@ -9311,6 +9357,50 @@
       }
       kpiArchRenderResults();
     }
+    // v80.3: floating Coverage tooltip — appears right above the hovered word
+    // (not the native browser tooltip that popped up at the top of the window).
+    // A single body-level popup, positioned via getBoundingClientRect and clamped
+    // to the viewport so it never clips off the right edge.
+    function _covTipEnsure() {
+      if (window._covTipInit) return;
+      window._covTipInit = true;
+      var pop = document.createElement('div');
+      pop.id = 'cov-tip-float';
+      pop.style.cssText = 'position:fixed;z-index:99999;max-width:280px;padding:10px 12px;'
+        + 'background:#0b1930;border:1px solid rgba(30,175,217,.5);border-radius:9px;'
+        + 'box-shadow:0 10px 30px rgba(0,0,0,.5);color:#e8f0fb;font-size:11.5px;line-height:1.5;'
+        + 'font-family:inherit;pointer-events:none;opacity:0;transition:opacity .12s;display:none';
+      document.body.appendChild(pop);
+      var show = function (el) {
+        var tip = el.getAttribute('data-cov-tip'); if (!tip) return;
+        pop.textContent = tip;
+        pop.style.display = 'block';
+        var r = el.getBoundingClientRect();
+        // measure after content set
+        var pw = pop.offsetWidth, ph = pop.offsetHeight;
+        var left = r.left + (r.width / 2) - (pw / 2);
+        left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+        var top = r.top - ph - 8;
+        if (top < 8) top = r.bottom + 8; // flip below if no room above
+        pop.style.left = left + 'px';
+        pop.style.top = top + 'px';
+        pop.style.opacity = '1';
+      };
+      var hide = function () { pop.style.opacity = '0'; pop.style.display = 'none'; };
+      document.addEventListener('mouseover', function (e) {
+        var el = e.target && e.target.closest ? e.target.closest('.cov-chip') : null;
+        if (el) show(el);
+      });
+      document.addEventListener('mouseout', function (e) {
+        var el = e.target && e.target.closest ? e.target.closest('.cov-chip') : null;
+        if (el) hide();
+      });
+      document.addEventListener('click', function (e) {
+        // tap-to-show on touch devices
+        var el = e.target && e.target.closest ? e.target.closest('.cov-chip') : null;
+        if (el) { if (pop.style.display === 'block') hide(); else show(el); }
+      });
+    }
     function kpiArchRenderResults() {
       var box = document.getElementById('kpi-arch-results'); if (!box) return;
       var set = _kpiArchState.set || [];
@@ -9320,7 +9410,11 @@
       }
       var fnName = (FNS[_kpiArchState.fnKey] && FNS[_kpiArchState.fnKey].name) || _kpiArchState.fnKey;
       var period = _kpiArchPeriod();
-      var _covTip = function (label, color, tip) { return '<strong style="color:' + color + ';cursor:help;border-bottom:1px dotted currentColor" title="' + tip + '">' + label + '</strong>'; };
+      _covTipEnsure();
+      var _covTip = function (label, color, tip) {
+        var safe = String(tip).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return '<strong class="cov-chip" data-cov-tip="' + safe + '" style="color:' + color + ';cursor:help;border-bottom:1px dotted currentColor">' + label + '</strong>';
+      };
       var _coverage = 'Coverage › '
         + _covTip('Leading', '#00c2e0', 'Leading — a forward-looking indicator that predicts future results (e.g. activity volume, pipeline, effort). It moves before the outcome does.') + ' · '
         + _covTip('Process', '#216AB1', 'Process — measures how efficiently the work is done (e.g. cycle time, throughput, on-time delivery, adherence to the process).') + ' · '
@@ -16808,11 +16902,13 @@
     // confirms they discussed the KPIs 1:1 with their team member. The gate offers
     // an Outlook meeting link + a confirmation checkbox. HC can track the status.
     // ═══════════════════════════════════════════════════════════════════
-    function _outlookMeetingUrl(subject, body, attendees) {
+    function _outlookMeetingUrl(subject, body, attendees, startIso, endIso) {
       var p = 'path=/calendar/action/compose&rru=addevent'
         + '&subject=' + encodeURIComponent(subject || '')
         + '&body=' + encodeURIComponent(body || '');
       if (attendees) p += '&to=' + encodeURIComponent(attendees);
+      if (startIso) p += '&startdt=' + encodeURIComponent(startIso);
+      if (endIso) p += '&enddt=' + encodeURIComponent(endIso);
       return 'https://outlook.office.com/calendar/0/deeplink/compose?' + p;
     }
     // Direct reports covered by a submission (its function; level if it matches).
@@ -16854,9 +16950,15 @@
       var repNames = reps.map(function (e) { return e.name; }).filter(Boolean);
       var repEmails = reps.map(function (e) { return e.email; }).filter(Boolean).join(';');
       var whoLabel = repNames.length ? repNames.join(', ') : 'your team member';
-      var kpiLines = (s.selKPIs || []).map(function (k) { return '• ' + (k.final || k.edited || ''); }).join('\n');
+      // v80.3: organized, multi-line body (Outlook honours CRLF) — numbered list,
+      // each KPI on its own line, blank lines between sections.
+      var NL = '\r\n';
+      var kpiLines = (s.selKPIs || []).map(function (k, i) { return (i + 1) + '. ' + (k.final || k.edited || ''); }).join(NL);
       var mtgSubject = 'KPI 1:1 — ' + (s.fnName || '') + (s.level ? ' (' + s.level + ')' : '');
-      var mtgBody = 'Hi ' + (repNames[0] || '') + ',\n\nLet\'s meet 1:1 to walk through and align on your KPIs for this cycle:\n\n' + kpiLines + '\n\nOpen to your input before these are finalized. Thanks.';
+      var mtgBody = 'Hi ' + (repNames[0] || '') + ',' + NL + NL
+        + 'Let\'s meet 1:1 to walk through and align on your KPIs for this cycle' + (s.level ? ' (' + s.level + ' level)' : '') + ':' + NL + NL
+        + kpiLines + NL + NL
+        + 'I\'m open to your input before these are finalized. Thanks.';
       var outlookUrl = _outlookMeetingUrl(mtgSubject, mtgBody, repEmails);
       var done = !!(s.oneOnOne && s.oneOnOne.done) || s.status !== 'awaiting_1on1';
 
@@ -18007,6 +18109,9 @@
       productName: 'Performance System',
       logoText: 'K',
       companyLogoUrl: '',
+      // v80.2: the TOP-BAR (header) logo — SEPARATE from the sign-in company logo.
+      // Empty = fall back to the company logo, then the default KABi mark.
+      headerLogoUrl: '',
       // v77: white-label the top header (topbar) — empty = falls back to Product label
       headerText: '',
       // v77: sidebar icon colour — 'colored' (brand palette) · 'black' · 'white'
@@ -18052,30 +18157,66 @@
       // best-effort — if the backend is unreachable the app keeps working from the
       // per-browser localStorage copy (no regression, purely additive).
       _base: function () { return (window.KABI_PROXY_URL || 'http://localhost:8100').replace(/\/+$/, ''); },
-      // GET the deployment's shared brand and apply it (called on load, on every device).
+      // v80.2: a Supabase client for branding — works DIRECTLY from static hosting
+      // (GitHub Pages) with no server, so branding reaches every device. Uses the
+      // SUPABASE_URL/ANON_KEY already configured in index.html; cached once.
+      _sb: function () {
+        try {
+          if (Brand.__sb !== undefined) return Brand.__sb;
+          Brand.__sb = null;
+          if (window.supabase && window.supabase.createClient && window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
+            Brand.__sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+          }
+        } catch (e) { Brand.__sb = null; }
+        return Brand.__sb;
+      },
+      _applyRemote: function (brand) {
+        if (!brand || typeof brand !== 'object') return false;
+        try { localStorage.setItem(_BRAND_LS_KEY, JSON.stringify(brand)); } catch (e) {}
+        Brand.apply(); Brand._sharedOk = true; return true;
+      },
+      // Pull the shared brand and apply it (every device, on load).
+      // Order: Supabase (static-friendly) → FastAPI proxy → keep local copy.
       fetchShared: function () {
+        var sb = Brand._sb();
+        if (sb) {
+          try {
+            return sb.from('app_settings').select('value').eq('key', 'branding').maybeSingle()
+              .then(function (res) {
+                if (res && !res.error && res.data && res.data.value) { Brand._applyRemote(res.data.value); return res.data.value; }
+                return Brand._fetchProxy();
+              })
+              .catch(function () { return Brand._fetchProxy(); });
+          } catch (e) { return Brand._fetchProxy(); }
+        }
+        return Brand._fetchProxy();
+      },
+      _fetchProxy: function () {
         try {
           return fetch(Brand._base() + '/branding', { method: 'GET' })
             .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (d) {
-              if (d && d.brand && typeof d.brand === 'object') {
-                try { localStorage.setItem(_BRAND_LS_KEY, JSON.stringify(d.brand)); } catch (e) {}
-                Brand.apply();
-                Brand._sharedOk = true;
-              }
-              return d;
-            })
+            .then(function (d) { if (d && d.brand && typeof d.brand === 'object') Brand._applyRemote(d.brand); else Brand._sharedOk = false; return d; })
             .catch(function () { Brand._sharedOk = false; return null; });
         } catch (e) { return Promise.resolve(null); }
       },
-      // PUT the current brand to the backend (Super-Admin action; server re-checks).
+      // Save the current brand to the shared store (Super-Admin action). Best-effort to
+      // BOTH Supabase and the proxy; localStorage already holds it regardless.
       pushShared: function () {
+        var brand = Brand.get();
+        var sb = Brand._sb();
+        if (sb) {
+          try {
+            sb.from('app_settings').upsert({ key: 'branding', value: brand, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+              .then(function (res) { if (res && !res.error) Brand._sharedOk = true; })
+              .catch(function () {});
+          } catch (e) {}
+        }
         try {
           var hdrs = { 'Content-Type': 'application/json' };
           try { if (window.me && me.email) hdrs['X-KABi-User'] = me.email; } catch (e) {}
-          return fetch(Brand._base() + '/branding', { method: 'PUT', headers: hdrs, body: JSON.stringify({ brand: Brand.get() }) })
-            .then(function (r) { Brand._sharedOk = r.ok; return r.ok; })
-            .catch(function () { Brand._sharedOk = false; return false; });
+          return fetch(Brand._base() + '/branding', { method: 'PUT', headers: hdrs, body: JSON.stringify({ brand: brand }) })
+            .then(function (r) { if (r.ok) Brand._sharedOk = true; return r.ok; })
+            .catch(function () { return false; });
         } catch (e) { return Promise.resolve(false); }
       },
       apply: function () {
@@ -18241,10 +18382,12 @@
         im.style.setProperty('padding', on ? '3px 8px' : '0');
         im.style.setProperty('border-radius', on ? '7px' : '0');
       };
-      if (b.companyLogoUrl) {
+      // v80.2: the header (top-bar) logo is its OWN image; falls back to the company logo.
+      var _headerLogo = (b.headerLogoUrl && String(b.headerLogoUrl).trim()) || b.companyLogoUrl || '';
+      if (_headerLogo) {
         [lightImg, darkImg].forEach(function (im) {
           if (!im) return;
-          im.src = b.companyLogoUrl;
+          im.src = _headerLogo;
           im.setAttribute('alt', b.companyName || 'Logo');
           // WYSIWYG: show the uploaded logo EXACTLY as-is — never invert the colours,
           // never add a background. A transparent (backgroundless) upload stays
@@ -18423,21 +18566,17 @@
       var hp = document.getElementById('brand-header-preview');
       if (hp) hp.innerHTML = _buildHeaderPreview(_brandDraftGet());
     }
-    // v80.1: a focused preview of the TOP-BAR header (logo + header text) painted
-    // with the brand primary — shown in the Company-logo card so header customisation
-    // is visible right where the logo is set.
+    // v80.2: a focused preview of the TOP-BAR header (header logo + header text).
+    // The header background is ALWAYS WHITE (never brand-customisable) — this mirrors
+    // the real top bar. Uses the dedicated header logo (falls back to company logo).
     function _buildHeaderPreview(b) {
       b = b || _brandDraftGet();
-      var primary = b.primary || '#0a1f52';
-      var _h = primary.replace('#', ''); if (_h.length === 3) _h = _h.split('').map(function (c) { return c + c; }).join('');
-      var _n = parseInt(_h, 16); if (isNaN(_n)) _n = 0x0a1f52;
-      var lum = (0.299 * (_n >> 16 & 255) + 0.587 * (_n >> 8 & 255) + 0.114 * (_n & 255)) / 255;
-      var ink = lum > 0.6 ? '#0f172a' : '#ffffff';
       var headerTxt = (b.headerText && String(b.headerText).trim()) || (b.productName && String(b.productName).trim()) || 'Performance System';
-      var logo = b.companyLogoUrl
-        ? '<img src="' + b.companyLogoUrl + '" style="height:24px;max-width:110px;object-fit:contain">'
+      var _logoSrc = (b.headerLogoUrl && String(b.headerLogoUrl).trim()) || b.companyLogoUrl || '';
+      var logo = _logoSrc
+        ? '<img src="' + _logoSrc + '" style="height:24px;max-width:120px;object-fit:contain">'
         : '<span style="width:26px;height:26px;border-radius:7px;background:' + (b.accent || '#00c2e0') + ';color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:900">' + (b.logoText || 'K') + '</span>';
-      return '<div style="display:flex;align-items:center;gap:11px;padding:12px 15px;border-radius:10px;background:' + primary + ';border:1px solid var(--glass-border,#e5eaf3);box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 8px 22px -16px rgba(10,31,82,.2))">' + logo + '<span style="width:1px;height:20px;background:rgba(255,255,255,.28)"></span><span style="font-size:13px;font-weight:800;color:' + ink + '">' + headerTxt + '</span></div>';
+      return '<div style="display:flex;align-items:center;gap:11px;padding:12px 15px;border-radius:10px;background:#ffffff;border:1px solid var(--glass-border,#e5eaf3);box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 8px 22px -16px rgba(10,31,82,.2))">' + logo + '<span style="width:1px;height:20px;background:rgba(15,23,42,.18)"></span><span style="font-size:13px;font-weight:800;color:#1e293b;letter-spacing:.3px">' + headerTxt + '</span></div>';
     }
     // A compact "what your users will see" preview — topbar (logo + header text),
     // sidebar (icons in the chosen colour) and an employee card (text in the chosen
@@ -18497,6 +18636,20 @@
       if (!confirm('Remove the uploaded logo? The letter mark will be used instead.')) return;
       _brandLogoTrans = null; _brandLiveApply({ companyLogoUrl: '' });  // v79: apply instantly
     }
+    // v80.2: dedicated HEADER (top-bar) logo — separate from the sign-in company logo.
+    function brandSetHeaderLogo(input) {
+      var f = input.files && input.files[0]; if (!f) return;
+      if (!/^image\/(png|jpeg|svg\+xml|webp)$/.test(f.type)) { toast('Use a PNG, JPG, SVG or WebP image', 'err'); return; }
+      var rd = new FileReader();
+      rd.onload = function () { _brandLiveApply({ headerLogoUrl: rd.result }); };
+      rd.readAsDataURL(f);
+    }
+    function brandRemoveHeaderLogo() {
+      if (!confirm('Remove the header logo? The top bar will fall back to the company logo.')) return;
+      _brandLiveApply({ headerLogoUrl: '' });
+    }
+    window.brandSetHeaderLogo = brandSetHeaderLogo;
+    window.brandRemoveHeaderLogo = brandRemoveHeaderLogo;
     function brandSetTheme(t) { _brandDraftPatch({ loginTheme: t }); }
     function brandSetPhoto(input) {
       var f = input.files && input.files[0]; if (!f) return;
@@ -18643,10 +18796,25 @@
           <!-- v80.1: Header (top bar) — logo + text, with a live preview -->
           <div style="border-top:1px solid var(--glass-border,rgba(127,140,170,.16));margin:18px 0 12px"></div>
           <h4 style="${_h4};margin-bottom:4px">Header (top bar)</h4>
-          <p style="${_sub};margin-bottom:12px">The logo above and this text appear in the top bar for every signed-in user.</p>
+          <p style="${_sub};margin-bottom:12px">The top-bar logo &amp; text shown to every signed-in user. Its background is always white — not customisable.</p>
+          <label style="${_lab}">Header logo <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly · separate from the sign-in logo · empty = uses the company logo</span></label>
+          ${b.headerLogoUrl
+            ? `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+                 <div style="width:120px;height:48px;background:#fff;border-radius:10px;display:flex;align-items:center;justify-content:center;border:1px solid #e5eaf3"><img src="${b.headerLogoUrl}" style="max-width:90%;max-height:80%;object-fit:contain"></div>
+                 <div style="display:flex;gap:8px">
+                   <label style="padding:8px 14px;border-radius:8px;background:rgba(0,194,224,.1);color:var(--cyan);border:1px solid rgba(0,194,224,.3);font-size:11px;font-weight:700;cursor:pointer">Replace<input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" onchange="brandSetHeaderLogo(this)" style="display:none"></label>
+                   <button onclick="brandRemoveHeaderLogo()" style="padding:8px 14px;border-radius:8px;background:rgba(239,68,68,.08);color:#f87171;border:1px solid rgba(239,68,68,.25);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Remove</button>
+                 </div>
+               </div>`
+            : `<label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:18px;border:1.5px dashed rgba(0,194,224,.35);border-radius:11px;cursor:pointer;background:rgba(0,194,224,.03);margin-bottom:14px">
+                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 9l5 -5l5 5"/><path d="M12 4l0 12"/></svg>
+                 <span style="font-size:11.5px;font-weight:700;color:var(--cyan)">Upload a header logo</span>
+                 <span style="font-size:9px;color:var(--text-dim)">Optional — defaults to the company logo</span>
+                 <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" onchange="brandSetHeaderLogo(this)" style="display:none">
+               </label>`}
           <label style="${_lab}">Header text <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly · empty = uses Product label</span></label>
           <input style="${_inp};margin-bottom:14px" value="${(b.headerText || '').replace(/"/g, '&quot;')}" placeholder="Performance System" oninput="_brandLiveText('headerText',this.value)">
-          <label style="${_lab}">Header preview</label>
+          <label style="${_lab}">Header preview <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">· always white background</span></label>
           <div id="brand-header-preview">${_buildHeaderPreview(b)}</div>
         </div>
       </div>
@@ -22048,6 +22216,8 @@
         ...notif
       };
       NOTIFICATIONS[toEmail].unshift(full); // newest first
+      // v80.4: keep the top-bar bell badge in sync when the notification is for me.
+      try { if (me && (toEmail || '').toLowerCase() === (me.email || '').toLowerCase() && typeof _updateNotifBadge === 'function') _updateNotifBadge(); } catch (e) {}
       return full;
     }
 
@@ -22235,7 +22405,42 @@
     // ══════════════════════════════════════════════════════════════════
     // MODAL: Schedule 1:1 Meeting
     // Manager proposes 1-3 time slots; employee accepts one (or declines).
+    // v80.3: slots are flexible — start with 1, add up to 3, remove down to 1.
     // ══════════════════════════════════════════════════════════════════
+    function _meetingSlotRowHtml(n, dateVal, timeVal) {
+      return '<div class="meeting-slot-row" style="display:flex;gap:8px;align-items:center">'
+        + '<span class="slot-num" style="width:20px;height:20px;border-radius:50%;background:rgba(74,222,128,.2);border:1px solid rgba(74,222,128,.4);display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:#4ade80;font-weight:800;flex-shrink:0">' + n + '</span>'
+        + '<input type="date" value="' + (dateVal || '') + '" class="meeting-slot-date" style="flex:1;padding:9px 12px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text-primary);font-size:12px;font-family:inherit">'
+        + '<input type="time" value="' + (timeVal || '10:00') + '" class="meeting-slot-time" style="padding:9px 12px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text-primary);font-size:12px;font-family:inherit">'
+        + '<button type="button" class="slot-remove" onclick="meetingRemoveSlot(this)" title="Remove this slot" style="width:30px;height:30px;border-radius:7px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.06);color:#f87171;font-size:16px;line-height:1;cursor:pointer;font-family:inherit;flex-shrink:0;display:none">&times;</button>'
+        + '</div>';
+    }
+    function _meetingRenumberSlots() {
+      var c = document.getElementById('meeting-slots-container'); if (!c) return;
+      var rows = c.querySelectorAll('.meeting-slot-row');
+      rows.forEach(function (r, i) {
+        var b = r.querySelector('.slot-num'); if (b) b.textContent = (i + 1);
+        var rm = r.querySelector('.slot-remove'); if (rm) rm.style.display = (rows.length > 1 ? '' : 'none');
+      });
+      var add = document.getElementById('meeting-add-slot'); if (add) add.style.display = (rows.length >= 3 ? 'none' : '');
+    }
+    function meetingAddSlot() {
+      var c = document.getElementById('meeting-slots-container'); if (!c) return;
+      if (c.querySelectorAll('.meeting-slot-row').length >= 3) return;
+      var wrap = document.createElement('div');
+      wrap.innerHTML = _meetingSlotRowHtml(0, '', '10:00');
+      if (wrap.firstChild) c.appendChild(wrap.firstChild);
+      _meetingRenumberSlots();
+    }
+    function meetingRemoveSlot(btn) {
+      var c = document.getElementById('meeting-slots-container'); if (!c) return;
+      if (c.querySelectorAll('.meeting-slot-row').length <= 1) return;
+      var row = btn && btn.closest ? btn.closest('.meeting-slot-row') : null;
+      if (row) row.remove();
+      _meetingRenumberSlots();
+    }
+    window.meetingAddSlot = meetingAddSlot;
+    window.meetingRemoveSlot = meetingRemoveSlot;
     function openScheduleMeetingModal(targetName, targetEmail, suggestedPurpose) {
       if (!targetEmail) { toast('No employee selected', 'err'); return; }
 
@@ -22291,22 +22496,9 @@
             </div>
 
             <div style="display:grid;gap:10px" id="meeting-slots-container">
-              <div class="meeting-slot-row" style="display:flex;gap:8px;align-items:center">
-                <span style="width:20px;height:20px;border-radius:50%;background:rgba(74,222,128,.2);border:1px solid rgba(74,222,128,.4);display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:#4ade80;font-weight:800;flex-shrink:0">1</span>
-                <input type="date" value="${slot1Date}" class="meeting-slot-date" style="flex:1;padding:9px 12px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text-primary);font-size:12px;font-family:inherit">
-                <input type="time" value="10:00" class="meeting-slot-time" style="padding:9px 12px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text-primary);font-size:12px;font-family:inherit">
-              </div>
-              <div class="meeting-slot-row" style="display:flex;gap:8px;align-items:center">
-                <span style="width:20px;height:20px;border-radius:50%;background:rgba(74,222,128,.2);border:1px solid rgba(74,222,128,.4);display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:#4ade80;font-weight:800;flex-shrink:0">2</span>
-                <input type="date" value="${slot2Date}" class="meeting-slot-date" style="flex:1;padding:9px 12px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text-primary);font-size:12px;font-family:inherit">
-                <input type="time" value="14:00" class="meeting-slot-time" style="padding:9px 12px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text-primary);font-size:12px;font-family:inherit">
-              </div>
-              <div class="meeting-slot-row" style="display:flex;gap:8px;align-items:center">
-                <span style="width:20px;height:20px;border-radius:50%;background:rgba(74,222,128,.2);border:1px solid rgba(74,222,128,.4);display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:#4ade80;font-weight:800;flex-shrink:0">3</span>
-                <input type="date" value="${slot3Date}" class="meeting-slot-date" style="flex:1;padding:9px 12px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text-primary);font-size:12px;font-family:inherit">
-                <input type="time" value="11:00" class="meeting-slot-time" style="padding:9px 12px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text-primary);font-size:12px;font-family:inherit">
-              </div>
+              ${_meetingSlotRowHtml(1, slot1Date, '10:00')}
             </div>
+            <button type="button" id="meeting-add-slot" onclick="meetingAddSlot()" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1px dashed rgba(74,222,128,.45);background:rgba(74,222,128,.06);color:#4ade80;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-plus"></i> Add another slot (up to 3)</button>
 
             <label style="display:block;font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:22px 0 8px">Additional Note (optional)</label>
             <textarea id="meeting-note" placeholder="Anything ${targetName.split(' ')[0]} should prepare?" style="width:100%;min-height:70px;padding:11px 14px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--text-primary);font-size:12px;font-family:inherit;line-height:1.6;resize:vertical;outline:none;transition:border-color .15s" onfocus="this.style.borderColor='#4ade80'" onblur="this.style.borderColor='rgba(255,255,255,.12)'"></textarea>
@@ -22388,7 +22580,11 @@
           if (typeof showPg === 'function') { showPg('pg-eval'); if (typeof peRenderManagerEval === 'function') peRenderManagerEval(); }
           return;
         case 'assign_kpis':
-          toast('Open the KPI Framework tab → your function to set level-specific KPIs for this employee.', 'ok');
+          // v80.4: redirect straight to the KPI Architect tab (where KPIs are set).
+          if (typeof empSwitchTab === 'function') {
+            empSwitchTab('kpi_architect');
+            if (targetName) toast('<i class="ti ti-clipboard-list"></i> Pick the function &amp; level to set KPIs for ' + targetName + '.', 'ok');
+          }
           return;
         case 'schedule':
           openScheduleMeetingModal(targetName, targetEmail);
@@ -22689,6 +22885,26 @@
         });
       }
       toast(`<i class="ti ti-circle-check ti-green"></i> Meeting confirmed for ${formatSlotDate(slot.date)} at ${formatSlotTime(slot.time)}`, 'ok');
+      // v80.3: open Outlook so the employee puts the 1:1 on their calendar — pre-filled
+      // with the accepted slot + organized details, inviting the manager.
+      try {
+        var _dur = parseInt(notif.meta.duration, 10) || 30;
+        var _start = new Date(slot.date + 'T' + slot.time + ':00');
+        var _end = new Date(_start.getTime() + _dur * 60000);
+        var _p2 = function (n) { return String(n).padStart(2, '0'); };
+        var _iso = function (d) { return d.getFullYear() + '-' + _p2(d.getMonth() + 1) + '-' + _p2(d.getDate()) + 'T' + _p2(d.getHours()) + ':' + _p2(d.getMinutes()) + ':00'; };
+        var _NL = '\r\n';
+        var _body = 'Hi ' + ((notif.fromName || 'there').split(' ')[0]) + ',' + _NL + _NL
+          + 'Confirming our 1:1:' + _NL + _NL
+          + 'Purpose: ' + (notif.meta.purpose || '1:1') + _NL
+          + 'When: ' + formatSlotDate(slot.date) + ' at ' + formatSlotTime(slot.time) + _NL
+          + 'Duration: ' + _dur + ' minutes' + _NL
+          + 'With: ' + (notif.fromName || '') + _NL
+          + (notif.body ? (_NL + 'Note: ' + notif.body + _NL) : '')
+          + _NL + 'Looking forward to it.';
+        var _url = _outlookMeetingUrl((notif.meta.purpose || 'KPI 1:1') + ' — ' + (me.name || ''), _body, notif.fromEmail || '', _iso(_start), _iso(_end));
+        window.open(_url, '_blank', 'noopener');
+      } catch (e) { console.warn('[1:1 accept] Outlook open failed', e); }
       const body = document.getElementById('emp-side-body');
       if (body) _empRefreshNotifSurface();
     }
@@ -32255,7 +32471,7 @@
         ],
         responses: {
           growth: { q: "How can I grow in my role?",
-                    r: "The Career Advisor uses a clear formula: tenure + performance + skills + readiness signals. Open your dashboard to see your current development plan. Two paths exist: Technical (Officer → Specialist → Technical Lead → Professional → Expert) and Leadership (Lead → Manager → Director → Chief)." },
+                    r: "Growth at KABi is based on more than time — it considers your tenure, performance, demonstrated skills, and readiness signals. KABi supports two broad directions: an expertise/technical track and a leadership/management track. Open your dashboard to see your current development plan, and bring your growth goals to a 1:1 with your manager to agree on the next step." },
           understand: { q: "Help me understand my evaluation.",
                         r: "Your evaluation is composed of: Objectives (KPIs) + Competencies (INVIEWS report) + additional components, distributed per HC's approved configuration for the current cycle. The final result is shown as a Class + % out of 120% (never /5). Distribution details are revealed only after the evaluation cycle opens. If anything is unclear, you can submit an Edit Request and HC will review with your manager. For detailed feedback, I recommend scheduling a 1:1 with your direct manager." },
           goals: { q: "Help me set personal goals.",
@@ -32636,12 +32852,31 @@
       }
     };
 
+    // v80.4: light markdown → HTML for copilot answers so replies render organized
+    // (bold, bullets, headings) instead of raw asterisks / one run-on line. AI text
+    // is semi-trusted (our own canned strings + our Claude API) — strip dangerous
+    // tags/handlers defensively, then convert. .chat-msg is white-space:pre-line so
+    // newlines already break; we only convert inline markdown + bullet markers.
+    function _fmtAIMsg(text) {
+      var s = String(text == null ? '' : text);
+      s = s.replace(/<\s*\/?\s*(script|iframe|object|embed|style|link|meta)\b[^>]*>/gi, '');
+      s = s.replace(/\son\w+\s*=\s*"[^"]*"/gi, '').replace(/\son\w+\s*=\s*'[^']*'/gi, '');
+      s = s.replace(/```[\s\S]*?```/g, function (b) { return b.replace(/^```\w*\n?/, '').replace(/```$/, ''); });
+      s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+      s = s.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+      s = s.replace(/`([^`\n]+)`/g, '<code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-size:.92em">$1</code>');
+      s = s.replace(/^\s{0,3}#{1,6}\s*(.+)$/gm, '<strong>$1</strong>');
+      s = s.replace(/^[ \t]*[-*•]\s+/gm, '• ');
+      return s;
+    }
     function addAIChat(text, type, customId) {
       const chat = document.getElementById('ai-chat');
       if (!chat) return null;
       const msg = document.createElement('div');
       msg.className = 'chat-msg ' + type;
-      msg.textContent = text;
+      // user input is escaped (textContent); AI/system messages are formatted HTML
+      if (type === 'user') msg.textContent = text;
+      else msg.innerHTML = _fmtAIMsg(text);
       if (customId) msg.id = customId;
       chat.appendChild(msg);
       chat.scrollTop = chat.scrollHeight;
@@ -33113,6 +33348,36 @@
         : 'No exact match for "' + name + '". Did you mean: ' + suggestions + '?';
     }
 
+    // v80.4: pull the person name out of a "who is X" style question (EN + AR).
+    // Returns '' for generic phrases ("who is my manager") so those route elsewhere.
+    function _extractNameQuery(text){
+      if (!text) return '';
+      var pat = /(?:who\s+is|who's|whois|tell\s+me\s+about|info\s+(?:on|about)|من\s+هو|من\s+هي|مين\s+هو|مين\s+هي|معلومات\s+عن|عرّفني\s+على|عرفني\s+على|اخبرني\s+عن|أخبرني\s+عن)\s+([a-zA-Z؀-ۿ][a-zA-Z؀-ۿ\s'’\-]{1,40})/i;
+      var m = pat.exec(text);
+      if (!m) return '';
+      var name = m[1].trim().replace(/[?؟.!,،]+$/, '').trim();
+      if (!name) return '';
+      // reject generic (non-name) targets so they fall through to other intents
+      if (/^(my|the|a|an|this|that|your|our|his|her|their|أنا|انا|مدير|ال)\b/i.test(name)) return '';
+      if (/(manager|مدير|boss|رئيس|team|فريق|report|قسم|department|company|شركة|kabi|كابي|hc|hr)/i.test(name)) return '';
+      return name;
+    }
+    // v80.4: match employees whose FIRST or LAST name (EN or AR) exactly equals every
+    // token of the query — so "Nada" matches all Nadas, "Nada Ali" narrows to one.
+    function _findEmployeesByNamePart(searchName){
+      if (!searchName || typeof PE_EMPLOYEES === 'undefined') return [];
+      var q = searchName.toLowerCase().trim();
+      var qTokens = q.split(/\s+/).filter(function(w){ return w.length >= 2; });
+      if (!qTokens.length) return [];
+      var out = [];
+      PE_EMPLOYEES.forEach(function(e){
+        if (!e || !e.name || e.isFormer) return;
+        var parts = ((e.name || '') + ' ' + (e.arabicName || '')).toLowerCase().split(/\s+/).filter(Boolean);
+        var allMatch = qTokens.every(function(qt){ return parts.some(function(p){ return p === qt; }); });
+        if (allMatch) out.push(e);
+      });
+      return out;
+    }
     function _isCycleOpen(){
       try { return typeof CYCLE !== 'undefined' && CYCLE && CYCLE.status === 'open'; } catch(e){ return false; }
     }
@@ -33185,7 +33450,19 @@
       // 7. Direct reports listing
       if (/who.*(report|reports).*(to me|directly)|direct\s*reports|my\s*team\s*members|show\s*me\s*my\s*team|الموظف.*يرجع|يعود.*ل[يى]|تيمي|فريقي|من.*المرؤوسين|من\s*يتبعن[يى]|من.*ا?لذين.*يرجعون/.test(t))
         return { type: 'list_direct_reports' };
-      // 8. ANY employee lookup — public info (title/dept/function) — accessible to everyone
+      // 8a. Explicit "who is <name>" → match by first/last name (any length).
+      // If more than one person shares the name, ask to disambiguate; if exactly
+      // one, answer with their details; if none, fall through to the fuzzy scan.
+      var _nameQ = _extractNameQuery(text);
+      if (_nameQ){
+        var _nm = _findEmployeesByNamePart(_nameQ);
+        var _perfAsk = /(performance|score|rating|evaluation|اداء|أداء|تقييم|درجة)/.test(t);
+        if (_nm.length === 1)
+          return _perfAsk ? { type: 'employee_performance', employee: _nm[0] } : { type: 'employee_general_info', employee: _nm[0] };
+        if (_nm.length > 1)
+          return { type: 'employee_disambiguate', matches: _nm, searchName: _nameQ, perfAsk: _perfAsk };
+      }
+      // 8b. ANY employee lookup — public info (title/dept/function) — accessible to everyone
       // Patterns: "who is X", "what's X's title", "what dept is X in", "what does X do"
       var anyLookup = _scanForEmployeeInQuestion(text);
       if (anyLookup){
@@ -33446,24 +33723,51 @@
             else fnDisplay = fnKey || '';
           } catch(_){}
           var deptClean = (emp.dept || '').replace(' Department','');
+          // v80.4: include level + line manager as part of the "main details".
+          var empLvl = ''; try { if (typeof peGetEmpLevel === 'function') empLvl = peGetEmpLevel(emp); } catch(_){}
+          var mgrName = '';
+          try {
+            if (emp.mgr && typeof PE_EMPLOYEES !== 'undefined'){
+              var _mm = PE_EMPLOYEES.find(function(x){ return (x.email||'').toLowerCase() === (emp.mgr||'').toLowerCase(); });
+              mgrName = _mm ? _mm.name : '';
+            }
+          } catch(_){}
           if (isRtl){
-            var arLines = ['معلومات عامة عن ' + (emp.arabicName || emp.name) + ':'];
+            var arLines = ['<strong>معلومات عامة عن ' + (emp.arabicName || emp.name) + '</strong>'];
             arLines.push('• الاسم: ' + (emp.arabicName || emp.name));
             if (emp.name && emp.arabicName) arLines.push('• Name (EN): ' + emp.name);
-            if (emp.email) arLines.push('• البريد: ' + emp.email);
             if (emp.title) arLines.push('• المسمى: ' + emp.title);
             if (deptClean) arLines.push('• القسم: ' + deptClean);
             if (fnDisplay) arLines.push('• الفنكشن: ' + fnDisplay);
+            if (empLvl) arLines.push('• المستوى: ' + empLvl);
+            if (mgrName) arLines.push('• المدير المباشر: ' + mgrName);
+            if (emp.email) arLines.push('• البريد: ' + emp.email);
             return arLines.join('\n');
           }
-          var enLines2 = ['Public info for ' + emp.name + ':'];
+          var enLines2 = ['<strong>Public info for ' + emp.name + '</strong>'];
           enLines2.push('• Name: ' + emp.name);
           if (emp.arabicName) enLines2.push('• Arabic name: ' + emp.arabicName);
-          if (emp.email) enLines2.push('• Email: ' + emp.email);
           if (emp.title) enLines2.push('• Title: ' + emp.title);
           if (deptClean) enLines2.push('• Department: ' + deptClean);
           if (fnDisplay) enLines2.push('• Function: ' + fnDisplay);
+          if (empLvl) enLines2.push('• Level: ' + empLvl);
+          if (mgrName) enLines2.push('• Line manager: ' + mgrName);
+          if (emp.email) enLines2.push('• Email: ' + emp.email);
           return enLines2.join('\n');
+
+        case 'employee_disambiguate': {
+          // v80.4: more than one person shares the searched name → ask which one.
+          var _ms = intent.matches || [];
+          var _opt = _ms.map(function(e){
+            var nm = (isRtl && e.arabicName) ? e.arabicName : e.name;
+            var ttl = e.title ? (' — ' + e.title) : '';
+            var dp = e.dept ? (' · ' + (e.dept || '').replace(' Department','')) : '';
+            return '• ' + nm + ttl + dp;
+          });
+          if (isRtl)
+            return 'يوجد أكثر من شخص بالاسم "' + intent.searchName + '". هل تقصد:\n' + _opt.join('\n') + '\n\nاكتب الاسم الكامل وسأعرض تفاصيله.';
+          return 'There is more than one person matching "' + intent.searchName + '". Do you mean:\n' + _opt.join('\n') + '\n\nType the full name and I\'ll show their details.';
+        }
 
         case 'own_growth':
           if (isNonFTE){
@@ -33472,8 +33776,8 @@
               : 'As a Non-FTE trainee/intern, you\'re not in the formal evaluation cycle — but your growth path is fully available. I recommend scheduling a 1:1 with your direct manager to discuss your development goals and skills you want to build.';
           }
           return isRtl
-            ? 'لرسم مسار نموك المهني، افتح لوحة التحكم → Career Advisor. تأخذ التوصيات في الاعتبار: المدة في الدور، الأداء، المهارات، وإشارات الجاهزية. هناك مساران: تقني (Officer → Specialist → Technical Lead → Professional → Expert) أو قيادي (Lead → Manager → Director → Chief).'
-            : 'To map your career growth, open Dashboard → Career Advisor. Recommendations consider: tenure, performance, skills, and readiness signals. Two paths: Technical (Officer → Specialist → Technical Lead → Professional → Expert) or Leadership (Lead → Manager → Director → Chief).';
+            ? 'لرسم مسار نموك المهني، افتح لوحة التحكم → Career Advisor. تأخذ التوصيات في الاعتبار: المدة في الدور، الأداء، المهارات، وإشارات الجاهزية. يدعم KABi اتجاهين عامين: مسار الخبرة/التقني ومسار القيادة/الإدارة. ناقش أهدافك التطويرية في جلسة 1:1 مع مديرك للاتفاق على الخطوة التالية.'
+            : 'To map your career growth, open Dashboard → Career Advisor. Recommendations consider your tenure, performance, skills, and readiness signals. KABi supports two broad directions: an expertise/technical track and a leadership/management track. Bring your development goals to a 1:1 with your manager to agree on the next step.';
 
         case 'wellbeing':
           return isRtl
@@ -33887,7 +34191,7 @@
           var msgEl = document.getElementById(thinkingId);
           if (msgEl){
             if (text){
-              msgEl.innerHTML = text + '\n\n<i class=\"ti ti-sparkles ti-cyan\"></i> Claude Sonnet 4.6';
+              msgEl.innerHTML = _fmtAIMsg(text);
             } else {
               msgEl.textContent = qIsAr ? 'لم يصلني رد من Claude. حاول مرة أخرى.' : 'No response from Claude. Please try again.';
             }
