@@ -10003,23 +10003,21 @@
         }
         const _deptLine = isCEO ? 'Chief Executive Officer' : (_deptClean + (_fnClean ? ' · ' + _fnClean : ''));
 
-        // Adaptive contrast — text is white on a dark brand card, dark on a light one,
-        // driven by the luminance of the chosen brand primary colour.
+        // v81: the employee hero card is a FIXED LIGHT card — one light surface + a
+        // slightly darker border + dark text. NOT brand-customizable (no luminance/brand
+        // dependence, no cardTextColor override). Same look for every user, every brand.
         const _kabiHexLum = function (hex) { hex = (hex || '').replace('#', '').trim(); if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join(''); var n = parseInt(hex, 16); if (isNaN(n)) return 0; var r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255; return 0.299 * r + 0.587 * g + 0.114 * b; };
-        const _bpHex = (((window.Brand && Brand.get) ? Brand.get().primary : '') || '#0a1f52').trim() || '#0a1f52';
-        const _bpLight = _kabiHexLum(_bpHex) > 0.6;
-        // v77: Super Admin can override the card text colour (auto = by luminance · white · black).
-        const _cardTextPref = (((window.Brand && Brand.get) ? Brand.get().cardTextColor : '') || 'auto');
-        const _lightText = (_cardTextPref === 'white') ? true : (_cardTextPref === 'black') ? false : !_bpLight;
-        const _ct    = _lightText ? '#ffffff' : '#0f172a';
-        const _ctDim = _lightText ? 'rgba(255,255,255,.62)' : 'rgba(15,23,42,.60)';
-        const _ctLbl = _lightText ? 'var(--brand-accent,#00c2e0)' : 'rgba(15,23,42,.55)';
-        const _cChip = _lightText ? 'rgba(255,255,255,.14)' : 'rgba(15,23,42,.06)';
-        const _cBord = _lightText ? 'rgba(255,255,255,.18)' : 'rgba(15,23,42,.12)';
-        // v80.7: make the LEVEL badge obvious on the dark card — a SOLID level-colour
-        // pill with luminance-picked ink + a defining border (was faint colour-on-tint).
+        const _cardBg   = '#f5f8fd';                 // the one light card colour
+        const _cardBord = '#d3ddee';                 // a little darker border
+        const _lightText = false;                    // dark text on the light card
+        const _ct    = '#0f172a';
+        const _ctDim = 'rgba(15,23,42,.60)';
+        const _ctLbl = 'rgba(15,23,42,.55)';
+        const _cChip = 'rgba(15,23,42,.05)';
+        const _cBord = _cardBord;
+        // LEVEL badge — solid level-colour pill, contrast ink, darker border on the light card.
         const _lsInk = (_kabiHexLum(_lsColor) > 0.62) ? '#0f172a' : '#ffffff';
-        const _lsBord = _lightText ? 'rgba(255,255,255,.45)' : 'rgba(15,23,42,.25)';
+        const _lsBord = 'rgba(15,23,42,.22)';
 
         let _scoreSection = '';
         if (isCEO) {
@@ -10032,7 +10030,7 @@
           if (_rel && _fs !== null && _cls) {
             _scoreSection = `<div style="font-size:10px;font-weight:800;color:${_ctLbl};text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Final Score</div><div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><div style="font-size:33px;font-weight:900;color:${_ct};font-family:var(--mono);line-height:1;letter-spacing:-.5px">${_fs.toFixed(0)}%<span style="opacity:.42;font-weight:800"> / 120%</span></div><span style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:20px;background:${_cls.color}2e;color:${_cls.color};font-size:11px;font-weight:800">${_cls.label}</span></div>`;
           } else {
-            _scoreSection = `<div style="font-size:10px;font-weight:800;color:${_ctLbl};text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Final Score</div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:19px;font-weight:800;color:#fbbf24"><i class="ti ti-hourglass"></i> Pending</span></div><div style="font-size:10px;color:${_ctDim};margin-top:4px">${_fs === null ? 'Not evaluated yet' : 'Not yet published by HC'}</div>`;
+            _scoreSection = `<div style="font-size:10px;font-weight:800;color:${_ctLbl};text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Final Score</div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:19px;font-weight:800;color:#c2820b"><i class="ti ti-hourglass"></i> Pending</span></div><div style="font-size:10px;color:${_ctDim};margin-top:4px">${_fs === null ? 'Not evaluated yet' : 'Not yet published by HC'}</div>`;
           }
         }
 
@@ -10044,8 +10042,8 @@
           : initials;
         const _levelBadge = `<span style="display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:20px;background:${_lsColor} !important;color:${_lsInk} !important;border:1px solid ${_lsBord};font-size:11px;font-weight:800;align-self:flex-start;box-shadow:0 2px 8px -2px rgba(0,0,0,.35);white-space:nowrap"><span style="color:${_lsInk} !important">${levelIcon}</span> ${isCEO ? 'Executive' : _lvl}</span>`;
         const _profileCardHtml = `
-          <div class="emp-hero-card" style="flex:1;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 80%,#000));border:1px solid ${_cBord};border-radius:18px;padding:20px 22px;position:relative;overflow:hidden;box-shadow:0 18px 44px -22px rgba(10,31,82,.7);box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;min-height:150px">
-            <div style="position:absolute;top:-30px;right:-30px;width:170px;height:170px;background:radial-gradient(circle,${_lightText ? 'rgba(255,255,255,.08)' : 'rgba(15,23,42,.05)'},transparent 62%);pointer-events:none"></div>
+          <div class="emp-hero-card" style="flex:1;background:${_cardBg} !important;border:1px solid ${_cardBord};border-radius:18px;padding:20px 22px;position:relative;overflow:hidden;box-shadow:0 10px 30px -18px rgba(10,31,82,.25);box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;min-height:150px">
+            <div style="position:absolute;top:-30px;right:-30px;width:170px;height:170px;background:radial-gradient(circle,rgba(15,23,42,.04),transparent 62%);pointer-events:none"></div>
             <div style="display:flex;align-items:center;gap:15px;min-width:0;position:relative;flex:1 1 240px">
               <div style="width:58px;height:58px;border-radius:16px;background:${_cChip};border:1px solid ${_cBord};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:${_ct};flex-shrink:0;overflow:hidden">${_avatarInner}</div>
               <div style="min-width:0;display:flex;flex-direction:column;gap:9px">
@@ -18906,10 +18904,8 @@
           <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:8px;overflow:hidden;margin-bottom:14px">
             ${[['white','White'],['black','Black']].map(function(o){ var on=(b.sidebarIconColor==='black'?'black':'white')===o[0]; return '<button onclick="_brandDraftPatch({sidebarIconColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
           </div>
-          <label style="${_lab}">Employee card text colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly</span></label>
-          <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:8px;overflow:hidden">
-            ${[['auto','Auto'],['white','White'],['black','Black']].map(function(o){ var on=(b.cardTextColor||'auto')===o[0]; return '<button onclick="_brandDraftPatch({cardTextColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
-          </div>
+          <!-- v81: 'Employee card text colour' control removed — the employee card is now a
+               fixed light card (not customizable), so there is nothing to configure here. -->
         </div>
         <!-- Logo -->
         <div style="${_card};margin-bottom:0">
