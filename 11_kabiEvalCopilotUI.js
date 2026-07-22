@@ -87,7 +87,7 @@
 
   var HEADER = function (title, sub) {
     return '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px">'
-      + '<div><div style="display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;background:rgba(0,194,224,.12);color:#00c2e0;border:1px solid rgba(0,194,224,.2);margin-bottom:8px"><i class="ti ti-robot"></i> Evidence Copilot · Advisory</div>'
+      + '<div><div style="display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;background:rgba(0,194,224,.12);color:#00c2e0;border:1px solid rgba(0,194,224,.2);margin-bottom:8px"><i class="ti ti-sparkles"></i> Advisor Copilot</div>'
       + '<h2 style="font-size:20px;font-weight:900;margin:0;line-height:1.25">' + esc(title) + '</h2>'
       + (sub ? '<p style="font-size:13px;color:var(--kc-fg-dim);margin-top:5px">' + esc(sub) + '</p>' : '')
       + '</div>'

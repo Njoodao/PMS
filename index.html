@@ -9408,10 +9408,11 @@
       window._covTipInit = true;
       var pop = document.createElement('div');
       pop.id = 'cov-tip-float';
-      pop.style.cssText = 'position:fixed;z-index:99999;max-width:280px;padding:10px 12px;'
+      pop.style.cssText = 'position:fixed;z-index:99999;max-width:340px;padding:12px 14px;'
         + 'background:#0b1930;border:1px solid rgba(30,175,217,.5);border-radius:9px;'
-        + 'box-shadow:0 10px 30px rgba(0,0,0,.5);color:#e8f0fb;font-size:11.5px;line-height:1.5;'
-        + 'font-family:inherit;pointer-events:none;opacity:0;transition:opacity .12s;display:none';
+        + 'box-shadow:0 10px 30px rgba(0,0,0,.5);color:#e8f0fb;font-size:11.5px;line-height:1.55;'
+        + 'font-family:inherit;pointer-events:none;opacity:0;transition:opacity .12s;display:none;'
+        + 'white-space:pre-line;text-align:left';
       document.body.appendChild(pop);
       var show = function (el) {
         var tip = el.getAttribute('data-cov-tip'); if (!tip) return;
@@ -9453,31 +9454,30 @@
       var fnName = (FNS[_kpiArchState.fnKey] && FNS[_kpiArchState.fnKey].name) || _kpiArchState.fnKey;
       var period = _kpiArchPeriod();
       _covTipEnsure();
-      var _covTip = function (label, color, tip) {
-        var safe = String(tip).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        return '<strong class="cov-chip" data-cov-tip="' + safe + '" style="color:' + color + ';cursor:help;border-bottom:1px dotted currentColor">' + label + '</strong>';
-      };
-      var _coverage = 'Coverage › '
-        + _covTip('Leading', '#00c2e0', 'Leading — a forward-looking indicator that predicts future results (e.g. activity volume, pipeline, effort). It moves before the outcome does.') + ' · '
-        + _covTip('Process', '#216AB1', 'Process — measures how efficiently the work is done (e.g. cycle time, throughput, on-time delivery, adherence to the process).') + ' · '
-        + _covTip('Lagging', '#6d5bd0', 'Lagging — an outcome measured after the fact — the actual result (e.g. revenue, renewals, adoption, satisfaction).') + ' · '
-        + _covTip('Health', '#12a17a', 'Health — a quality, risk or stability indicator that guards against problems (e.g. defect rate, uptime, error rate, compliance).');
+      var _tipEsc = function (t) { return String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+      // v81: ONE tooltip — on the word "Coverage" — explaining the whole concept, why it
+      // matters, and the reference. The four type labels are now plain (no per-word tips),
+      // and the per-KPI category badge no longer carries a tip (avoids duplication).
+      var _covExplain = 'Coverage — a strong KPI set is BALANCED across four complementary types, so performance is never judged on a single dimension:\n'
+        + '• Leading: predicts future results (activity, pipeline, effort) — moves before the outcome.\n'
+        + '• Process: how efficiently the work is done (cycle time, throughput, on-time delivery).\n'
+        + '• Lagging: the actual outcome, measured after the fact (revenue, renewals, adoption).\n'
+        + '• Health: quality / risk / stability guardrails (defect rate, uptime, compliance).\n'
+        + '\nWhy it matters: mixing all four gives an early + outcome + quality view and discourages gaming a single metric.\n'
+        + 'Reference: the Balanced Scorecard and the leading-vs-lagging indicator framework.';
+      var _coverage = '<strong class="cov-chip" data-cov-tip="' + _tipEsc(_covExplain) + '" style="cursor:help;border-bottom:1px dotted currentColor;color:var(--text-muted)">Coverage</strong> › '
+        + '<strong style="color:#00c2e0">Leading</strong> · '
+        + '<strong style="color:#216AB1">Process</strong> · '
+        + '<strong style="color:#6d5bd0">Lagging</strong> · '
+        + '<strong style="color:#12a17a">Health</strong>';
       var head = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin:22px 0 12px"><strong style="font-size:14px;color:var(--text-primary)">' + (_kpiArchState.submitted ? 'Submitted set' : 'Generated set') + ' · <span style="color:var(--cyan)">' + fnName + ' · ' + _kpiArchState.level + '</span></strong><span style="font-size:11px;color:var(--text-muted)">' + _coverage + '</span></div>';
       var _locked = !!_kpiArchState.submitted;   // v80: after submission the set is read-only
-      // v80.9: same coverage explanations, now shown as a tooltip ON the category badge itself.
-      var _catTips = {
-        leading: 'Leading — a forward-looking indicator that predicts future results (e.g. activity volume, pipeline, effort). It moves before the outcome does.',
-        process: 'Process — measures how efficiently the work is done (e.g. cycle time, throughput, on-time delivery, adherence to the process).',
-        lagging: 'Lagging — an outcome measured after the fact — the actual result (e.g. revenue, renewals, adoption, satisfaction).',
-        health: 'Health — a quality, risk or stability indicator that guards against problems (e.g. defect rate, uptime, error rate, compliance).'
-      };
-      var _catTipEsc = function (t) { return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
       var cards = set.map(function (k, i) {
         var catKey = (k.category && _KPI_ARCH_CATS[String(k.category).toLowerCase()]) ? String(k.category).toLowerCase() : 'process';
         var cat = _KPI_ARCH_CATS[catKey] || _KPI_ARCH_CATS.process;
         var stmt = k.edited || k.statement;
         return '<div style="background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 10px 26px -16px rgba(10,31,82,.22))">'
-          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><strong style="font-size:14px;color:var(--text-primary)">' + k.title + '</strong><div style="flex-shrink:0;display:inline-flex;gap:6px;align-items:center">' + (k.score ? '<span style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px;background:rgba(18,161,122,.1);color:#12a17a;border:1px solid rgba(18,161,122,.3)">' + k.score + '/5</span>' : '') + '<span class="cov-chip" data-cov-tip="' + _catTipEsc(_catTips[catKey]) + '" style="font-size:9px;font-weight:800;padding:3px 10px;border-radius:20px;background:' + cat.bg + ';color:' + cat.color + ';border:1px solid ' + cat.color + '33;cursor:help">' + cat.name + '</span></div></div>'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><strong style="font-size:14px;color:var(--text-primary)">' + k.title + '</strong><div style="flex-shrink:0;display:inline-flex;gap:6px;align-items:center">' + (k.score ? '<span class="cov-chip" data-cov-tip="' + _tipEsc('SMART quality score (out of 5) — how well this KPI\'s wording meets Specific · Measurable · Achievable · Relevant · Time-bound, rated by the AI validator.\n\nIt scores the KPI statement, not anyone\'s performance.') + '" style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px;background:rgba(18,161,122,.1);color:#12a17a;border:1px solid rgba(18,161,122,.3);cursor:help">' + k.score + '/5</span>' : '') + '<span style="font-size:9px;font-weight:800;padding:3px 10px;border-radius:20px;background:' + cat.bg + ';color:' + cat.color + ';border:1px solid ' + cat.color + '33">' + cat.name + '</span></div></div>'
           + '<p style="font-size:12.5px;color:var(--text-muted);line-height:1.55;margin:6px 0 12px">' + stmt + (period && stmt.indexOf(period) < 0 ? ' <span style="color:var(--cyan)">· within ' + period + '</span>' : '') + '</p>'
           + '<div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">'
           +   '<div><label style="font-size:10px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Target' + (k.unit || '') + (_locked ? '' : ' — you set this') + '</label><input placeholder="set a target" value="' + String(k.target || '').replace(/"/g, '&quot;') + '"' + (_locked ? ' disabled' : ' oninput="_kpiArchState.set[' + i + '].target=this.value"') + ' style="width:150px;padding:8px 12px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:8px;color:var(--text-primary);font-size:14px;font-weight:700;font-family:inherit;outline:none' + (_locked ? ';opacity:.7' : '') + '"></div>'
@@ -9507,7 +9507,7 @@
           + '<div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap"><i class="ti ti-users" style="color:#9B81BC;font-size:22px"></i>'
           + '<div style="flex:1;min-width:180px"><strong style="font-size:13px;color:var(--text-primary)">Awaiting your 1:1 with the team member</strong>'
           + '<div style="font-size:11px;color:var(--text-muted);margin-top:1px">Saved as a draft. These KPIs will <strong style="color:var(--text-primary)">not go to HC</strong> until you confirm the 1:1 discussion.</div></div>'
-          + '<button onclick="openOneOnOneGate(' + _subRec.id + ')" style="padding:10px 18px;border-radius:9px;border:none;background:linear-gradient(135deg,#7c3aed,#9B81BC);color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px;white-space:nowrap"><i class="ti ti-calendar-event"></i> Complete 1:1 step</button>'
+          + '<button onclick="_open1on1Confirm(' + _subRec.id + ')" style="padding:10px 18px;border-radius:9px;border:none;background:linear-gradient(135deg,#7c3aed,#9B81BC);color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px;white-space:nowrap"><i class="ti ti-circle-check"></i> Complete 1:1 step</button>'
           + '</div></div>';
       } else if (_kpiArchState.submitted) {
         submitBar = '<div style="margin-top:16px;padding:15px 18px;border-radius:12px;background:rgba(18,161,122,.08);border:1px solid rgba(18,161,122,.28);display:flex;align-items:center;gap:12px">'
@@ -16964,24 +16964,28 @@
     // HC approval and the connector-based evaluation read the same way.
     function _commitKpiSubmission(submission, f) {
       var _subLevel = submission.level || 'Entry';
-      var existingRejected = subs.find(function (s) {
-        return s.email === me.email && s.fnKey === submission.fnKey && (s.level || 'Entry') === _subLevel && s.status === 'rejected' && !s.superseded;
+      // v81: supersede ANY prior not-yet-approved submission for the same
+      // manager + function + level (rejected · awaiting_1on1 · pending) — so a
+      // re-submission never leaves a DUPLICATE card in the HC list. (Approved sets
+      // are left intact — they feed evaluations.) Fixes the awaiting_1on1 + pending
+      // duplicate that appeared when a set was re-submitted.
+      subs.forEach(function (s) {
+        if (!s.superseded
+            && s.email === me.email
+            && s.fnKey === submission.fnKey
+            && (s.level || 'Entry') === _subLevel
+            && (s.status === 'rejected' || s.status === 'awaiting_1on1' || s.status === 'pending')) {
+          s.superseded = true;
+          s.supersededBy = submission.id;
+          s.supersededAt = new Date().toISOString();
+        }
       });
-      if (existingRejected) {
-        existingRejected.superseded = true;
-        existingRejected.supersededBy = submission.id;
-        existingRejected.supersededAt = new Date().toISOString();
-      }
       subs.push(submission);
       _saveSubs(); // persist to localStorage immediately
-      // v79: HC is notified ONLY when the submission actually enters review
-      // (status 'pending'). While it is gated behind the manager's 1:1
-      // ('awaiting_1on1'), no HC email fires — that is sent by peConfirm1on1.
-      if (submission.status === 'pending') {
-        try {
-          sendEmail({ fnKey: submission.fnKey, fnName: submission.fnName, email: me.email, name: me.name, dept: (f && f.dept) || submission.dept, ts: submission.ts, selKPIs: submission.selKPIs });
-        } catch (e) { console.warn('[KPI submit] email failed:', e); }
-      }
+      // v81: the HC KPI-submission email is sent ONLY by peConfirm1on1 — i.e. AFTER the
+      // manager confirms the 1:1. No email fires at submit time (avoids the duplicate
+      // where HC got one at submit AND one after the 1:1). The 1:1 gate is mandatory,
+      // so every submission reaches HC via that single confirmed path.
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -17060,6 +17064,7 @@
       ov.innerHTML = '<div style="width:100%;max-width:520px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:18px;overflow:hidden;box-shadow:0 30px 80px -20px rgba(10,31,82,.55)">'
         // header
         + '<div style="padding:22px 24px;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 60%,#060f2a));color:var(--brand-on-primary,#fff);position:relative">'
+        +   '<button type="button" onclick="document.getElementById(\'kabi-1on1-modal\').style.display=\'none\'" title="Close" style="position:absolute;top:14px;right:14px;width:30px;height:30px;border:none;border-radius:9px;background:rgba(255,255,255,.16);color:var(--brand-on-primary,#fff);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;font-family:inherit">&times;</button>'
         +   '<div style="display:inline-flex;align-items:center;gap:6px;font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.16);padding:4px 10px;border-radius:20px;margin-bottom:10px">Final step before HC review</div>'
         +   '<div style="font-size:20px;font-weight:900;line-height:1.2">Hold your 1:1 with ' + escapeHtml(whoLabel) + '</div>'
         +   '<div style="font-size:12.5px;opacity:.85;margin-top:6px;line-height:1.5">You\'ve drafted the KPIs for <strong>' + escapeHtml(s.fnName || '') + (s.level ? ' · ' + escapeHtml(s.level) : '') + '</strong>. Before HC reviews them, discuss and align with your team member 1:1 — this is what makes the evaluation fair and shared.</div>'
@@ -17078,13 +17083,9 @@
         +     '<div style="flex:1"><div style="font-size:13px;font-weight:800;color:var(--text-primary)">Schedule the 1:1</div><div style="font-size:11px;color:var(--text-muted)">Opens Outlook with the invite pre-filled' + (repNames.length ? ' for ' + escapeHtml(whoLabel) : '') + '.</div></div>'
         +     '<a href="' + outlookUrl + '" target="_blank" rel="noopener" style="padding:9px 15px;border-radius:9px;background:#0F6CBD;color:#fff;font-size:12px;font-weight:800;text-decoration:none;font-family:inherit;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;flex-shrink:0"><i class="ti ti-calendar-event"></i> Outlook meeting</a>'
         +   '</div>'
-        // actions
-        +   '<div style="display:flex;gap:9px;justify-content:flex-end;margin-top:22px">'
-        +     '<button type="button" onclick="document.getElementById(\'kabi-1on1-modal\').style.display=\'none\'" style="padding:10px 16px;border-radius:9px;border:1px solid var(--glass-border,#e5eaf3);background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">' + (done ? 'Close' : 'Do it later') + '</button>'
-        +     (done
-              ? '<div style="padding:10px 16px;border-radius:9px;background:rgba(18,161,122,.1);border:1px solid rgba(18,161,122,.3);color:#12a17a;font-size:12px;font-weight:800;display:inline-flex;align-items:center;gap:6px"><i class="ti ti-circle-check ti-green"></i> Sent to HC review</div>'
-              : '<button type="button" onclick="_open1on1Confirm(' + s.id + ')" style="padding:10px 18px;border-radius:9px;border:none;background:linear-gradient(135deg,#7c3aed,#9B81BC);color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px"><i class="ti ti-calendar-check"></i> Complete 1:1 step</button>')
-        +   '</div>'
+        // v81: the ONLY action here is scheduling via Outlook (above). Confirming the 1:1
+        // was held moved OUT to the page's "Complete 1:1 step" button → confirm dialog.
+        +   (done ? '<div style="margin-top:20px;display:flex;justify-content:flex-end"><div style="padding:10px 16px;border-radius:9px;background:rgba(18,161,122,.1);border:1px solid rgba(18,161,122,.3);color:#12a17a;font-size:12px;font-weight:800;display:inline-flex;align-items:center;gap:6px"><i class="ti ti-circle-check ti-green"></i> Sent to HC review</div></div>' : '')
         + '</div>'
         + '</div>';
       ov.style.display = 'flex';
@@ -17103,7 +17104,7 @@
       ov.innerHTML = '<div style="width:100%;max-width:440px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:16px;overflow:hidden;box-shadow:0 30px 80px -20px rgba(10,31,82,.55)">'
         + '<div style="padding:20px 22px 0"><div style="display:flex;align-items:center;gap:11px;margin-bottom:12px"><div style="width:40px;height:40px;border-radius:12px;background:rgba(18,161,122,.12);color:#12a17a;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0"><i class="ti ti-users"></i></div>'
         +   '<div style="font-size:16px;font-weight:900;color:var(--text-primary)">Confirm the 1:1 discussion</div></div>'
-        +   '<div style="font-size:13px;color:var(--text-primary);line-height:1.6;padding:13px 15px;border-radius:11px;background:rgba(127,140,170,.06);border:1px solid var(--glass-border,#e5eaf3)"><i class="ti ti-quote" style="color:#12a17a"></i> I have held the 1:1 with <strong>' + escapeHtml(whoLabel) + '</strong> and we discussed &amp; aligned on these KPIs.</div>'
+        +   '<div style="font-size:13px;color:var(--text-primary);line-height:1.6;padding:13px 15px;border-radius:11px;background:rgba(127,140,170,.06);border:1px solid var(--glass-border,#e5eaf3)"><i class="ti ti-circle-check ti-green" style="color:#12a17a"></i> I have held the 1:1 with <strong>' + escapeHtml(whoLabel) + '</strong> and we discussed &amp; aligned on these KPIs.</div>'
         +   '<div style="font-size:11.5px;color:var(--text-muted);line-height:1.5;margin-top:12px">Confirming sends these KPIs to <strong>HC for review &amp; approval</strong>. This can’t be undone from here.</div>'
         + '</div>'
         + '<div style="display:flex;gap:9px;justify-content:flex-end;padding:18px 22px 20px">'
@@ -18388,10 +18389,10 @@
           + '#app .hc-side-nav .hc-side-item:not(.on){ color:' + _onDim + ' !important; }'
           + '#app .hc-side-nav .hc-side-item:not(.on):hover{ color:' + _onAuto + ' !important; background:' + (_bpLum > 0.6 ? 'rgba(15,23,42,.06)' : 'rgba(255,255,255,.06)') + ' !important; }'
           + (_bpLum > 0.6 ? '#app .hc-side-nav .hc-side-item.on{ color:' + _onAuto + ' !important; }#app .hc-side-nav .hc-side-head{ color:' + _onDim + ' !important; }#app .hc-side-nav .hc-side-section{ color:' + _onDim + ' !important; }' : '')
-          // Sidebar ICON colour — v80.9: WHITE or BLACK only (no 'colored' palette).
-          // Default white; any non-'black' value (incl. legacy 'colored') → white.
-          // Applied to every icon incl. the active item, so all users see one flat colour.
-          + ('#app .hc-side-nav .hc-side-item .hc-side-icon, #app .hc-side-nav .hc-side-item .hc-side-icon *{ color:' + (b.sidebarIconColor === 'black' ? '#0f172a' : '#ffffff') + ' !important; }')
+          // Sidebar ICON colour — v81: no setting; auto-contrasts with the brand-primary
+          // sidebar (same _onPrimaryAuto as the WORKSPACE label). Light brand → dark icons,
+          // dark brand → light icons. Applied to every icon incl. the active item.
+          + ('#app .hc-side-nav .hc-side-item .hc-side-icon, #app .hc-side-nav .hc-side-item .hc-side-icon *{ color:' + _onPrimaryAuto + ' !important; }')
           // theme background glow → brand accent
           + 'body.light-mode::before { background: radial-gradient(ellipse 80% 60% at 50% -20%, ' + accRgbaWeak + ' 0%, transparent 65%), radial-gradient(ellipse 60% 40% at 100% 100%, ' + accRgbaFaint + ' 0%, transparent 60%) !important; }';
         try { document.title = b.productName + ' — ' + b.companyName; } catch (e) {}
@@ -18899,13 +18900,9 @@
           <input style="${_inp};margin-bottom:12px" value="${(b.productName || '').replace(/"/g, '&quot;')}" oninput="_brandDraftSetQuiet('productName',this.value);_brandLivePreviewRefresh()">
           <label style="${_lab}">Letter mark (used when no logo)</label>
           <input maxlength="2" style="${_inp};width:70px;text-align:center;font-weight:800" value="${(b.logoText || '').replace(/"/g, '&quot;')}" oninput="_brandDraftSetQuiet('logoText',this.value);_brandLivePreviewRefresh()">
-          <div style="border-top:1px solid var(--glass-border,rgba(127,140,170,.16));margin:16px 0 12px"></div>
-          <label style="${_lab}">Sidebar icon colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly</span></label>
-          <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:8px;overflow:hidden;margin-bottom:14px">
-            ${[['white','White'],['black','Black']].map(function(o){ var on=(b.sidebarIconColor==='black'?'black':'white')===o[0]; return '<button onclick="_brandDraftPatch({sidebarIconColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
-          </div>
-          <!-- v81: 'Employee card text colour' control removed — the employee card is now a
-               fixed light card (not customizable), so there is nothing to configure here. -->
+          <!-- v81: 'Sidebar icon colour' + 'Employee card text colour' controls removed —
+               sidebar icons auto-contrast with the brand, and the employee card is a fixed
+               light card. Nothing to configure here. -->
         </div>
         <!-- Logo -->
         <div style="${_card};margin-bottom:0">
@@ -19483,6 +19480,7 @@
         } else if (s.status === 'awaiting_1on1') {
           actionsHtml = '<div style="background:rgba(155,129,188,.07);border:1px solid rgba(155,129,188,.28);border-radius:8px;padding:12px 16px;font-size:12.5px;color:var(--text-primary);line-height:1.5">'
             + '<i class="ti ti-users" style="color:#9B81BC"></i> <strong>Awaiting the manager\'s 1:1.</strong> ' + (s.name || 'The manager') + ' must discuss these KPIs with the employee before they enter review. It will appear under <strong>Pending</strong> once the 1:1 is confirmed.'
+            + '<div style="margin-top:10px"><button onclick="event.stopPropagation();peRemind1on1(' + s.id + ')" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(155,129,188,.4);background:rgba(155,129,188,.12);color:#9B81BC;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px"><i class="ti ti-bell"></i> Send reminder</button></div>'
             + '</div>' + superAdminActions;
         } else if (s.status === 'approved') {
           actionsHtml = '<div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(34,197,94,.08);border:1px solid rgba(74,222,128,.25);border-radius:8px;font-size:13px;font-weight:700;color:#4ade80">'
@@ -19519,6 +19517,22 @@
         state._searchWasFocused = false;
       }
     }
+
+    // v81: HC nudges the manager to hold + confirm their pending 1:1 (Awaiting 1:1 stage).
+    window.peRemind1on1 = function (subId) {
+      var s = subs.find(function (x) { return String(x.id) === String(subId); });
+      if (!s) { toast('Submission not found', 'err'); return; }
+      if (s.status !== 'awaiting_1on1') { toast('This submission is no longer awaiting a 1:1', 'err'); return; }
+      var who = s.name || 'the manager';
+      var reps = (typeof _sub1on1Reports === 'function') ? _sub1on1Reports(s) : [];
+      var repNames = reps.map(function (e) { return e.name; }).filter(Boolean).join(', ');
+      var body = 'Reminder: your KPIs for ' + (s.fnName || '') + (s.level ? ' · ' + s.level : '') + ' are waiting on your 1:1'
+        + (repNames ? ' with ' + repNames : '') + '. Please hold the 1:1, then click “Complete 1:1 step” to send them to HC for review & approval.';
+      try { addNotification(s.email, { type: 'note', fromName: 'Human Capital', fromEmail: (typeof HC_MAIL !== 'undefined' ? HC_MAIL : 'hc@kabi.ai'), title: '<i class="ti ti-bell"></i> Reminder: complete your 1:1', body: body }); } catch (e) {}
+      try { if (typeof peSendEmail === 'function') peSendEmail(s.email, 'Reminder: complete your 1:1 for ' + (s.fnName || 'your KPIs'), body, (typeof EJ_TPL_EVAL !== 'undefined' ? EJ_TPL_EVAL : undefined)); } catch (e) {}
+      try { if (typeof _updateNotifBadge === 'function') _updateNotifBadge(); } catch (e) {}
+      toast('<i class="ti ti-bell"></i> Reminder sent to ' + who, 'ok');
+    };
 
     // v67.35: Expand/collapse toggle for a single submission card.
     // Uses window.__subsState.expanded (Set) so state survives re-renders
