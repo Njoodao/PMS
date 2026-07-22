@@ -111,11 +111,15 @@
       + '<div style="margin-top:16px;text-align:right"><button onclick="kabiCloseEvalCopilot()" style="padding:9px 18px;border-radius:8px;border:none;background:#00c2e0;color:#03122e;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Got it</button></div>');
   }
 
-  function errNotice(msg) {
+  function errNotice(msg, allowSubmitAnyway) {
     openModal(HEADER('Could not complete the analysis', '')
       + '<div style="padding:18px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:10px;font-size:14px;line-height:1.65;color:#dc2626">'
       + '<i class="ti ti-alert-triangle"></i> ' + esc(msg) + '</div>'
-      + '<div style="margin-top:16px;text-align:right"><button onclick="kabiCloseEvalCopilot()" style="padding:9px 18px;border-radius:8px;border:1px solid var(--kc-border);background:transparent;color:var(--kc-fg-mid);font-size:13px;cursor:pointer;font-family:inherit">Close</button></div>');
+      + '<div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">'
+      + '<button onclick="kabiCloseEvalCopilot()" style="padding:9px 18px;border-radius:8px;border:1px solid var(--kc-border);background:transparent;color:var(--kc-fg-mid);font-size:13px;cursor:pointer;font-family:inherit">Close</button>'
+      // If this ran as a pre-submit gate and the AI failed, don't hard-block submission.
+      + (allowSubmitAnyway ? '<button onclick="var f=window._kabiPreSubmitConfirm;window._kabiPreSubmitConfirm=null;kabiCloseEvalCopilot();if(f)f();" style="padding:9px 18px;border-radius:8px;border:none;background:linear-gradient(135deg,#12a17a,#0d9960);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Submit anyway</button>' : '')
+      + '</div>');
   }
 
   // ── colour + label helpers for verdict chips (semantic colours work on both themes) ──
@@ -176,7 +180,17 @@
     h += listBlock('Data gaps', r.data_gaps, '#d97706', 'ti-database-off');
     if (r.portfolio_note) h += noteBlock('Note', r.portfolio_note);
     h += auditFooter(r, payload);
+    // Pre-submission gate: the evaluator reviews this advisory BEFORE submitting.
+    if (payload.preSubmit) h += preSubmitActions();
     openModal(h);
+  }
+
+  // Action row shown when the review runs as a pre-submission step: revise or submit.
+  function preSubmitActions() {
+    return '<div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--kc-panel-border);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">'
+      + '<button onclick="kabiCloseEvalCopilot()" style="padding:10px 18px;border-radius:9px;border:1px solid var(--kc-border);background:transparent;color:var(--kc-fg-mid);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-arrow-left"></i> Back to edit</button>'
+      + '<button onclick="var f=window._kabiPreSubmitConfirm;window._kabiPreSubmitConfirm=null;kabiCloseEvalCopilot();if(f)f();" style="padding:10px 20px;border-radius:9px;border:none;background:linear-gradient(135deg,#12a17a,#0d9960);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit"><i class="ti ti-circle-check"></i> Confirm &amp; Submit</button>'
+      + '</div>';
   }
 
   // ── render an ORG / DEPARTMENT result ──
@@ -243,7 +257,7 @@
       if (payload.mode === 'MONITOR_ORG' || payload.mode === 'MONITOR_DEPARTMENT') renderOrg(r, payload);
       else renderIndividual(r, payload);
     } catch (e) {
-      errNotice(String(e && e.message ? e.message : e));
+      errNotice(String(e && e.message ? e.message : e), !!payload.preSubmit);
     }
   };
 
