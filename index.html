@@ -2996,7 +2996,9 @@
     .hc-side-header-txt {
       font-size: 12px;
       font-weight: 800;
-      color: #ffffff;   /* v80.9: always white — sidebar is navy in both themes */
+      /* v81: auto-contrast with the (brand-primary) sidebar — light brand → dark ink,
+         dark brand → light ink. --brand-on-primary is computed from primary luminance. */
+      color: var(--brand-on-primary, #ffffff);
       letter-spacing: .3px;
       text-transform: uppercase;
     }
@@ -3048,7 +3050,7 @@
       border-bottom-color: rgba(7, 17, 44, .08) !important;
     }
     body.light-mode .hc-side-header-txt {
-      color: #ffffff !important;
+      color: var(--brand-on-primary, #ffffff) !important;
     }
 
     /* panels */
@@ -10007,7 +10009,7 @@
         const _bpHex = (((window.Brand && Brand.get) ? Brand.get().primary : '') || '#0a1f52').trim() || '#0a1f52';
         const _bpLight = _kabiHexLum(_bpHex) > 0.6;
         // v77: Super Admin can override the card text colour (auto = by luminance · white · black).
-        const _cardTextPref = (((window.Brand && Brand.get) ? Brand.get().cardTextColor : '') || 'white');
+        const _cardTextPref = (((window.Brand && Brand.get) ? Brand.get().cardTextColor : '') || 'auto');
         const _lightText = (_cardTextPref === 'white') ? true : (_cardTextPref === 'black') ? false : !_bpLight;
         const _ct    = _lightText ? '#ffffff' : '#0f172a';
         const _ctDim = _lightText ? 'rgba(255,255,255,.62)' : 'rgba(15,23,42,.60)';
@@ -18228,9 +18230,10 @@
       // v77: sidebar icon colour — 'colored' (brand palette) · 'black' · 'white'
       sidebarIconColor: 'white',   // v80.9: white or black only (no 'colored')
       // v77: employee-card text colour — 'auto' (by brand luminance) · 'white' · 'black'
-      // v80.5: default WHITE — the hero card is always a dark brand gradient, so white
-      // reads correctly out of the box (was 'auto', which could pick black on lighter brands).
-      cardTextColor: 'white',
+      // v81: default AUTO — the name/text auto-contrasts with the brand-primary card:
+      // dark brand → light font, light brand → dark font. (The name is a <div> with an
+      // inline !important colour, so the global light-mode heading rule can't darken it.)
+      cardTextColor: 'auto',
       // v77: white-label the app footer
       footerText: 'Performance Management System',
       footerLinkText: 'kabi.ai',
@@ -18717,7 +18720,7 @@
       var iconCol = sic === 'black' ? '#0f172a' : '#ffffff';
       var palette = ['#62c6d3', '#3faa7e', '#1d57a3', '#9b81bc'];
       // card text colour
-      var ctc = b.cardTextColor || 'white';
+      var ctc = b.cardTextColor || 'auto';
       var cardLight = ctc === 'white' ? true : ctc === 'black' ? false : (lum <= 0.6);
       var cardInk = cardLight ? '#ffffff' : '#0f172a';
       var cardDim = cardLight ? 'rgba(255,255,255,.72)' : 'rgba(15,23,42,.66)';
@@ -18905,7 +18908,7 @@
           </div>
           <label style="${_lab}">Employee card text colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly</span></label>
           <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:8px;overflow:hidden">
-            ${[['white','White'],['black','Black'],['auto','Auto']].map(function(o){ var on=(b.cardTextColor||'white')===o[0]; return '<button onclick="_brandDraftPatch({cardTextColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
+            ${[['auto','Auto'],['white','White'],['black','Black']].map(function(o){ var on=(b.cardTextColor||'auto')===o[0]; return '<button onclick="_brandDraftPatch({cardTextColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
           </div>
         </div>
         <!-- Logo -->
