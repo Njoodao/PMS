@@ -7040,7 +7040,7 @@
         case 'edit_request':
           badge=_B('SCORE EDIT REQUEST','#F59E0B','pencil');
           body='<p>Dear HC Team,</p><p style="margin:8px 0">A manager has requested to modify an evaluation score:</p>'+_DT('Employee Details',[['Employee',d.employeeName],['Title',d.employeeTitle||''],['Level',d.level||''],['Department',d.dept||''],['Manager (Evaluator)',d.managerName]])+(d.oldScore&&d.newScore?_VS(d.oldScore,d.oldClass,d.newScore,d.newClass):'')+_R('KPI Modified',d.kpiName||'')+_R('KPI Score Change',d.kpiChange||'')+_BX('#F59E0B','Reason for Edit:',d.message,'#fffbeb');
-          tip='Review in KABi Portal \u2192 Edit Requests'; break;
+          tip='Review in KABi Portal \u2192 Requests'; break;
         case 'edit_approved':
           badge=_B('EDIT APPROVED','#3FAA7E','circle-check');
           body='<p>Dear '+toName+',</p><p style="margin:8px 0">Your evaluation edit request has been <strong style="color:#3FAA7E">approved</strong>.</p>'+_R('Employee',d.employeeName||'')+(d.oldScore&&d.newScore?_VS(d.oldScore,d.oldClass,d.newScore,d.newClass):'')+'<p>The evaluation has been updated in the system.</p>'; break;
@@ -7315,7 +7315,22 @@
     // ── dropdown / popover toggles ──
     function toggleUserMenu(e) { if (e) e.stopPropagation(); closeNotifPop(); var m = document.getElementById('topbar-user-menu'); if (m) m.classList.toggle('open'); }
     function closeUserMenu() { var m = document.getElementById('topbar-user-menu'); if (m) m.classList.remove('open'); }
-    function toggleNotifPop(e) { if (e) e.stopPropagation(); closeUserMenu(); var p = document.getElementById('topbar-notif-pop'); if (!p) return; if (p.classList.contains('open')) { p.classList.remove('open'); return; } _buildNotifPop(); p.classList.add('open'); }
+    function toggleNotifPop(e) {
+      if (e) e.stopPropagation(); closeUserMenu();
+      var p = document.getElementById('topbar-notif-pop'); if (!p) return;
+      if (p.classList.contains('open')) { p.classList.remove('open'); return; }
+      _buildNotifPop();               // show current items FIRST (so the user sees them)
+      p.classList.add('open');
+      // v80.6: opening the bell = the user has seen their notifications → clear the badge.
+      // Mark this user's per-user notifications read (super-admin pending COUNTS are live
+      // and recompute on their own, so they are unaffected). The full history stays in the
+      // Notification Center. Done after build so the popover still lists what was unread.
+      try {
+        var mine = (typeof NOTIFICATIONS !== 'undefined' && me && NOTIFICATIONS[me.email]) ? NOTIFICATIONS[me.email] : [];
+        mine.forEach(function (n) { if (n && !n.read) n.read = true; });
+        if (typeof _updateNotifBadge === 'function') _updateNotifBadge();
+      } catch (e2) {}
+    }
     function closeNotifPop() { var p = document.getElementById('topbar-notif-pop'); if (p) p.classList.remove('open'); }
     document.addEventListener('click', function () { closeUserMenu(); closeNotifPop(); });
     // ── notifications (lightweight, role-aware) ──
@@ -7326,7 +7341,7 @@
           var pe = (typeof PE_EDIT_REQUESTS !== 'undefined') ? PE_EDIT_REQUESTS.filter(function (r) { return r.status === 'pending'; }).length : 0;
           var dg = (typeof PE_DELEGATIONS !== 'undefined') ? Object.values(PE_DELEGATIONS).filter(function (d) { return d && d.status === 'submitted'; }).length : 0;
           var ini = (typeof INITIATIVES !== 'undefined') ? INITIATIVES.filter(function (r) { return r.status === 'pending_hc'; }).length : 0;
-          if (pe) items.push({ icon: 'ti-pencil', t: pe + ' edit request' + (pe > 1 ? 's' : '') + ' pending', s: 'Performance → Edit Requests' });
+          if (pe) items.push({ icon: 'ti-pencil', t: pe + ' edit request' + (pe > 1 ? 's' : '') + ' pending', s: 'Performance → Requests' });
           if (dg) items.push({ icon: 'ti-users', t: dg + ' delegation proposal' + (dg > 1 ? 's' : ''), s: 'Weights → Delegation' });
           if (ini) items.push({ icon: 'ti-bulb', t: ini + ' initiative' + (ini > 1 ? 's' : '') + ' to review', s: 'Performance → Initiatives' });
         }
@@ -9019,6 +9034,11 @@
       const u = me && USERS[me.email];
       const isMgr = u && u.hasManagerPortal;
       const isCEO = u && u.isCEO;
+      // v80.6: can this user EVALUATE anyone this cycle? True if they have direct reports
+      // OR someone was delegated to them by HC. Evaluating is INHERENT to managing / being
+      // a delegated evaluator — it is NOT gated by the KPI-set grant (kpiAccess). This also
+      // makes a delegate see "Evaluate Team" right after HC approves the delegation.
+      const _canEval = (typeof peGetEvaluatees === 'function' && me) ? (peGetEvaluatees(me.email).length > 0) : false;
 
       // Header
       const hdr = document.getElementById('emp-header');
@@ -9091,7 +9111,12 @@
         if (u.kpiAccess) {
           // v80.3: 'KPI Framework' removed — it duplicated KPI Architect (which now
           // fully sets/edits/validates/submits KPIs) and 'Where Are You?' (the map).
+          // KPI Architect stays gated behind the KPI-set grant (kpiAccess).
           navItems.push({ key: 'kpi_architect', icon: sideIcons.kpi, label: 'KPI Architect' });
+        }
+        // v80.6: Evaluate Team is NOT gated by kpiAccess — any manager (or delegated
+        // evaluator) with someone to evaluate gets it. Fixes the delegate not seeing it.
+        if (_canEval) {
           navItems.push({ key: 'eval', icon: sideIcons.eval, label: 'Evaluate Team' });
         }
         // Dept Insights / Team Tracker — only if enabled for this manager
@@ -9109,11 +9134,15 @@
       // (Previously staff had no sidebar and were rendered straight to dashboard.)
       if (!isMgr && !isCEO) {
         navItems.push({ key: 'whereami', icon: sideIcons.map, label: 'Where Are You?' });
+        // v80.6: a non-manager who was delegated an evaluation by HC still needs to evaluate.
+        if (_canEval) navItems.push({ key: 'eval', icon: sideIcons.eval, label: 'Evaluate Team' });
       }
       // v78: Notification Center + My Profile for EVERY user (bottom of the sidebar).
       navItems.push({ key: 'notifications', icon: sideIcons.notif, label: 'Notification Center' });
       navItems.push({ key: 'profile', icon: sideIcons.profile, label: 'My Profile' });
-      if (!isMgr && !isCEO && ['dashboard', 'whereami', 'notifications', 'profile'].indexOf(empSideTab) < 0) empSideTab = 'dashboard';
+      var _nonMgrAllowed = ['dashboard', 'whereami', 'notifications', 'profile'];
+      if (_canEval) _nonMgrAllowed.push('eval');
+      if (!isMgr && !isCEO && _nonMgrAllowed.indexOf(empSideTab) < 0) empSideTab = 'dashboard';
 
       container.innerHTML = `
         <div class="hc-side-layout">
@@ -10556,9 +10585,9 @@
           'Employee to be evaluated: ' + ev.name + ' (' + ev.email + ')\n' +
           'Proposed evaluator: ' + er.name + ' (' + er.email + ')\n' +
           'Department: ' + (ev.dept || '—') + '\n\n' +
-          'Approve or reject it in the portal → People & Access → Edit Requests.', EJ_TPL_EVAL);
+          'Approve or reject it in the portal → People & Access → Requests.', EJ_TPL_EVAL);
       } catch (e) {}
-      _notifyHcSuperAdmins({ type: 'note', fromName: me.name, fromEmail: me.email, body: 'Delegation request: let ' + er.name + ' evaluate ' + ev.name + '. Awaiting your approval (Edit Requests).' });
+      _notifyHcSuperAdmins({ type: 'note', fromName: me.name, fromEmail: me.email, body: 'Delegation request: let ' + er.name + ' evaluate ' + ev.name + '. Awaiting your approval (Requests).' });
       toast('<i class="ti ti-mail"></i> Delegation request sent to HC for approval', 'ok');
       empRenderTabContent();
     }
@@ -17958,7 +17987,7 @@
           <div class="dash-box-stats">
             <div class="dash-box-stat"><div class="dash-box-stat-v">${evalsCnt}</div><div class="dash-box-stat-l">Evaluations</div></div>
             <div class="dash-box-stat"><div class="dash-box-stat-v" style="text-transform:capitalize">${freq.replace('-',' ')}</div><div class="dash-box-stat-l">Frequency</div></div>
-            <div class="dash-box-stat"><div class="dash-box-stat-v" style="color:${pendEdits ? '#fbbf24' : 'var(--cyan)'}">${pendEdits}</div><div class="dash-box-stat-l">Edit Requests</div></div>
+            <div class="dash-box-stat"><div class="dash-box-stat-v" style="color:${pendEdits ? '#fbbf24' : 'var(--cyan)'}">${pendEdits}</div><div class="dash-box-stat-l">Requests</div></div>
           </div>
         </div>
 
@@ -23618,7 +23647,7 @@
         ['quarters', '<i class=\"ti ti-calendar\" style=\"color:rgba(29,130,200,.85)\"></i>', 'Evaluation Cycles'],
         ['inviews', '<i class=\"ti ti-brain\" style=\"color:rgba(155,129,188,.85)\"></i>', 'INVIEWS Control'],
         ['evals', '<i class=\"ti ti-clipboard-list\" style=\"color:rgba(14,179,174,.85)\"></i>', 'Evaluations & Export'],
-        ['editreqs', '<i class=\"ti ti-pencil\" style=\"color:rgba(245,158,11,.85)\"></i>', 'Edit Requests', pendingEdits],
+        ['editreqs', '<i class=\"ti ti-pencil\" style=\"color:rgba(245,158,11,.85)\"></i>', 'Requests', pendingEdits],
         // ── Framework & Data ──
         ['settings', '<i class=\"ti ti-scale\" style=\"color:rgba(103,94,170,.85)\"></i>', 'Weights'],
         ['initiatives', '<i class=\"ti ti-bulb\" style=\"color:rgba(245,158,11,.85)\"></i>', 'Initiatives', pendingInits],
@@ -30604,7 +30633,7 @@
       var d = peGetDelegationById(delId); if (!d || !d.pendingEval || d.pendingEval.reviewStatus !== 'pending_delegator') return;
       d.pendingEval.reviewStatus = 'pending_hc_final'; d.pendingEval.delegatorApprovedAt = new Date().toISOString();
       _saveEvalDelegations();
-      try { peSendEmail(HC_MAIL, 'Delegated evaluation — final approval needed — ' + d.evaluateeName, d.delegatorName + ' approved ' + d.evaluatorName + '’s evaluation of ' + d.evaluateeName + '. Please give final approval in the portal → People & Access → Edit Requests.', EJ_TPL_EVAL); } catch (e) {}
+      try { peSendEmail(HC_MAIL, 'Delegated evaluation — final approval needed — ' + d.evaluateeName, d.delegatorName + ' approved ' + d.evaluatorName + '’s evaluation of ' + d.evaluateeName + '. Please give final approval in the portal → People & Access → Requests.', EJ_TPL_EVAL); } catch (e) {}
       _notifyHcSuperAdmins({ type: 'note', fromName: d.delegatorName, fromEmail: d.delegatorEmail, body: 'Delegated evaluation of ' + d.evaluateeName + ' approved by ' + d.delegatorName + ' — awaiting your final approval.' });
       addNotification(d.evaluatorEmail, { type: 'note', fromName: d.delegatorName, fromEmail: d.delegatorEmail, body: 'Your evaluation of ' + d.evaluateeName + ' was approved by ' + d.delegatorName + ' and sent to HC for final approval.' });
       toast('<i class="ti ti-mail"></i> Approved — sent to HC for final approval', 'ok');
@@ -30712,8 +30741,8 @@
 
       el.innerHTML = peTabHead(
         '<i class="ti ti-pencil"></i>',
-        'Edit Requests',
-        'Managers request post-submission changes to evaluations here. Approve or reject each one.',
+        'Requests',
+        'Managers’ requests — post-submission evaluation edits and evaluation-delegation approvals — are handled here. Approve or reject each one.',
         `<span class="pe-tab-head-chip" style="background:${pending.length ? 'rgba(194,130,11,.14)' : 'rgba(18,161,122,.12)'};border:1px solid ${pending.length ? 'rgba(194,130,11,.32)' : 'rgba(18,161,122,.3)'};color:${pending.length ? '#c2820b' : '#12a17a'}"><span style="width:7px;height:7px;border-radius:50%;background:${pending.length ? '#c2820b' : '#12a17a'}"></span>${pending.length} Pending · ${resolved.length} Resolved</span>`,
         '#c2820b'
       ) + `
@@ -37542,9 +37571,9 @@
         var maxP = loads.slice().sort(function (a, b) { return b.pdopen - a.pdopen; })[0];
         if (maxP && maxP.pdopen >= 8 && (!maxJ || maxP.emp.id !== maxJ.emp.id)) out.push({ type: 'workload', severity: 'info', icon: '<i class="ti ti-briefcase"></i>', empId: maxP.emp.id, title: 'Large open pipeline — ' + maxP.emp.name, desc: maxP.emp.name + ' is managing ' + maxP.pdopen + ' open deals. Make sure priorities are clear.', action: 'Review with AI' });
 
-        // 5) DATA GAP — reports with no connected evidence
-        var noEv = directs.filter(function (emp) { var e = ev(emp); return !e.sources || e.sources.length === 0; });
-        if (noEv.length) out.push({ type: 'data_gap', severity: 'info', icon: '<i class="ti ti-database-off"></i>', title: 'Connect data for ' + noEv.length + ' team member' + (noEv.length > 1 ? 's' : ''), desc: 'No system/file evidence for: ' + noEv.map(function (e) { return e.name; }).slice(0, 4).join(', ') + (noEv.length > 4 ? '…' : '') + '. Their reviews rely on manual input until a connector is linked.', action: 'Connectors' });
+        // 5) DATA GAP — REMOVED (v80.6): connecting data sources is controlled by HC,
+        // not managers, so a "Connect data for N team members" nudge must NOT surface to
+        // managers/users. (HC sees connector status in Settings → Connectors.)
 
         // 6) PENDING EVALUATIONS
         if (openQ) {
