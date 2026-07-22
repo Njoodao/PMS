@@ -2996,7 +2996,7 @@
     .hc-side-header-txt {
       font-size: 12px;
       font-weight: 800;
-      color: var(--cyan);
+      color: #ffffff;   /* v80.9: always white — sidebar is navy in both themes */
       letter-spacing: .3px;
       text-transform: uppercase;
     }
@@ -3048,7 +3048,7 @@
       border-bottom-color: rgba(7, 17, 44, .08) !important;
     }
     body.light-mode .hc-side-header-txt {
-      color: #0891b2 !important;
+      color: #ffffff !important;
     }
 
     /* panels */
@@ -6906,7 +6906,7 @@
 
     const HC_MAIL = 'hc.pm@kabi.ai';
     // v67.11: Portal URL — used in all email CTAs. Configurable via localStorage so HC can change after deploy.
-    const KABI_PORTAL_URL = localStorage.getItem('kabi_portal_url') || 'https://kabi-portal.vercel.app';
+    const KABI_PORTAL_URL = localStorage.getItem('kabi_portal_url') || 'https://njoodao.github.io/PMS/';
     // ═══ EmailJS Configuration ═══
     // Setup: emailjs.com → Create Service → Create 1 Template with {{to_email}}, {{subject}}, {{html_content}}
     const EJ_SVC = localStorage.getItem('kabi_ej_svc') || 'service_f0uujth';
@@ -6999,7 +6999,7 @@
       function _BX(c,title,text,bg){return '<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;border-collapse:separate"><tr><td bgcolor="'+(bg||'#F0F7FD')+'" style="padding:16px 20px;background-color:'+(bg||'#F0F7FD')+';border-left:3px solid '+c+';border-radius:12px;font-size:13px;color:#334155;line-height:1.65;font-family:Calibri,Arial,Helvetica,sans-serif">'+(title?'<div style="font-size:11px;font-weight:700;color:#0A1F52;margin-bottom:6px">'+title+'</div>':'')+'<div>'+(text?_nl2br(text):'\u2014')+'</div></td></tr></table>';}
       // CTA button — v67.11: HARDCODED production URL (works in any email client) + more spacing + rounded
       function _CTA(t, customUrl){
-        var url = customUrl || (typeof KABI_PORTAL_URL !== 'undefined' ? KABI_PORTAL_URL : 'https://kabi-portal.vercel.app');
+        var url = customUrl || (typeof KABI_PORTAL_URL !== 'undefined' ? KABI_PORTAL_URL : 'https://njoodao.github.io/PMS/');
         return '<table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:36px auto 20px;border-collapse:separate"><tr><td align="center" bgcolor="#1D57A3" style="background-color:#1D57A3;border-radius:10px">'
           +'<!--[if mso]>'
           +'<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="'+url+'" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="20%" stroke="f" fillcolor="#1D57A3">'
@@ -9296,7 +9296,7 @@
       var lvOpts = levels.map(function (l) { return '<option value="' + l + '"' + (l === _kpiArchState.level ? ' selected' : '') + '>' + l + '</option>'; }).join('');
       container.innerHTML = ''
         + '<div style="background:linear-gradient(135deg,rgba(0,194,224,.06),rgba(33,106,177,.03));border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:18px 20px;margin-bottom:18px">'
-        +   '<div style="display:flex;align-items:center;gap:9px;margin-bottom:4px"><i class="ti ti-robot" style="color:var(--cyan);font-size:18px"></i><strong style="font-size:15px;color:var(--text-primary)">KPI Architect</strong><span style="font-size:9px;font-weight:800;color:var(--cyan);background:rgba(0,194,224,.12);border:1px solid rgba(0,194,224,.25);padding:2px 8px;border-radius:20px">ADVISORY</span></div>'
+        +   '<div style="display:flex;align-items:center;gap:9px;margin-bottom:4px"><span style="width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--brand-accent,#00c2e0),color-mix(in srgb,var(--brand-accent,#00c2e0) 60%,#1338b0));display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:16px;flex-shrink:0"><i class="ti ti-sparkles"></i></span><strong style="font-size:15px;color:var(--text-primary)">KPI Architect</strong><span style="font-size:9px;font-weight:800;color:var(--cyan);background:rgba(0,194,224,.12);border:1px solid rgba(0,194,224,.25);padding:2px 8px;border-radius:20px">ADVISORY</span></div>'
         +   '<p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">Generate a balanced, level- and period-appropriate KPI set. The AI proposes structure and grounds numbers — <strong style="color:var(--text-primary)">you set the target.</strong></p>'
         +   '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">'
         +     '<div style="flex:1;min-width:200px"><label style="font-size:11px;font-weight:700;color:var(--text-primary);display:block;margin-bottom:5px">Function</label><select style="' + _sel + '" onchange="_kpiArchState.fnKey=this.value;_kpiArchState.set=[];renderKpiArchitectPage(document.getElementById(\'emp-side-body\'))">' + fnOpts + '</select></div>'
@@ -9462,11 +9462,20 @@
         + _covTip('Health', '#12a17a', 'Health — a quality, risk or stability indicator that guards against problems (e.g. defect rate, uptime, error rate, compliance).');
       var head = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin:22px 0 12px"><strong style="font-size:14px;color:var(--text-primary)">' + (_kpiArchState.submitted ? 'Submitted set' : 'Generated set') + ' · <span style="color:var(--cyan)">' + fnName + ' · ' + _kpiArchState.level + '</span></strong><span style="font-size:11px;color:var(--text-muted)">' + _coverage + '</span></div>';
       var _locked = !!_kpiArchState.submitted;   // v80: after submission the set is read-only
+      // v80.9: same coverage explanations, now shown as a tooltip ON the category badge itself.
+      var _catTips = {
+        leading: 'Leading — a forward-looking indicator that predicts future results (e.g. activity volume, pipeline, effort). It moves before the outcome does.',
+        process: 'Process — measures how efficiently the work is done (e.g. cycle time, throughput, on-time delivery, adherence to the process).',
+        lagging: 'Lagging — an outcome measured after the fact — the actual result (e.g. revenue, renewals, adoption, satisfaction).',
+        health: 'Health — a quality, risk or stability indicator that guards against problems (e.g. defect rate, uptime, error rate, compliance).'
+      };
+      var _catTipEsc = function (t) { return String(t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
       var cards = set.map(function (k, i) {
-        var cat = _KPI_ARCH_CATS[k.category] || _KPI_ARCH_CATS.process;
+        var catKey = (k.category && _KPI_ARCH_CATS[String(k.category).toLowerCase()]) ? String(k.category).toLowerCase() : 'process';
+        var cat = _KPI_ARCH_CATS[catKey] || _KPI_ARCH_CATS.process;
         var stmt = k.edited || k.statement;
         return '<div style="background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 10px 26px -16px rgba(10,31,82,.22))">'
-          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><strong style="font-size:14px;color:var(--text-primary)">' + k.title + '</strong><div style="flex-shrink:0;display:inline-flex;gap:6px;align-items:center">' + (k.score ? '<span style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px;background:rgba(18,161,122,.1);color:#12a17a;border:1px solid rgba(18,161,122,.3)">' + k.score + '/5</span>' : '') + '<span style="font-size:9px;font-weight:800;padding:3px 10px;border-radius:20px;background:' + cat.bg + ';color:' + cat.color + ';border:1px solid ' + cat.color + '33">' + cat.name + '</span></div></div>'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><strong style="font-size:14px;color:var(--text-primary)">' + k.title + '</strong><div style="flex-shrink:0;display:inline-flex;gap:6px;align-items:center">' + (k.score ? '<span style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px;background:rgba(18,161,122,.1);color:#12a17a;border:1px solid rgba(18,161,122,.3)">' + k.score + '/5</span>' : '') + '<span class="cov-chip" data-cov-tip="' + _catTipEsc(_catTips[catKey]) + '" style="font-size:9px;font-weight:800;padding:3px 10px;border-radius:20px;background:' + cat.bg + ';color:' + cat.color + ';border:1px solid ' + cat.color + '33;cursor:help">' + cat.name + '</span></div></div>'
           + '<p style="font-size:12.5px;color:var(--text-muted);line-height:1.55;margin:6px 0 12px">' + stmt + (period && stmt.indexOf(period) < 0 ? ' <span style="color:var(--cyan)">· within ' + period + '</span>' : '') + '</p>'
           + '<div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">'
           +   '<div><label style="font-size:10px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Target' + (k.unit || '') + (_locked ? '' : ' — you set this') + '</label><input placeholder="set a target" value="' + String(k.target || '').replace(/"/g, '&quot;') + '"' + (_locked ? ' disabled' : ' oninput="_kpiArchState.set[' + i + '].target=this.value"') + ' style="width:150px;padding:8px 12px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:8px;color:var(--text-primary);font-size:14px;font-weight:700;font-family:inherit;outline:none' + (_locked ? ';opacity:.7' : '') + '"></div>'
@@ -9745,7 +9754,7 @@
         var on = active === id;
         return '<button onclick="_notifCenterSwitch(\'' + id + '\')" style="padding:8px 16px;border:none;border-radius:9px;background:' + (on ? 'linear-gradient(135deg,#a78bfa,#7c3aed)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text-muted)') + ';font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px"><i class="ti ' + icon + '"></i> ' + lbl + '</button>';
       };
-      return '<div style="display:inline-flex;gap:4px;padding:4px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:12px;margin-bottom:16px">' + seg('received', 'Received', 'ti-inbox') + seg('sent', 'Sent', 'ti-send') + '</div>';
+      return '<div style="display:inline-flex;gap:4px;padding:4px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:12px;margin-bottom:16px">' + seg('received', 'Received', 'ti-bell') + seg('sent', 'Sent', 'ti-mail') + '</div>';
     }
     function _notifCenterSwitch(t) { window._notifCenterTab = t; var b = document.getElementById('emp-side-body'); if (b) empRenderNotificationsPage(b); }
     window._notifCenterSwitch = _notifCenterSwitch;
@@ -18217,7 +18226,7 @@
       // v77: white-label the top header (topbar) — empty = falls back to Product label
       headerText: '',
       // v77: sidebar icon colour — 'colored' (brand palette) · 'black' · 'white'
-      sidebarIconColor: 'colored',
+      sidebarIconColor: 'white',   // v80.9: white or black only (no 'colored')
       // v77: employee-card text colour — 'auto' (by brand luminance) · 'white' · 'black'
       // v80.5: default WHITE — the hero card is always a dark brand gradient, so white
       // reads correctly out of the box (was 'auto', which could pick black on lighter brands).
@@ -18328,9 +18337,19 @@
         var r = document.documentElement;
         r.style.setProperty('--brand-primary', b.primary);
         r.style.setProperty('--brand-accent', b.accent);
-        // --brand-on-primary is the SIGN-IN font colour only — set on root so the login
-        // CSS + primary buttons can read it, but NOT forced across the whole system.
-        r.style.setProperty('--brand-on-primary', b.onPrimary);
+        // v80.9: --brand-on-primary AUTO-CONTRASTS with the brand primary — a light
+        // brand → dark ink, a dark brand → light ink — so primary buttons, headers and
+        // the "Save changes" button stay readable whatever colour the admin picks.
+        var _onPrimaryAuto = (function () {
+          try {
+            var h = String(b.primary || '#0a1f52').replace('#', '').trim();
+            if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
+            var n = parseInt(h, 16); if (isNaN(n)) return '#ffffff';
+            var lum = (0.299 * (n >> 16 & 255) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)) / 255;
+            return lum > 0.6 ? '#0f172a' : '#ffffff';
+          } catch (e) { return '#ffffff'; }
+        })();
+        r.style.setProperty('--brand-on-primary', _onPrimaryAuto);
         // v73b: reflect the brand ACROSS THE WHOLE SYSTEM. primary → structural navy
         // surfaces (sidebar, primary buttons, --navy); accent → highlights/active
         // (--cyan / --accent). !important beats the light-mode cascade. Defaults
@@ -18368,10 +18387,10 @@
           + '#app .hc-side-nav .hc-side-item:not(.on){ color:' + _onDim + ' !important; }'
           + '#app .hc-side-nav .hc-side-item:not(.on):hover{ color:' + _onAuto + ' !important; background:' + (_bpLum > 0.6 ? 'rgba(15,23,42,.06)' : 'rgba(255,255,255,.06)') + ' !important; }'
           + (_bpLum > 0.6 ? '#app .hc-side-nav .hc-side-item.on{ color:' + _onAuto + ' !important; }#app .hc-side-nav .hc-side-head{ color:' + _onDim + ' !important; }#app .hc-side-nav .hc-side-section{ color:' + _onDim + ' !important; }' : '')
-          // Sidebar ICON colour — Super Admin choice (colored = brand palette, no override).
-          + ((b.sidebarIconColor === 'black' || b.sidebarIconColor === 'white')
-              ? '#app .hc-side-nav .hc-side-item .hc-side-icon, #app .hc-side-nav .hc-side-item .hc-side-icon *{ color:' + (b.sidebarIconColor === 'white' ? '#ffffff' : '#0f172a') + ' !important; }'
-              : '')
+          // Sidebar ICON colour — v80.9: WHITE or BLACK only (no 'colored' palette).
+          // Default white; any non-'black' value (incl. legacy 'colored') → white.
+          // Applied to every icon incl. the active item, so all users see one flat colour.
+          + ('#app .hc-side-nav .hc-side-item .hc-side-icon, #app .hc-side-nav .hc-side-item .hc-side-icon *{ color:' + (b.sidebarIconColor === 'black' ? '#0f172a' : '#ffffff') + ' !important; }')
           // theme background glow → brand accent
           + 'body.light-mode::before { background: radial-gradient(ellipse 80% 60% at 50% -20%, ' + accRgbaWeak + ' 0%, transparent 65%), radial-gradient(ellipse 60% 40% at 100% 100%, ' + accRgbaFaint + ' 0%, transparent 60%) !important; }';
         try { document.title = b.productName + ' — ' + b.companyName; } catch (e) {}
@@ -18693,9 +18712,9 @@
       var _h = primary.replace('#', ''); if (_h.length === 3) _h = _h.split('').map(function (c) { return c + c; }).join('');
       var _n = parseInt(_h, 16); if (isNaN(_n)) _n = 0x0a1f52;
       var lum = (0.299 * (_n >> 16 & 255) + 0.587 * (_n >> 8 & 255) + 0.114 * (_n & 255)) / 255;
-      // sidebar icon colour
-      var sic = b.sidebarIconColor || 'colored';
-      var iconCol = sic === 'white' ? '#ffffff' : sic === 'black' ? '#0f172a' : null; // null = colored palette
+      // sidebar icon colour — v80.9: white or black only (default white)
+      var sic = b.sidebarIconColor === 'black' ? 'black' : 'white';
+      var iconCol = sic === 'black' ? '#0f172a' : '#ffffff';
       var palette = ['#62c6d3', '#3faa7e', '#1d57a3', '#9b81bc'];
       // card text colour
       var ctc = b.cardTextColor || 'white';
@@ -18882,7 +18901,7 @@
           <div style="border-top:1px solid var(--glass-border,rgba(127,140,170,.16));margin:16px 0 12px"></div>
           <label style="${_lab}">Sidebar icon colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly</span></label>
           <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:8px;overflow:hidden;margin-bottom:14px">
-            ${[['colored','Colored'],['black','Black'],['white','White']].map(function(o){ var on=(b.sidebarIconColor||'colored')===o[0]; return '<button onclick="_brandDraftPatch({sidebarIconColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
+            ${[['white','White'],['black','Black']].map(function(o){ var on=(b.sidebarIconColor==='black'?'black':'white')===o[0]; return '<button onclick="_brandDraftPatch({sidebarIconColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
           </div>
           <label style="${_lab}">Employee card text colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly</span></label>
           <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:8px;overflow:hidden">
@@ -22540,8 +22559,8 @@
     function _meetingSlotRowHtml(n, dateVal, timeVal) {
       return '<div class="meeting-slot-row" style="display:flex;gap:8px;align-items:center">'
         + '<span class="slot-num" style="width:20px;height:20px;border-radius:50%;background:rgba(74,222,128,.2);border:1px solid rgba(74,222,128,.4);display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:#4ade80;font-weight:800;flex-shrink:0">' + n + '</span>'
-        + '<input type="date" value="' + (dateVal || '') + '" class="meeting-slot-date" style="flex:1;padding:9px 12px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text-primary);font-size:12px;font-family:inherit">'
-        + '<input type="time" value="' + (timeVal || '10:00') + '" class="meeting-slot-time" style="padding:9px 12px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text-primary);font-size:12px;font-family:inherit">'
+        + '<input type="date" value="' + (dateVal || '') + '" class="meeting-slot-date" style="flex:1;padding:9px 12px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.16);border-radius:7px;color:#fff;font-size:12px;font-family:inherit">'
+        + '<input type="time" value="' + (timeVal || '10:00') + '" class="meeting-slot-time" style="padding:9px 12px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.16);border-radius:7px;color:#fff;font-size:12px;font-family:inherit">'
         + '<button type="button" class="slot-remove" onclick="meetingRemoveSlot(this)" title="Remove this slot" style="width:30px;height:30px;border-radius:7px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.06);color:#f87171;font-size:16px;line-height:1;cursor:pointer;font-family:inherit;flex-shrink:0;display:none">&times;</button>'
         + '</div>';
     }
@@ -22597,32 +22616,32 @@
       overlay.id = 'schedule-meeting-overlay';
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(5,13,31,.75);backdrop-filter:blur(8px);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .2s;overflow-y:auto';
       overlay.innerHTML = `
-        <div style="background:linear-gradient(145deg,#0a1f52,#0f2a6e);border:1px solid rgba(74,222,128,.25);border-radius:16px;padding:0;width:100%;max-width:580px;box-shadow:0 24px 60px rgba(0,0,0,.5);animation:slideUp .25s;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()">
-          <div style="padding:20px 24px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:linear-gradient(145deg,#0a1f52,#0f2a6e);z-index:2">
+        <div style="background:linear-gradient(145deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 70%,#000));border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:0;width:100%;max-width:580px;box-shadow:0 24px 60px rgba(0,0,0,.5);animation:slideUp .25s;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()">
+          <div style="padding:20px 24px;border-bottom:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:linear-gradient(145deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 70%,#000));z-index:2">
             <div style="display:flex;align-items:center;gap:12px">
-              <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#4ade80,#22c55e);display:flex;align-items:center;justify-content:center;font-size:18px"><i class=\"ti ti-calendar\"></i></div>
+              <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--brand-accent,#00c2e0),color-mix(in srgb,var(--brand-accent,#00c2e0) 65%,#1338b0));display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff"><i class=\"ti ti-calendar\"></i></div>
               <div>
-                <h3 style="margin:0;color:#fff;font-size:15px;font-weight:900">Schedule 1:1 with ${targetName}</h3>
-                <p style="margin:3px 0 0;font-size:10.5px;color:var(--text-muted)">Propose time slots — they will pick one that works for them</p>
+                <div style="margin:0;color:#fff !important;font-size:15px;font-weight:900">Schedule 1:1 with ${targetName}</div>
+                <p style="margin:3px 0 0;font-size:10.5px;color:rgba(255,255,255,.72)">Propose time slots — they will pick one that works for them</p>
               </div>
             </div>
-            <button onclick="document.getElementById('schedule-meeting-overlay').remove()" style="background:transparent;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;padding:4px 8px;border-radius:6px">×</button>
+            <button onclick="document.getElementById('schedule-meeting-overlay').remove()" style="background:transparent;border:none;color:rgba(255,255,255,.75);font-size:20px;cursor:pointer;padding:4px 8px;border-radius:6px">×</button>
           </div>
           <div style="padding:20px 24px">
-            <label style="display:block;font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Meeting Purpose</label>
-            <input id="meeting-purpose" type="text" value="${defaultPurpose}" placeholder="e.g., Welcome 1:1, Project review, Quarterly check-in" style="width:100%;padding:11px 14px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;transition:border-color .15s" onfocus="this.style.borderColor='#4ade80'" onblur="this.style.borderColor='rgba(255,255,255,.12)'">
+            <label style="display:block;font-size:10px;font-weight:800;color:rgba(255,255,255,.62);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Meeting Purpose</label>
+            <input id="meeting-purpose" type="text" value="${defaultPurpose}" placeholder="e.g., Welcome 1:1, Project review, Quarterly check-in" style="width:100%;padding:11px 14px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.16);border-radius:8px;color:#fff;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s" onfocus="this.style.borderColor='var(--brand-accent,#00c2e0)'" onblur="this.style.borderColor='rgba(255,255,255,.16)'">
 
-            <label style="display:block;font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px">Duration</label>
-            <select id="meeting-duration" style="width:100%;padding:11px 14px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none">
-              <option value="15">15 minutes</option>
-              <option value="30" selected>30 minutes</option>
-              <option value="45">45 minutes</option>
-              <option value="60">1 hour</option>
+            <label style="display:block;font-size:10px;font-weight:800;color:rgba(255,255,255,.62);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px">Duration</label>
+            <select id="meeting-duration" style="width:100%;padding:11px 14px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.16);border-radius:8px;color:#fff;font-size:13px;font-family:inherit;outline:none">
+              <option value="15" style="color:#0f172a">15 minutes</option>
+              <option value="30" selected style="color:#0f172a">30 minutes</option>
+              <option value="45" style="color:#0f172a">45 minutes</option>
+              <option value="60" style="color:#0f172a">1 hour</option>
             </select>
 
             <div style="display:flex;align-items:center;justify-content:space-between;margin:22px 0 10px">
-              <label style="font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Proposed Time Slots</label>
-              <span style="font-size:9px;color:var(--cyan);font-weight:700">Propose 1-3 options</span>
+              <label style="font-size:10px;font-weight:800;color:rgba(255,255,255,.62);text-transform:uppercase;letter-spacing:.5px">Proposed Time Slots</label>
+              <span style="font-size:9px;color:var(--brand-accent,#00c2e0);font-weight:700">Propose 1-3 options</span>
             </div>
 
             <div style="display:grid;gap:10px" id="meeting-slots-container">
@@ -22630,16 +22649,16 @@
             </div>
             <button type="button" id="meeting-add-slot" onclick="meetingAddSlot()" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1px dashed rgba(74,222,128,.45);background:rgba(74,222,128,.06);color:#4ade80;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit"><i class="ti ti-plus"></i> Add another slot (up to 3)</button>
 
-            <label style="display:block;font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:22px 0 8px">Additional Note (optional)</label>
-            <textarea id="meeting-note" placeholder="Anything ${targetName.split(' ')[0]} should prepare?" style="width:100%;min-height:70px;padding:11px 14px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--text-primary);font-size:12px;font-family:inherit;line-height:1.6;resize:vertical;outline:none;transition:border-color .15s" onfocus="this.style.borderColor='#4ade80'" onblur="this.style.borderColor='rgba(255,255,255,.12)'"></textarea>
+            <label style="display:block;font-size:10px;font-weight:800;color:rgba(255,255,255,.62);text-transform:uppercase;letter-spacing:.5px;margin:22px 0 8px">Additional Note (optional)</label>
+            <textarea id="meeting-note" placeholder="Anything ${targetName.split(' ')[0]} should prepare?" style="width:100%;min-height:70px;padding:11px 14px;background:rgba(5,13,31,.5);border:1px solid rgba(255,255,255,.16);border-radius:8px;color:#fff;font-size:12px;font-family:inherit;line-height:1.6;resize:vertical;outline:none;transition:border-color .15s" onfocus="this.style.borderColor='var(--brand-accent,#00c2e0)'" onblur="this.style.borderColor='rgba(255,255,255,.16)'"></textarea>
 
             <div style="margin-top:14px;padding:10px 12px;background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.15);border-radius:8px;display:flex;align-items:center;gap:8px">
               <span style="font-size:14px"><i class=\"ti ti-bulb ti-amber\"></i></span>
-              <span style="font-size:10.5px;color:var(--text-muted);line-height:1.5">${targetName.split(' ')[0]} will receive a notification to accept one of your proposed slots or suggest a new time.</span>
+              <span style="font-size:10.5px;color:rgba(255,255,255,.62);line-height:1.5">${targetName.split(' ')[0]} will receive a notification to accept one of your proposed slots or suggest a new time.</span>
             </div>
           </div>
-          <div style="padding:14px 24px 20px;display:flex;gap:10px;justify-content:flex-end;position:sticky;bottom:0;background:linear-gradient(145deg,#0a1f52,#0f2a6e);border-top:1px solid rgba(255,255,255,.08)">
-            <button onclick="document.getElementById('schedule-meeting-overlay').remove()" style="padding:9px 18px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:7px;color:var(--text-primary);font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit">Cancel</button>
+          <div style="padding:14px 24px 20px;display:flex;gap:10px;justify-content:flex-end;position:sticky;bottom:0;background:linear-gradient(145deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 70%,#000));border-top:1px solid rgba(255,255,255,.08)">
+            <button onclick="document.getElementById('schedule-meeting-overlay').remove()" style="padding:9px 18px;background:transparent;border:1px solid rgba(255,255,255,.2);border-radius:7px;color:#fff;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit">Cancel</button>
             <button onclick="sendMeetingRequest('${targetName.replace(/'/g,"&#39;")}','${targetEmail}')" style="padding:9px 22px;background:linear-gradient(135deg,#4ade80,#22c55e);border:none;border-radius:7px;color:#050d1f;font-size:11.5px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px rgba(74,222,128,.3)"><i class=\"ti ti-upload\"></i> Send Meeting Request</button>
           </div>
         </div>
@@ -33894,13 +33913,23 @@
           // v67.2: Public info — accessible to ANY user. Multi-line format.
           // v67.21: Added email to the info returned
           var emp = intent.employee;
-          // Lookup function display name from _KPI_DB if it's a fnKey
+          // v80.9: resolve a HUMAN function name (never the raw key), and OMIT it entirely
+          // for the CEO / C-level — they don't belong to a single function.
           var fnDisplay = '';
-          try {
-            var fnKey = typeof emp.fn === 'string' ? emp.fn : (Array.isArray(emp.fn) ? emp.fn[0] : '');
-            if (fnKey && typeof _KPI_DB !== 'undefined' && _KPI_DB[fnKey]) fnDisplay = _KPI_DB[fnKey].name;
-            else fnDisplay = fnKey || '';
-          } catch(_){}
+          var _isChief = /chief|(^|[^a-z])ceo([^a-z]|$)/i.test(emp.title || '');
+          if (!_isChief) {
+            try {
+              var fnKey = typeof emp.fn === 'string' ? emp.fn : (Array.isArray(emp.fn) ? emp.fn[0] : '');
+              if (fnKey) {
+                if (typeof FNS !== 'undefined' && FNS[fnKey] && FNS[fnKey].name) fnDisplay = FNS[fnKey].name;
+                else if (typeof _FN_METRICS !== 'undefined' && _FN_METRICS[fnKey] && _FN_METRICS[fnKey].name) fnDisplay = _FN_METRICS[fnKey].name;
+                else if (typeof _KPI_DB !== 'undefined' && _KPI_DB[fnKey] && _KPI_DB[fnKey].name) fnDisplay = _KPI_DB[fnKey].name;
+                else if (typeof peGetFnName === 'function') { var _n = peGetFnName(fnKey); if (_n && _n !== fnKey) fnDisplay = _n; }
+                // last resort: humanize the raw key (never show "employee-engagement-&-...").
+                if (!fnDisplay) fnDisplay = String(fnKey).replace(/[-_]+/g, ' ').replace(/\s*&\s*/g, ' & ').replace(/\b\w/g, function (c) { return c.toUpperCase(); }).trim();
+              }
+            } catch(_){}
+          }
           var deptClean = (emp.dept || '').replace(' Department','');
           // v80.4: include level + line manager as part of the "main details".
           var empLvl = ''; try { if (typeof peGetEmpLevel === 'function') empLvl = peGetEmpLevel(emp); } catch(_){}
