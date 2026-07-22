@@ -9084,7 +9084,7 @@
         });
         navItems.push({ key: 'ai_insights', icon: sideIcons.insights, label: 'AI Insights' });
         navItems.push({ key: 'inviews', icon: sideIcons.inviews, label: 'Team INVIEWS' });
-        navItems.push({ key: 'sent',    icon: sideIcons.sent, label: 'Sent Notifications' });
+        // v80.6: 'Sent Notifications' merged into the single 'Notification Center' tab (Received / Sent).
       } else if (isMgr) {
         navItems.push({ key: 'team', icon: sideIcons.team, label: 'My Team' });
         navItems.push({ key: 'whereami', icon: sideIcons.map, label: 'Where Are You?' });
@@ -9101,7 +9101,7 @@
           navItems.push({ key: 'ai_insights', icon: sideIcons.insights, label: _insLabel });
         }
         navItems.push({ key: 'inviews', icon: sideIcons.inviews, label: 'Team INVIEWS' });
-        navItems.push({ key: 'sent', icon: sideIcons.sent, label: 'Sent Notifications' });
+        // v80.6: 'Sent Notifications' merged into the single 'Notification Center' tab (Received / Sent).
       }
 
       // v78: Staff (no team, no CEO privileges) now also get a minimal sidebar —
@@ -9687,8 +9687,32 @@
     // messages…). Reuses empRenderNotifCard so behaviour matches the
     // dashboard panel; available to every user (added to the employee sidebar).
     // ═══════════════════════════════════════════════════════════════════
+    // v80.6: Received / Sent toggle — merges the old separate "Sent Notifications"
+    // sidebar tab into this single Notification Center.
+    function _notifCenterCanSend() {
+      try {
+        var mye = (me && me.email ? me.email : '').toLowerCase();
+        if (me && (me.role === 'manager' || me.role === 'ceo' || me.role === 'ceo_exec')) return true;
+        var found = false;
+        Object.values(NOTIFICATIONS || {}).forEach(function (l) { (l || []).forEach(function (n) { if ((n.fromEmail || '').toLowerCase() === mye) found = true; }); });
+        return found;
+      } catch (e) { return false; }
+    }
+    function _notifTabBar(active) {
+      var seg = function (id, lbl, icon) {
+        var on = active === id;
+        return '<button onclick="_notifCenterSwitch(\'' + id + '\')" style="padding:8px 16px;border:none;border-radius:9px;background:' + (on ? 'linear-gradient(135deg,#a78bfa,#7c3aed)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text-muted)') + ';font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px"><i class="ti ' + icon + '"></i> ' + lbl + '</button>';
+      };
+      return '<div style="display:inline-flex;gap:4px;padding:4px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:12px;margin-bottom:16px">' + seg('received', 'Received', 'ti-inbox') + seg('sent', 'Sent', 'ti-send') + '</div>';
+    }
+    function _notifCenterSwitch(t) { window._notifCenterTab = t; var b = document.getElementById('emp-side-body'); if (b) empRenderNotificationsPage(b); }
+    window._notifCenterSwitch = _notifCenterSwitch;
     function empRenderNotificationsPage(container) {
       if (!container) return;
+      // Received / Sent sub-tabs (Sent only offered to users who send).
+      var _canSend = _notifCenterCanSend();
+      if (_canSend && window._notifCenterTab === 'sent') { empRenderSentNotificationsPage(container); return; }
+      var _bar = _canSend ? _notifTabBar('received') : '';
       var list = (typeof NOTIFICATIONS !== 'undefined' && NOTIFICATIONS[me.email]) ? NOTIFICATIONS[me.email] : [];
       var unread = list.filter(function (n) { return !n.read; }).length;
       var head = '<div style="background:linear-gradient(135deg,rgba(167,139,250,.1),rgba(124,58,237,.04));border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:18px 20px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'
@@ -9697,10 +9721,10 @@
         + (unread ? '<button onclick="empMarkAllRead()" style="padding:8px 14px;border-radius:8px;border:1px solid rgba(167,139,250,.3);background:rgba(167,139,250,.12);color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Mark all read</button>' : '')
         + '</div>';
       if (!list.length) {
-        container.innerHTML = head + '<div style="text-align:center;padding:48px 20px;color:var(--text-muted)"><div style="width:46px;height:46px;border-radius:12px;background:rgba(167,139,250,.1);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:#a78bfa;font-size:22px"><i class="ti ti-mailbox"></i></div>You’re all caught up — new messages from your manager or HC will appear here.</div>';
+        container.innerHTML = _bar + head + '<div style="text-align:center;padding:48px 20px;color:var(--text-muted)"><div style="width:46px;height:46px;border-radius:12px;background:rgba(167,139,250,.1);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:#a78bfa;font-size:22px"><i class="ti ti-mailbox"></i></div>You’re all caught up — new messages from your manager or HC will appear here.</div>';
         return;
       }
-      container.innerHTML = head
+      container.innerHTML = _bar + head
         + '<div style="background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 10px 26px -16px rgba(10,31,82,.22))">'
         + list.map(function (n) { return empRenderNotifCard(n); }).join('')
         + '</div>';
@@ -9932,7 +9956,7 @@
         const _bpHex = (((window.Brand && Brand.get) ? Brand.get().primary : '') || '#0a1f52').trim() || '#0a1f52';
         const _bpLight = _kabiHexLum(_bpHex) > 0.6;
         // v77: Super Admin can override the card text colour (auto = by luminance · white · black).
-        const _cardTextPref = (((window.Brand && Brand.get) ? Brand.get().cardTextColor : '') || 'auto');
+        const _cardTextPref = (((window.Brand && Brand.get) ? Brand.get().cardTextColor : '') || 'white');
         const _lightText = (_cardTextPref === 'white') ? true : (_cardTextPref === 'black') ? false : !_bpLight;
         const _ct    = _lightText ? '#ffffff' : '#0f172a';
         const _ctDim = _lightText ? 'rgba(255,255,255,.62)' : 'rgba(15,23,42,.60)';
@@ -9959,7 +9983,7 @@
           <div class="emp-hero-card" style="flex:1;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 80%,#000));border:1px solid ${_cBord};border-radius:18px;padding:20px 22px;position:relative;overflow:hidden;box-shadow:0 18px 44px -22px rgba(10,31,82,.7);box-sizing:border-box;display:flex;flex-direction:column;min-height:150px">
             <div style="position:absolute;top:-30px;right:-30px;width:170px;height:170px;background:radial-gradient(circle,${_lightText ? 'rgba(255,255,255,.08)' : 'rgba(15,23,42,.05)'},transparent 62%);pointer-events:none"></div>
             <div style="display:flex;align-items:center;gap:15px;min-width:0;position:relative">
-              <div style="width:58px;height:58px;border-radius:16px;background:${_cChip};border:1px solid ${_cBord};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:${_ct};flex-shrink:0">${initials}</div>
+              <div style="width:58px;height:58px;border-radius:16px;background:${_cChip};border:1px solid ${_cBord};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:${_ct};flex-shrink:0;overflow:hidden">${((typeof _getAvatar === 'function') && _getAvatar(emp.email)) ? '<img src="' + _getAvatar(emp.email) + '" alt="" style="width:100%;height:100%;object-fit:cover">' : initials}</div>
               <div style="min-width:0">
                 <h3 style="font-size:19px;font-weight:900;color:${_ct};margin:0;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${emp.name}</h3>
                 <div style="font-size:12.5px;color:${_ctDim};margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_deptLine}</div>
@@ -10511,11 +10535,9 @@
       var myDirects = peGetDirectReports(me.email).map(function (e) { return (e.email || '').toLowerCase(); });
       if (myChain.indexOf(evaluateeEmail.toLowerCase()) < 0) { toast('You can only delegate your own team members', 'err'); return; }
       if (myDirects.indexOf(evaluatorEmail.toLowerCase()) < 0) { toast('The evaluator must be one of your direct reports', 'err'); return; }
-      // v80: HC whitelist — if HC restricted who may be an evaluator, enforce it.
-      var _allowList = (PE_CONFIG && Array.isArray(PE_CONFIG.evalDelegationEvaluators)) ? PE_CONFIG.evalDelegationEvaluators : [];
-      if (_allowList.length && _allowList.map(function (x) { return String(x).toLowerCase(); }).indexOf(evaluatorEmail.toLowerCase()) < 0) {
-        toast(er.name + ' is not on HC’s approved evaluator list — ask HC to add them', 'err'); return;
-      }
+      // v80.6: no evaluator whitelist — a manager may delegate to ANY direct report.
+      // The control is HC's per-delegation approval (below) + the delegator whitelist
+      // (which managers may delegate at all), enforced when the delegation UI is shown.
       // one active/pending delegation per employee (one evaluator per employee)
       var existing = PE_EVAL_DELEGATIONS.find(function (d) { return d.evaluateeEmail.toLowerCase() === evaluateeEmail.toLowerCase() && (d.status === 'pending_hc' || d.status === 'active'); });
       if (existing) { toast('There is already a ' + (existing.status === 'active' ? 'n active' : ' pending') + ' delegation for ' + ev.name, 'err'); return; }
@@ -10576,6 +10598,9 @@
     window.peHcRejectDelegation = peHcRejectDelegation;
     function _peRenderEvalDelegation() {
       if (typeof PE_CONFIG !== 'undefined' && PE_CONFIG.allowEvalDelegation === false) return '';  // HC has not enabled delegation
+      // v80.6: if HC restricted WHICH managers may delegate, enforce it here (empty = any manager).
+      var _delegList = (PE_CONFIG && Array.isArray(PE_CONFIG.evalDelegationDelegators)) ? PE_CONFIG.evalDelegationDelegators : [];
+      if (_delegList.length && _delegList.map(function (x) { return String(x).toLowerCase(); }).indexOf((me.email || '').toLowerCase()) < 0) return '';
       var directs = peGetDirectReports(me.email).filter(function (e) { return !e.isFormer; });
       var chain = peGetAllReports(me.email).filter(function (e) { return !e.isFormer; });
       if (directs.length < 1 || chain.length < 2) return '';   // nothing meaningful to delegate
@@ -10830,6 +10855,7 @@
       const pendingMeetings = meetingRequests.filter(n => !n.meta?.status || n.meta?.status === 'pending').length;
 
       body.innerHTML = `
+        ${(typeof _notifTabBar === 'function') ? _notifTabBar('sent') : ''}
         <div style="margin-bottom:18px;display:flex;align-items:center;gap:12px">
           <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#a78bfa,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:22px"><i class=\"ti ti-upload\"></i></div>
           <div>
@@ -18112,12 +18138,16 @@
       // v80.2: the TOP-BAR (header) logo — SEPARATE from the sign-in company logo.
       // Empty = fall back to the company logo, then the default KABi mark.
       headerLogoUrl: '',
+      // v80.5: header (top-bar) logo size multiplier (0.5–3 = 50%–300%).
+      headerLogoScale: 1,
       // v77: white-label the top header (topbar) — empty = falls back to Product label
       headerText: '',
       // v77: sidebar icon colour — 'colored' (brand palette) · 'black' · 'white'
       sidebarIconColor: 'colored',
       // v77: employee-card text colour — 'auto' (by brand luminance) · 'white' · 'black'
-      cardTextColor: 'auto',
+      // v80.5: default WHITE — the hero card is always a dark brand gradient, so white
+      // reads correctly out of the box (was 'auto', which could pick black on lighter brands).
+      cardTextColor: 'white',
       // v77: white-label the app footer
       footerText: 'Performance Management System',
       footerLinkText: 'kabi.ai',
@@ -18384,6 +18414,8 @@
       };
       // v80.2: the header (top-bar) logo is its OWN image; falls back to the company logo.
       var _headerLogo = (b.headerLogoUrl && String(b.headerLogoUrl).trim()) || b.companyLogoUrl || '';
+      // v80.5: header-logo size multiplier (clamped 0.5–3).
+      var _hs = (typeof b.headerLogoScale === 'number' && b.headerLogoScale > 0) ? Math.max(0.5, Math.min(3, b.headerLogoScale)) : 1;
       if (_headerLogo) {
         [lightImg, darkImg].forEach(function (im) {
           if (!im) return;
@@ -18397,10 +18429,10 @@
           im.style.setProperty('background', 'transparent', 'important');
           im.style.setProperty('padding', '0', 'important');
           im.style.setProperty('border-radius', '0', 'important');
-          im.style.setProperty('height', '38px', 'important');
+          im.style.setProperty('height', Math.round(38 * _hs) + 'px', 'important');
           im.style.setProperty('width', 'auto', 'important');
-          im.style.setProperty('max-width', '240px', 'important');
-          im.style.setProperty('max-height', '44px', 'important');
+          im.style.setProperty('max-width', Math.round(240 * _hs) + 'px', 'important');
+          im.style.setProperty('max-height', Math.round(44 * _hs) + 'px', 'important');
           im.style.setProperty('object-fit', 'contain');
         });
       } else {
@@ -18573,8 +18605,9 @@
       b = b || _brandDraftGet();
       var headerTxt = (b.headerText && String(b.headerText).trim()) || (b.productName && String(b.productName).trim()) || 'Performance System';
       var _logoSrc = (b.headerLogoUrl && String(b.headerLogoUrl).trim()) || b.companyLogoUrl || '';
+      var _phs = (typeof b.headerLogoScale === 'number' && b.headerLogoScale > 0) ? Math.max(0.5, Math.min(3, b.headerLogoScale)) : 1;
       var logo = _logoSrc
-        ? '<img src="' + _logoSrc + '" style="height:24px;max-width:120px;object-fit:contain">'
+        ? '<img src="' + _logoSrc + '" style="height:' + Math.round(24 * _phs) + 'px;max-width:' + Math.round(120 * _phs) + 'px;object-fit:contain">'
         : '<span style="width:26px;height:26px;border-radius:7px;background:' + (b.accent || '#00c2e0') + ';color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:900">' + (b.logoText || 'K') + '</span>';
       return '<div style="display:flex;align-items:center;gap:11px;padding:12px 15px;border-radius:10px;background:#ffffff;border:1px solid var(--glass-border,#e5eaf3);box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 8px 22px -16px rgba(10,31,82,.2))">' + logo + '<span style="width:1px;height:20px;background:rgba(15,23,42,.18)"></span><span style="font-size:13px;font-weight:800;color:#1e293b;letter-spacing:.3px">' + headerTxt + '</span></div>';
     }
@@ -18591,7 +18624,7 @@
       var iconCol = sic === 'white' ? '#ffffff' : sic === 'black' ? '#0f172a' : null; // null = colored palette
       var palette = ['#62c6d3', '#3faa7e', '#1d57a3', '#9b81bc'];
       // card text colour
-      var ctc = b.cardTextColor || 'auto';
+      var ctc = b.cardTextColor || 'white';
       var cardLight = ctc === 'white' ? true : ctc === 'black' ? false : (lum <= 0.6);
       var cardInk = cardLight ? '#ffffff' : '#0f172a';
       var cardDim = cardLight ? 'rgba(255,255,255,.72)' : 'rgba(15,23,42,.66)';
@@ -18621,7 +18654,18 @@
         + '</div></div></div></div>';
     }
     function _brandDirty() { return !!(_brandDraft && JSON.stringify(_brandDraft) !== JSON.stringify(Brand.get())); }
-    function brandSaveDraft() { if (_brandDraft) { Brand.set(_brandDraft); } _brandDraft = null; renderBranding(document.getElementById('settings-body')); toast("<i class='ti ti-circle-check ti-green'></i> Branding saved &amp; applied", 'ok'); }
+    function brandSaveDraft() {
+      if (_brandDraft) { Brand.set(_brandDraft); }
+      _brandDraft = null;
+      renderBranding(document.getElementById('settings-body'));
+      // v80.5: re-render a mounted employee dashboard so card text colour, avatar,
+      // and (render-time) branding reflect immediately — not only on the next visit.
+      try {
+        var pgEmp = document.getElementById('pg-employee');
+        if (pgEmp && pgEmp.style.display !== 'none' && typeof renderEmployeeDashboard === 'function') renderEmployeeDashboard();
+      } catch (e) {}
+      toast("<i class='ti ti-circle-check ti-green'></i> Branding saved &amp; applied", 'ok');
+    }
     function brandDiscardDraft() { _brandDraft = null; _brandLogoTrans = null; renderBranding(document.getElementById('settings-body')); }
     function brandResetDefaults() { if (!confirm('Reset all branding to the default KABi look?')) return; localStorage.removeItem(_BRAND_LS_KEY); _brandDraft = null; _brandLogoTrans = null; Brand.apply(); try { Brand.pushShared(); } catch (e) {} renderBranding(document.getElementById('settings-body')); toast('Branding reset to defaults', 'ok'); }
 
@@ -18641,12 +18685,14 @@
       var f = input.files && input.files[0]; if (!f) return;
       if (!/^image\/(png|jpeg|svg\+xml|webp)$/.test(f.type)) { toast('Use a PNG, JPG, SVG or WebP image', 'err'); return; }
       var rd = new FileReader();
-      rd.onload = function () { _brandLiveApply({ headerLogoUrl: rd.result }); };
+      // v80.5: stage in the draft so "Save changes" lights up (was applied live,
+      // which left the Save button disabled and confused users).
+      rd.onload = function () { _brandDraftPatch({ headerLogoUrl: rd.result }); };
       rd.readAsDataURL(f);
     }
     function brandRemoveHeaderLogo() {
       if (!confirm('Remove the header logo? The top bar will fall back to the company logo.')) return;
-      _brandLiveApply({ headerLogoUrl: '' });
+      _brandDraftPatch({ headerLogoUrl: '' });
     }
     window.brandSetHeaderLogo = brandSetHeaderLogo;
     window.brandRemoveHeaderLogo = brandRemoveHeaderLogo;
@@ -18762,11 +18808,11 @@
           <div style="border-top:1px solid var(--glass-border,rgba(127,140,170,.16));margin:16px 0 12px"></div>
           <label style="${_lab}">Sidebar icon colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly</span></label>
           <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:8px;overflow:hidden;margin-bottom:14px">
-            ${[['colored','Colored'],['black','Black'],['white','White']].map(function(o){ var on=(b.sidebarIconColor||'colored')===o[0]; return '<button onclick="_brandLiveApply({sidebarIconColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
+            ${[['colored','Colored'],['black','Black'],['white','White']].map(function(o){ var on=(b.sidebarIconColor||'colored')===o[0]; return '<button onclick="_brandDraftPatch({sidebarIconColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
           </div>
           <label style="${_lab}">Employee card text colour <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly</span></label>
           <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:8px;overflow:hidden">
-            ${[['auto','Auto'],['white','White'],['black','Black']].map(function(o){ var on=(b.cardTextColor||'auto')===o[0]; return '<button onclick="_brandLiveApply({cardTextColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
+            ${[['white','White'],['black','Black'],['auto','Auto']].map(function(o){ var on=(b.cardTextColor||'white')===o[0]; return '<button onclick="_brandDraftPatch({cardTextColor:\''+o[0]+'\'})" style="padding:7px 14px;border:none;background:'+(on?'var(--brand-primary,#0a1f52)':'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+o[1]+'</button>'; }).join('')}
           </div>
         </div>
         <!-- Logo -->
@@ -18797,7 +18843,7 @@
           <div style="border-top:1px solid var(--glass-border,rgba(127,140,170,.16));margin:18px 0 12px"></div>
           <h4 style="${_h4};margin-bottom:4px">Header (top bar)</h4>
           <p style="${_sub};margin-bottom:12px">The top-bar logo &amp; text shown to every signed-in user. Its background is always white — not customisable.</p>
-          <label style="${_lab}">Header logo <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly · separate from the sign-in logo · empty = uses the company logo</span></label>
+          <label style="${_lab}">Header logo <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">· separate from the sign-in logo · empty = uses the company logo</span></label>
           ${b.headerLogoUrl
             ? `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px">
                  <div style="width:120px;height:48px;background:#fff;border-radius:10px;display:flex;align-items:center;justify-content:center;border:1px solid #e5eaf3"><img src="${b.headerLogoUrl}" style="max-width:90%;max-height:80%;object-fit:contain"></div>
@@ -18812,6 +18858,11 @@
                  <span style="font-size:9px;color:var(--text-dim)">Optional — defaults to the company logo</span>
                  <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" onchange="brandSetHeaderLogo(this)" style="display:none">
                </label>`}
+          <label style="${_lab}">Header logo size <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim);font-family:var(--mono)">· ${Math.round((b.headerLogoScale || 1) * 100)}%</span></label>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+            <input type="range" min="0.5" max="3" step="0.05" value="${b.headerLogoScale || 1}" oninput="_brandDraftSetQuiet('headerLogoScale',parseFloat(this.value));_brandUpdateInAppPreview()" onchange="renderBranding(document.getElementById('settings-body'))" style="flex:1;accent-color:var(--cyan);cursor:pointer">
+            <button onclick="_brandDraftPatch({headerLogoScale:1})" style="padding:6px 11px;border-radius:8px;border:1px solid var(--glass-border,rgba(255,255,255,.12));background:rgba(255,255,255,.03);color:var(--text-muted);font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">Reset</button>
+          </div>
           <label style="${_lab}">Header text <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#12a17a">· applies instantly · empty = uses Product label</span></label>
           <input style="${_inp};margin-bottom:14px" value="${(b.headerText || '').replace(/"/g, '&quot;')}" placeholder="Performance System" oninput="_brandLiveText('headerText',this.value)">
           <label style="${_lab}">Header preview <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">· always white background</span></label>
@@ -21907,9 +21958,11 @@
       // v79: Super Admin controls whether managers may delegate the evaluation of
       // a team member to one of their direct reports. Default OFF — HC enables it.
       allowEvalDelegation: false,
-      // v80: HC-approved whitelist of users who may act as delegated EVALUATORS.
-      // Empty = any direct report is eligible; non-empty = only these emails.
-      evalDelegationEvaluators: [],
+      // v80.6: HC-approved whitelist of MANAGERS (delegators) who may delegate an
+      // evaluation. Empty = any manager may delegate; non-empty = only these emails.
+      // (Delegating manager may pick ANY direct report as the evaluator — the control
+      // is HC's per-delegation approval, not a fixed evaluator list.)
+      evalDelegationDelegators: [],
       // v67.21: Well-being Check-in visibility per level.
       // Super Admin can toggle each level on/off. Default: all visible.
       wellbeingVisible: {
@@ -23322,6 +23375,14 @@
       // clear the live records for this cycle
       Object.keys(PE_EVALS).forEach(function(k){ if (k.endsWith('_' + qk)) delete PE_EVALS[k]; });
       _savePEEvals();
+      // v80.6: also clear KPI submissions + in-progress selections so the NEW round
+      // starts with NO KPIs set. Otherwise last cycle's submissions linger in `subs`
+      // and the KPI Architect shows every function/level as "already submitted" even
+      // though nothing was submitted for the new round. (The archived snapshot above
+      // preserves the finished cycle's records; the live KPI set is meant to reset.)
+      try { subs.length = 0; _saveSubs(); } catch(e){}
+      try { sels = {}; } catch(e){}
+      try { PE_EVAL_DELEGATIONS = []; if (typeof _saveEvalDelegations === 'function') _saveEvalDelegations(); } catch(e){}
       // reset the cycle so it can be opened fresh again
       PE_QUARTERS[qk] = { open:false, done:false, partial:false, evalsCount:0, year:q.year, label:q.label };
       // a new cycle always starts with results hidden
@@ -27340,16 +27401,16 @@
         </div>
         ${PE_CONFIG.allowEvalDelegation === true ? `
         <div style="margin-top:10px;padding:12px 16px;background:rgba(109,91,208,.05);border:1px solid rgba(109,91,208,.2);border-radius:10px">
-          <div style="font-size:11px;font-weight:800;color:var(--text-primary);margin-bottom:2px"><i class="ti ti-user-check" style="color:#9B81BC"></i> Allowed evaluators</div>
-          <div style="font-size:9px;color:var(--text-dim);margin-bottom:9px">Only these users may be delegated to evaluate. Leave empty to allow any of a manager’s direct reports.</div>
+          <div style="font-size:11px;font-weight:800;color:var(--text-primary);margin-bottom:2px"><i class="ti ti-users-group" style="color:#9B81BC"></i> Allowed delegators</div>
+          <div style="font-size:9px;color:var(--text-dim);margin-bottom:9px">Only these managers may delegate an evaluation. Leave empty to allow any manager. (A delegating manager may pick any of their direct reports as the evaluator — each delegation still needs your approval.)</div>
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px">
-            ${(PE_CONFIG.evalDelegationEvaluators || []).length ? (PE_CONFIG.evalDelegationEvaluators || []).map(function (em) { var e = _empByEmail(em); var nm = e ? e.name : em; return '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;background:rgba(109,91,208,.14);color:#9B81BC;font-size:10.5px;font-weight:700">' + nm + '<button onclick="peRemoveEvalDelegate(\'' + em + '\')" style="background:none;border:none;color:#9B81BC;cursor:pointer;font-size:13px;padding:0;line-height:1">×</button></span>'; }).join('') : '<span style="font-size:10px;color:var(--text-dim)">No restriction — any direct report can be an evaluator.</span>'}
+            ${(PE_CONFIG.evalDelegationDelegators || []).length ? (PE_CONFIG.evalDelegationDelegators || []).map(function (em) { var e = _empByEmail(em); var nm = e ? e.name : em; return '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;background:rgba(109,91,208,.14);color:#9B81BC;font-size:10.5px;font-weight:700">' + nm + '<button onclick="peRemoveEvalDelegate(\'' + em + '\')" style="background:none;border:none;color:#9B81BC;cursor:pointer;font-size:13px;padding:0;line-height:1">×</button></span>'; }).join('') : '<span style="font-size:10px;color:var(--text-dim)">No restriction — any manager may delegate.</span>'}
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <select id="pe-add-evaluator" style="padding:7px 10px;border-radius:8px;border:1px solid var(--glass-border,#e5eaf3);background:var(--glass,#fff);color:var(--text-primary);font-size:11.5px;font-family:inherit;max-width:280px">
-              ${PE_EMPLOYEES.filter(function (e) { return !e.isFormer && (PE_CONFIG.evalDelegationEvaluators || []).indexOf(e.email) < 0; }).map(function (e) { return '<option value="' + e.email + '">' + e.name + (e.title ? ' · ' + e.title : '') + '</option>'; }).join('')}
+              ${(function () { var mgrs = {}; PE_EMPLOYEES.forEach(function (x) { if (x.mgr) mgrs[x.mgr.toLowerCase()] = true; }); return PE_EMPLOYEES.filter(function (e) { return !e.isFormer && mgrs[(e.email || '').toLowerCase()] && (PE_CONFIG.evalDelegationDelegators || []).indexOf(e.email) < 0; }).map(function (e) { return '<option value="' + e.email + '">' + e.name + (e.title ? ' · ' + e.title : '') + '</option>'; }).join(''); })()}
             </select>
-            <button onclick="peAddEvalDelegate(document.getElementById('pe-add-evaluator').value)" style="padding:7px 14px;border-radius:8px;border:none;background:linear-gradient(135deg,#7c3aed,#6d5bd0);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">Add evaluator</button>
+            <button onclick="peAddEvalDelegate(document.getElementById('pe-add-evaluator').value)" style="padding:7px 14px;border-radius:8px;border:none;background:linear-gradient(135deg,#7c3aed,#6d5bd0);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">Add delegator</button>
           </div>
         </div>` : ''}
       </div>
@@ -27828,16 +27889,16 @@
     window.peToggleEvalDelegation = peToggleEvalDelegation;
     function peAddEvalDelegate(email) {
       if (!email) return;
-      if (!Array.isArray(PE_CONFIG.evalDelegationEvaluators)) PE_CONFIG.evalDelegationEvaluators = [];
-      if (PE_CONFIG.evalDelegationEvaluators.indexOf(email) < 0) PE_CONFIG.evalDelegationEvaluators.push(email);
+      if (!Array.isArray(PE_CONFIG.evalDelegationDelegators)) PE_CONFIG.evalDelegationDelegators = [];
+      if (PE_CONFIG.evalDelegationDelegators.indexOf(email) < 0) PE_CONFIG.evalDelegationDelegators.push(email);
       try { _savePEConfig(); } catch (e) {}
       var e = _empByEmail(email);
-      toast('<i class="ti ti-user-check"></i> ' + (e ? e.name : email) + ' can now be delegated as an evaluator', 'ok');
+      toast('<i class="ti ti-users-group"></i> ' + (e ? e.name : email) + ' may now delegate evaluations', 'ok');
       renderPEAdmin(document.getElementById('hc-body'));
     }
     function peRemoveEvalDelegate(email) {
-      if (!Array.isArray(PE_CONFIG.evalDelegationEvaluators)) return;
-      PE_CONFIG.evalDelegationEvaluators = PE_CONFIG.evalDelegationEvaluators.filter(function (x) { return x !== email; });
+      if (!Array.isArray(PE_CONFIG.evalDelegationDelegators)) return;
+      PE_CONFIG.evalDelegationDelegators = PE_CONFIG.evalDelegationDelegators.filter(function (x) { return x !== email; });
       try { _savePEConfig(); } catch (e) {}
       renderPEAdmin(document.getElementById('hc-body'));
     }
