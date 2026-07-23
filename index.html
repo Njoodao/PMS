@@ -9768,7 +9768,7 @@
 
       if (!_whereState.pillar) {
         // ── Level 0: pillar grid ──
-        html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">';
+        html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">';
         Object.keys(PILLARS).forEach(function (pk) {
           var p = PILLARS[pk];
           if (p.ceoOnly && !isCEOv) return;
@@ -9800,7 +9800,7 @@
         deptKeys.forEach(function (dept) {
           var mineDept = !!ctx.deptSet[dept];
           html += '<div style="margin-bottom:18px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:9px"><i class="ti ti-building" style="color:' + (p.color || '#2557e8') + ';font-size:15px"></i><strong style="font-size:13px;color:var(--text-primary)">' + dept + '</strong>' + (mineDept ? '<span style="font-size:8px;font-weight:800;letter-spacing:.3px;padding:2px 8px;border-radius:20px;background:' + p.color + '1a;color:' + p.color + '">YOUR DEPARTMENT</span>' : '') + '</div>';
-          html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(195px,1fr));gap:10px">';
+          html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">';
           byDept[dept].forEach(function (k) {
             var f = FNS[k], mineFn = !!ctx.fnSet[k], inactive = !!f.disabled;
             html += '<div style="position:relative;background:var(--glass,#fff);border:1px solid ' + (mineFn ? (p.color || '#2557e8') : 'var(--glass-border,#e5eaf3)') + ';border-radius:11px;padding:12px 13px;' + (mineFn ? 'box-shadow:0 0 0 3px ' + p.color + '1f;' : 'box-shadow:' + _cardSh + ';') + (inactive ? 'opacity:.55;' : '') + '">'
