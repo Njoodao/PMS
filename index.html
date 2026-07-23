@@ -107,6 +107,10 @@
       --glass: rgba(255, 255, 255, .04);
       --glass-border: rgba(255, 255, 255, .09);
       --glass-border-cyan: rgba(0, 194, 224, .2);
+      /* v81: dark secondary surface — was unset, so every var(--surface-2,#eef2f9)
+         fell back to a LIGHT colour in dark mode (e.g. the well-being feeling boxes
+         showed light-on-light, invisible). Defined here + overridden in light mode. */
+      --surface-2: rgba(255, 255, 255, .05);
 
       /* Text */
       --text-primary: #e8edf8;
@@ -143,8 +147,11 @@
     }
 
     html {
-      scroll-behavior: smooth
+      scroll-behavior: smooth;
+      overflow-x: hidden;   /* v81: global no-horizontal-scroll safety (clips stray fixed panels too) */
     }
+    /* v81: responsive media — images/svg/video/canvas never overflow their container on any screen. */
+    img, svg, video, canvas { max-width: 100%; }
 
     body {
       font-family: var(--font);
@@ -742,25 +749,29 @@
        top when it doesn't (margin auto avoids the flexbox top-cut-off on tall content). */
     #auth-screen > .auth-split, #auth-screen > .auth-card { margin: auto; }
 
-    /* v81.1: fit the ENTIRE sign-in box on screen without scrolling — compress vertical
-       spacing as the viewport gets shorter (laptops). Tall monitors keep the roomy design. */
-    @media (max-height: 880px) {
+    /* v81.2: fit the ENTIRE sign-in box on screen without scrolling — compress vertical
+       spacing as the viewport gets shorter. Threshold is generous (<=960px) so it triggers
+       on ordinary laptops/desktops; only very tall monitors keep the fully roomy design. */
+    @media (max-height: 960px) {
       #auth-screen { padding: 16px; }
-      .auth-split .auth-card { padding: 30px 46px !important; }
-      .auth-brand { min-height: 0 !important; padding: 34px 56px !important; }
+      .auth-split .auth-card { padding: 28px 46px !important; }
+      .auth-brand { min-height: 0 !important; padding: 32px 56px !important; }
       .auth-heading { font-size: 22px; }
-      .auth-sub { margin-bottom: 16px; }
+      .auth-sub { margin-bottom: 14px; }
       .field { margin-bottom: 12px; }
       .btn-signin { margin-top: 6px !important; padding: 12px !important; }
       .demo-row { padding: 9px 13px !important; }
       .auth-logo-wrap { margin-bottom: 18px !important; }
     }
-    @media (max-height: 730px) {
+    @media (max-height: 820px) {
+      #auth-screen { padding: 12px; }
       .auth-split .auth-card { padding: 20px 44px !important; }
       .auth-brand { padding: 22px 52px !important; }
+      .auth-heading { font-size: 21px; }
       .auth-sub { margin-bottom: 10px; }
       .auth-brand h2 { font-size: 30px !important; }
       .demo-row { padding: 8px 12px !important; }
+      .field { margin-bottom: 10px; }
     }
 
     .auth-card {
@@ -3038,6 +3049,11 @@
       letter-spacing: .3px;
       text-transform: uppercase;
     }
+    /* v81: in DARK mode the sidebar is dark (brand tint is light-mode only), so its
+       labels must be light — override the brand-on-primary ink which is computed for the
+       light-mode branded sidebar and would otherwise be dark-on-dark (e.g. "WORKSPACE"). */
+    body:not(.light-mode) #app .hc-side-nav .hc-side-header-txt { color: #eaf2ff !important; }
+    body:not(.light-mode) #app .hc-side-nav .hc-side-section { color: #93a4c9 !important; }
     @media (max-width: 900px) {
       .hc-side-layout {
         grid-template-columns: 1fr;
@@ -4459,22 +4475,26 @@
     .ai-copilot-drawer {
       position: fixed;
       top: 0;
-      right: -420px;
-      width: 400px;
+      right: 0;
+      /* v81: responsive — never wider than the screen (was a fixed 400px that overflowed
+         phones). Hidden via transform so a fixed panel can't add horizontal scroll. */
+      width: min(400px, 100vw);
+      max-width: 100vw;
       height: 100%;
       background: rgba(10, 31, 82, 0.95);
       backdrop-filter: blur(25px);
       border-left: 1px solid rgba(0, 194, 224, 0.2);
       box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
       z-index: 1000;
-      transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      transform: translateX(100%);
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
       display: flex;
       flex-direction: column;
       color: var(--white);
     }
 
     .ai-copilot-drawer.open {
-      right: 0;
+      transform: translateX(0);
     }
 
     .ai-copilot-header {
@@ -10112,13 +10132,16 @@
         // slightly darker border + dark text. NOT brand-customizable (no luminance/brand
         // dependence, no cardTextColor override). Same look for every user, every brand.
         const _kabiHexLum = function (hex) { hex = (hex || '').replace('#', '').trim(); if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join(''); var n = parseInt(hex, 16); if (isNaN(n)) return 0; var r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255; return 0.299 * r + 0.587 * g + 0.114 * b; };
-        const _cardBg   = '#f5f8fd';                 // the one light card colour
-        const _cardBord = '#d3ddee';                 // a little darker border
-        const _lightText = false;                    // dark text on the light card
-        const _ct    = '#0f172a';
-        const _ctDim = 'rgba(15,23,42,.60)';
-        const _ctLbl = 'rgba(15,23,42,.55)';
-        const _cChip = 'rgba(15,23,42,.05)';
+        // v81: theme-aware — a light surface in light mode, a dark glass surface in dark
+        // mode (was a fixed light card that looked broken in dark mode).
+        const _heroDark = !document.body.classList.contains('light-mode');
+        const _cardBg   = _heroDark ? 'rgba(255,255,255,.045)' : '#f5f8fd';
+        const _cardBord = _heroDark ? 'rgba(255,255,255,.10)'  : '#d3ddee';
+        const _lightText = _heroDark;                // light text on dark card / dark on light
+        const _ct    = _heroDark ? '#e8eefc' : '#0f172a';
+        const _ctDim = _heroDark ? 'rgba(232,238,252,.66)' : 'rgba(15,23,42,.60)';
+        const _ctLbl = _heroDark ? 'rgba(232,238,252,.58)' : 'rgba(15,23,42,.55)';
+        const _cChip = _heroDark ? 'rgba(255,255,255,.07)' : 'rgba(15,23,42,.05)';
         const _cBord = _cardBord;
         // LEVEL badge — solid level-colour pill, contrast ink, darker border on the light card.
         const _lsInk = (_kabiHexLum(_lsColor) > 0.62) ? '#0f172a' : '#ffffff';
@@ -18777,21 +18800,24 @@
           + '--brand-accent:' + b.accent + ' !important;'
           + '--brand-ink:' + _onAuto + ';'
           + '}'
-          // structural navy surfaces (many are hardcoded #0a1f52) → brand primary
-          + '.hc-side-nav, body.light-mode .hc-side-nav { background:' + b.primary + ' !important; }'
-          + 'body [style*="background:#0a1f52"] { background:' + b.primary + ' !important; }'
-          + 'body [style*="background: #0a1f52"] { background:' + b.primary + ' !important; }'
+          // structural navy surfaces (many are hardcoded #0a1f52) → brand primary.
+          // v81: LIGHT-MODE ONLY — in dark mode these stay dark so a light/white brand
+          // primary can't paint the sidebar (and other navy surfaces) white, which broke
+          // dark mode. Dark mode keeps the base dark sidebar + light text.
+          + 'body.light-mode .hc-side-nav { background:' + b.primary + ' !important; }'
+          + 'body.light-mode [style*="background:#0a1f52"] { background:' + b.primary + ' !important; }'
+          + 'body.light-mode [style*="background: #0a1f52"] { background:' + b.primary + ' !important; }'
           // Sidebar labels read against the brand fill. The #app ID prefix out-specifies
           // the hardcoded `body.light-mode .hc-side-nav .hc-side-item` white rule, so the
           // ink follows the brand luminance in BOTH themes (active .on keeps its accent,
           // except on a light brand where white-on-light would vanish).
-          + '#app .hc-side-nav .hc-side-item:not(.on){ color:' + _onDim + ' !important; }'
-          + '#app .hc-side-nav .hc-side-item:not(.on):hover{ color:' + _onAuto + ' !important; background:' + (_bpLum > 0.6 ? 'rgba(15,23,42,.06)' : 'rgba(255,255,255,.06)') + ' !important; }'
-          + (_bpLum > 0.6 ? '#app .hc-side-nav .hc-side-item.on{ color:' + _onAuto + ' !important; }#app .hc-side-nav .hc-side-head{ color:' + _onDim + ' !important; }#app .hc-side-nav .hc-side-section{ color:' + _onDim + ' !important; }' : '')
+          + 'body.light-mode #app .hc-side-nav .hc-side-item:not(.on){ color:' + _onDim + ' !important; }'
+          + 'body.light-mode #app .hc-side-nav .hc-side-item:not(.on):hover{ color:' + _onAuto + ' !important; background:' + (_bpLum > 0.6 ? 'rgba(15,23,42,.06)' : 'rgba(255,255,255,.06)') + ' !important; }'
+          + (_bpLum > 0.6 ? 'body.light-mode #app .hc-side-nav .hc-side-item.on{ color:' + _onAuto + ' !important; }body.light-mode #app .hc-side-nav .hc-side-head{ color:' + _onDim + ' !important; }body.light-mode #app .hc-side-nav .hc-side-section{ color:' + _onDim + ' !important; }' : '')
           // Sidebar ICON colour — v81: no setting; auto-contrasts with the brand-primary
           // sidebar (same _onPrimaryAuto as the WORKSPACE label). Light brand → dark icons,
           // dark brand → light icons. Applied to every icon incl. the active item.
-          + ('#app .hc-side-nav .hc-side-item .hc-side-icon, #app .hc-side-nav .hc-side-item .hc-side-icon *{ color:' + _onPrimaryAuto + ' !important; }')
+          + ('body.light-mode #app .hc-side-nav .hc-side-item .hc-side-icon, body.light-mode #app .hc-side-nav .hc-side-item .hc-side-icon *{ color:' + _onPrimaryAuto + ' !important; }')
           // theme background glow → brand accent
           + 'body.light-mode::before { background: radial-gradient(ellipse 80% 60% at 50% -20%, ' + accRgbaWeak + ' 0%, transparent 65%), radial-gradient(ellipse 60% 40% at 100% 100%, ' + accRgbaFaint + ' 0%, transparent 60%) !important; }';
         // v81: build the browser-tab title from whatever branding parts exist — never
@@ -18920,11 +18946,10 @@
           if (!im) return;
           im.src = _headerLogo;
           im.setAttribute('alt', b.companyName || 'Logo');
-          // WYSIWYG: show the uploaded logo EXACTLY as-is — never invert the colours,
-          // never add a background. A transparent (backgroundless) upload stays
-          // transparent; a logo that carries its own background keeps it. What the
-          // super-admin uploads in Settings › Branding is what appears here.
-          im.style.setProperty('filter', 'none', 'important');
+          // WYSIWYG in LIGHT mode: show the uploaded logo exactly as-is. The DARK-mode
+          // variant (this same image, shown only in dark mode) is rendered WHITE so a
+          // coloured logo stays legible on the dark top bar. v81.
+          im.style.setProperty('filter', (im === darkImg ? 'brightness(0) invert(1)' : 'none'), 'important');
           im.style.setProperty('background', 'transparent', 'important');
           im.style.setProperty('padding', '0', 'important');
           im.style.setProperty('border-radius', '0', 'important');
@@ -34954,6 +34979,15 @@
       const btn = document.getElementById('theme-btn');
       if (btn) btn.innerHTML = isLight ? '<i class=\"ti ti-sun\"></i>' : '<i class=\"ti ti-moon-2\"></i>';
       try { localStorage.setItem('kabi-theme', isLight ? 'light' : 'dark'); } catch (e) {}
+      // v81: re-render the visible employee view so JS-computed theme colours (e.g. the
+      // hero/profile card, whose background is chosen at render time) refresh immediately
+      // on toggle — not only on the next navigation.
+      try {
+        if (typeof currentPage !== 'undefined' && currentPage === 'pg-employee'
+            && typeof empSwitchTab === 'function' && typeof empSideTab !== 'undefined' && empSideTab) {
+          empSwitchTab(empSideTab);
+        }
+      } catch (e) {}
     }
     try { if (localStorage.getItem('kabi-theme') === 'light') toggleTheme(); } catch (e) {}
 
@@ -34999,6 +35033,7 @@
       --glass: #ffffff;
       --glass-border: #e5eaf3;
       --glass-border-cyan: rgba(0, 194, 224, .28);
+      --surface-2: #eef2f9;   /* v81: light secondary surface (must override the dark :root value) */
       --text-primary: #0f172a;   /* --ink */
       --text-muted: #48566b;     /* --muted */
       --text-dim: #8493a8;       /* --faint */
@@ -35376,6 +35411,11 @@
     body.light-mode .auth-logo-dark { display: none !important; }
     body.light-mode .topbar-logo-light,
     body.light-mode .auth-logo-light { display: inline-block !important; filter: none !important; }
+    /* v81: in DARK mode render the header/login logo WHITE. Branding sets the same
+       (often coloured) logo for both variants, so the dark variant showed coloured on the
+       dark bar. brightness(0) invert(1) makes any logo a clean white silhouette. */
+    body:not(.light-mode) .topbar-logo-dark,
+    body:not(.light-mode) .auth-logo-dark { filter: brightness(0) invert(1) !important; }
     /* The dark-mode PNG is 2000x554 (ratio 3.61:1) and the light-mode SVG is 406x74 (ratio 5.46:1).
        Setting the same HEIGHT gives wildly different widths. We match the rendered WIDTH
        of the dark-mode logo so both occupy the same visual footprint.
