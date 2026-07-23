@@ -6898,6 +6898,24 @@
         if (Array.isArray(parsed)) {
           subs.length = 0;
           parsed.forEach(function(s){ subs.push(s); });
+          // v81: heal stale DUPLICATES — for each email+fnKey+level keep only the NEWEST
+          // active (non-rejected) submission; supersede older ones. Fixes the case where a
+          // manager re-submitted before the dedup existed and both cards lingered in HC.
+          try {
+            var _newest = {};
+            subs.forEach(function (s) {
+              if (!s || s.superseded || s.status === 'rejected') return;
+              var key = (s.email || '') + '|' + (s.fnKey || '') + '|' + (s.level || 'Entry');
+              var cur = _newest[key];
+              if (!cur || (s.id || 0) > (cur.id || 0)) _newest[key] = s;
+            });
+            subs.forEach(function (s) {
+              if (!s || s.superseded || s.status === 'rejected') return;
+              var key = (s.email || '') + '|' + (s.fnKey || '') + '|' + (s.level || 'Entry');
+              if (_newest[key] && _newest[key] !== s) { s.superseded = true; s.supersededBy = _newest[key].id; }
+            });
+            _saveSubs();
+          } catch (e) { console.warn('[Subs] dedup on load failed:', e); }
           console.info('[Subs] Loaded ' + parsed.length + ' KPI submission(s) from localStorage');
         }
       } catch(e){ console.warn('[Subs] load failed:', e); }
@@ -7055,6 +7073,10 @@
         case 'kpi_reminder':
           badge=_B('KPI ASSIGNMENT REMINDER','#F59E0B','target');
           body='<p>Dear '+toName+',</p>'+_BX('#F59E0B','',d.message,'#fffbeb')+_CTA('Set KPIs Now \u2192'); break;
+        case 'kpi_1on1_reminder':
+          badge=_B('1:1 REMINDER','#7c3aed','users');
+          body='<p>Dear '+toName+',</p><p style="margin:8px 0">This is a reminder to <strong>hold your 1:1</strong> before these KPIs go to Human Capital for review.</p>'+_R('Function',d.fnName||'')+_R('Level',d.level||'')+(d.employeeName?_R('With',d.employeeName):'')+_BX('#7c3aed','',d.message||'Please hold the 1:1, then click \u201cComplete 1:1 step\u201d in the portal to send the KPIs to HC.','#f5f3ff')+_CTA('Open KABi Portal \u2192');
+          tip='After the 1:1, click \u201cComplete 1:1 step\u201d in the portal to send the KPIs to HC for review.'; break;
         case 'eval_cycle_open':
           badge=_B('EVALUATION CYCLE OPEN','#1D57A3','calendar-event');
           body='<p>Dear '+toName+',</p><p style="margin:8px 0">The evaluation cycle for <strong>'+(d.period||'')+'</strong> is now <strong style="color:#3FAA7E">open</strong>.</p>'+_R('Period',d.period)+_BX('#1D57A3','',d.message,'#f0f9ff')+_CTA('Open KABi Portal \u2192');
@@ -7084,7 +7106,7 @@
       // v67.9: tipHtml is now INLINE in footer (matches image 2 — no callout box, just emoji + text)
       var tipHtml = tip ? '<div style="font-size:12px;color:#64748b;line-height:1.6;margin:0 0 16px;font-family:Calibri,Arial,Helvetica,sans-serif">'+_EIC('bulb','#64748b',14)+tip+'</div>' : '';
 
-      var _titleMap = {'kpi_submission':'KPI Submission','ceo_comment':'CEO Comment','kpi_approved':'KPIs Approved','kpi_rejected':'KPIs Rejected','eval_submitted':'Evaluation Submitted','edit_request':'Score Edit Request','edit_approved':'Edit Approved','edit_rejected':'Edit Rejected','reminder':'Evaluation Reminder','kpi_reminder':'KPI Assignment Reminder','eval_cycle_open':'Evaluation Cycle Open','eval_cycle_closed':'Evaluation Cycle Closed','inviews_open':'INVIEWS Cycle Open','inviews_closed':'INVIEWS Cycle Closed','results_released':'Results Released','test':'Test Email'};
+      var _titleMap = {'kpi_submission':'KPI Submission','ceo_comment':'CEO Comment','kpi_approved':'KPIs Approved','kpi_rejected':'KPIs Rejected','eval_submitted':'Evaluation Submitted','edit_request':'Score Edit Request','edit_approved':'Edit Approved','edit_rejected':'Edit Rejected','reminder':'Evaluation Reminder','kpi_reminder':'KPI Assignment Reminder','kpi_1on1_reminder':'1:1 Reminder','eval_cycle_open':'Evaluation Cycle Open','eval_cycle_closed':'Evaluation Cycle Closed','inviews_open':'INVIEWS Cycle Open','inviews_closed':'INVIEWS Cycle Closed','results_released':'Results Released','test':'Test Email'};
       var _ttl = _titleMap[type] || 'Notification';
       // v67.9: SINGLE MASTER TABLE (Outlook-bulletproof). Each section is a <tr><td>
       // — no nested divs that Outlook fragments. Matches approved design exactly.
@@ -9458,26 +9480,46 @@
       // v81: ONE tooltip — on the word "Coverage" — explaining the whole concept, why it
       // matters, and the reference. The four type labels are now plain (no per-word tips),
       // and the per-KPI category badge no longer carries a tip (avoids duplication).
-      var _covExplain = 'Coverage — a strong KPI set is BALANCED across four complementary types, so performance is never judged on a single dimension:\n'
-        + '• Leading: predicts future results (activity, pipeline, effort) — moves before the outcome.\n'
-        + '• Process: how efficiently the work is done (cycle time, throughput, on-time delivery).\n'
-        + '• Lagging: the actual outcome, measured after the fact (revenue, renewals, adoption).\n'
-        + '• Health: quality / risk / stability guardrails (defect rate, uptime, compliance).\n'
-        + '\nWhy it matters: mixing all four gives an early + outcome + quality view and discourages gaming a single metric.\n'
-        + 'Reference: the Balanced Scorecard and the leading-vs-lagging indicator framework.';
-      var _coverage = '<strong class="cov-chip" data-cov-tip="' + _tipEsc(_covExplain) + '" style="cursor:help;border-bottom:1px dotted currentColor;color:var(--text-muted)">Coverage</strong> › '
-        + '<strong style="color:#00c2e0">Leading</strong> · '
-        + '<strong style="color:#216AB1">Process</strong> · '
-        + '<strong style="color:#6d5bd0">Lagging</strong> · '
-        + '<strong style="color:#12a17a">Health</strong>';
+      // v81: short summary on "Coverage"; each type's own definition on its own badge.
+      var _covDefs = {
+        Leading: 'Leading — a forward-looking indicator that predicts future results (activity, pipeline, effort). It moves before the outcome.',
+        Process: 'Process — measures how efficiently the work is done (cycle time, throughput, on-time delivery, adherence).',
+        Lagging: 'Lagging — the actual outcome, measured after the fact (revenue, renewals, adoption, satisfaction).',
+        Health: 'Health — a quality, risk or stability guardrail (defect rate, uptime, error rate, compliance).'
+      };
+      var _covSummary = 'Coverage — a strong KPI set is balanced across four complementary types, so performance isn\'t judged on a single dimension. Hover each type for what it means.\n\nReference: the Balanced Scorecard + the leading-vs-lagging indicator framework.';
+      var _covWord = function (label, color) { return '<strong class="cov-chip" data-cov-tip="' + _tipEsc(_covDefs[label]) + '" style="color:' + color + ';cursor:help;border-bottom:1px dotted currentColor">' + label + '</strong>'; };
+      var _coverage = '<strong class="cov-chip" data-cov-tip="' + _tipEsc(_covSummary) + '" style="cursor:help;border-bottom:1px dotted currentColor;color:var(--text-muted)">Coverage</strong> › '
+        + _covWord('Leading', '#00c2e0') + ' · ' + _covWord('Process', '#216AB1') + ' · ' + _covWord('Lagging', '#6d5bd0') + ' · ' + _covWord('Health', '#12a17a');
       var head = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin:22px 0 12px"><strong style="font-size:14px;color:var(--text-primary)">' + (_kpiArchState.submitted ? 'Submitted set' : 'Generated set') + ' · <span style="color:var(--cyan)">' + fnName + ' · ' + _kpiArchState.level + '</span></strong><span style="font-size:11px;color:var(--text-muted)">' + _coverage + '</span></div>';
       var _locked = !!_kpiArchState.submitted;   // v80: after submission the set is read-only
+      // v81: SMART shown as five letter chips — grey (not yet checked), green (met), red (not met).
+      // Recomputed from the live statement on every render (so an edited KPI updates automatically).
+      var _smartLabels = { S: 'Specific — is the KPI precise and unambiguous?', M: 'Measurable — is there a clear number, %, or count?', A: 'Achievable — is the target realistic for the role?', R: 'Relevant — does it tie to the function\'s outcomes?', T: 'Time-bound — is there a period or deadline?' };
+      var _smartLetters = function (text, i) {
+        var sm = null;
+        try {
+          var A = window.KABi && KABi.Agents && KABi.Agents.kpiArchitect;
+          if (A && typeof A.validate === 'function' && text) {
+            var sib = set.map(function (s, j) { return j === i ? '' : (s.edited || s.statement || ''); });
+            var r = A.validate(text, _kpiArchState.fnKey, sib);
+            sm = r && r.smart;
+          }
+        } catch (e) { sm = null; }
+        return '<span style="display:inline-flex;gap:3px;align-items:center">' + ['S', 'M', 'A', 'R', 'T'].map(function (L) {
+          var st = sm ? (sm[L] ? 'ok' : 'no') : 'na';
+          var col = st === 'ok' ? '#12a17a' : st === 'no' ? '#dc4b57' : '#94a3b8';
+          var bg = st === 'ok' ? 'rgba(18,161,122,.12)' : st === 'no' ? 'rgba(220,75,87,.12)' : 'rgba(148,163,184,.12)';
+          var verdict = st === 'ok' ? ' ✓ met' : st === 'no' ? ' ✗ not met' : ' — not yet checked';
+          return '<span class="cov-chip" data-cov-tip="' + _tipEsc(_smartLabels[L] + verdict) + '" style="width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;color:' + col + ';background:' + bg + ';border:1px solid ' + col + '44;cursor:help">' + L + '</span>';
+        }).join('') + '</span>';
+      };
       var cards = set.map(function (k, i) {
         var catKey = (k.category && _KPI_ARCH_CATS[String(k.category).toLowerCase()]) ? String(k.category).toLowerCase() : 'process';
         var cat = _KPI_ARCH_CATS[catKey] || _KPI_ARCH_CATS.process;
         var stmt = k.edited || k.statement;
         return '<div style="background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 10px 26px -16px rgba(10,31,82,.22))">'
-          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><strong style="font-size:14px;color:var(--text-primary)">' + k.title + '</strong><div style="flex-shrink:0;display:inline-flex;gap:6px;align-items:center">' + (k.score ? '<span class="cov-chip" data-cov-tip="' + _tipEsc('SMART quality score (out of 5) — how well this KPI\'s wording meets Specific · Measurable · Achievable · Relevant · Time-bound, rated by the AI validator.\n\nIt scores the KPI statement, not anyone\'s performance.') + '" style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px;background:rgba(18,161,122,.1);color:#12a17a;border:1px solid rgba(18,161,122,.3);cursor:help">' + k.score + '/5</span>' : '') + '<span style="font-size:9px;font-weight:800;padding:3px 10px;border-radius:20px;background:' + cat.bg + ';color:' + cat.color + ';border:1px solid ' + cat.color + '33">' + cat.name + '</span></div></div>'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><strong style="font-size:14px;color:var(--text-primary)">' + k.title + '</strong><div style="flex-shrink:0;display:inline-flex;gap:8px;align-items:center">' + _smartLetters(stmt, i) + '<span class="cov-chip" data-cov-tip="' + _tipEsc(_covDefs[cat.name] || cat.name) + '" style="font-size:9px;font-weight:800;padding:3px 10px;border-radius:20px;background:' + cat.bg + ';color:' + cat.color + ';border:1px solid ' + cat.color + '33;cursor:help">' + cat.name + '</span></div></div>'
           + '<p style="font-size:12.5px;color:var(--text-muted);line-height:1.55;margin:6px 0 12px">' + stmt + (period && stmt.indexOf(period) < 0 ? ' <span style="color:var(--cyan)">· within ' + period + '</span>' : '') + '</p>'
           + '<div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">'
           +   '<div><label style="font-size:10px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Target' + (k.unit || '') + (_locked ? '' : ' — you set this') + '</label><input placeholder="set a target" value="' + String(k.target || '').replace(/"/g, '&quot;') + '"' + (_locked ? ' disabled' : ' oninput="_kpiArchState.set[' + i + '].target=this.value"') + ' style="width:150px;padding:8px 12px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:8px;color:var(--text-primary);font-size:14px;font-weight:700;font-family:inherit;outline:none' + (_locked ? ';opacity:.7' : '') + '"></div>'
@@ -11205,6 +11247,7 @@
 
         // Get approved KPIs (4 max)
         var kpis = [];
+        var kpisPending = false;   // v81: true when we fell back to a not-yet-approved set
         try {
           if (typeof peGetApprovedKPIs === 'function') {
             // v67.37: Pass emp.level explicitly so we find the submission
@@ -11213,6 +11256,26 @@
             // function; without the level filter, we'd return whichever
             // came first regardless of whether it matches emp's level.
             kpis = peGetApprovedKPIs(emp.fn, me.email, emp.level) || [];
+          }
+          // v81 FIX: the tracker showed 4 empty "—" boxes whenever a report's
+          // KPIs were still awaiting_1on1 / pending HC approval (peGetApprovedKPIs
+          // returns ONLY status==='approved'). Fall back to the latest submitted
+          // set for this fn+level so the KPI NAMES always reflect; values stay
+          // "—" until a connector supplies real data (never invented).
+          if ((!kpis || !kpis.length) && typeof subs !== 'undefined' && Array.isArray(subs)) {
+            var _cand = subs.filter(function (s) {
+              return s && s.fnKey === emp.fn && s.level === emp.level
+                && Array.isArray(s.selKPIs) && s.selKPIs.length
+                && s.status !== 'rejected' && s.status !== 'superseded';
+            });
+            if (_cand.length) {
+              // prefer the manager's own submission, then any; newest last-wins
+              var _best = _cand.filter(function (s) { return s.email === me.email; }).pop() || _cand.pop();
+              if (_best) {
+                kpis = _best.selKPIs.map(function (k) { return k.final; }).filter(Boolean);
+                kpisPending = (_best.status !== 'approved');
+              }
+            }
           }
         } catch(e){}
 
@@ -11225,7 +11288,7 @@
         h += '<div style="flex:1;min-width:0">';
         h += '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:800;color:var(--text-primary)">'+emp.name+'</span>';
         h += '<span style="font-size:7.5px;padding:2px 6px;border-radius:20px;background:'+(isFTE?'rgba(30,175,217,.12)':'rgba(155,129,188,.16)')+';color:'+(isFTE?'#1EAFD9':'#9B81BC')+';font-weight:800;letter-spacing:.3px">'+(isFTE?'FTE':'NON-FTE')+'</span></div>';
-        h += '<div style="font-size:9.5px;color:var(--text-muted);margin-top:1px">'+emp.title+'</div>';
+        h += '<div style="font-size:9.5px;color:var(--text-muted);margin-top:1px">'+emp.title+(kpisPending?' <span style="color:#c2820b;font-weight:700" title="These KPIs are submitted but still awaiting Human Capital approval">· KPIs pending approval</span>':'')+'</div>';
         h += '</div>';
         // Score badge
         h += '<div style="text-align:center;flex-shrink:0"><div style="font-size:17px;font-weight:900;font-family:var(--mono);color:'+scoreColor+';line-height:1">'+scoreText+'</div><div style="font-size:7px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">Score</div></div>';
@@ -19141,6 +19204,7 @@
         { key: 'kpi', v: totalKpis,        l: 'KPIs in library',  c: '#a78bfa' },
       ];
       const _active = window.__kpiOvDetail || '';
+      var _kpiPeriodLabel = ''; try { _kpiPeriodLabel = (window.kabiEvalPeriod ? window.kabiEvalPeriod() : '') || ''; } catch (e) {}
       const summary = `<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:${_active ? '12px' : '18px'}">
         ${_statCards.map(s => `
           <button class="kpi-ov-stat${_active === s.key ? ' on' : ''}" style="--sc:${s.c};--sc-bg:${s.c}14;--sc-ring:${s.c}33" onclick="kpiOvToggleDetail('${s.key}')" title="Click to ${_active === s.key ? 'hide' : 'view'} details">
@@ -19204,6 +19268,14 @@
           <div style="font-size:11.5px;color:var(--text-muted)">Submission progress across all functions, grouped by strategic pillar. <span style="color:var(--text-dim)">Tap a metric for details.</span></div>
         </div>
         <button onclick="kpiLibraryExportExcel()" title="Download the full KPI library — every function × level, all details — as an Excel workbook" style="flex-shrink:0;display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:9px;border:1px solid rgba(18,161,122,.35);background:linear-gradient(135deg,rgba(18,161,122,.12),rgba(18,161,122,.04));color:#12a17a;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13l2 2 4-4"/></svg> Export KPI Library</button>
+      </div>
+      <!-- v81: KPI period (Super Admin) — governs KPI Architect + targets + eval cycle. -->
+      <div style="background:linear-gradient(135deg,rgba(0,194,224,.06),rgba(37,87,232,.03));border:1px solid rgba(0,194,224,.22);border-radius:14px;padding:15px 18px;margin-bottom:18px">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:3px"><i class="ti ti-calendar-stats" style="color:var(--cyan);font-size:16px"></i><strong style="font-size:13.5px;color:var(--text-primary)">KPI period</strong><span style="font-size:8.5px;font-weight:800;color:#c2820b;background:rgba(251,191,36,.14);border:1px solid rgba(251,191,36,.32);padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.4px">Super Admin</span></div>
+        <p style="font-size:11px;color:var(--text-muted);margin:0 0 12px;line-height:1.5">KPIs &amp; their targets are set for this period — it drives the <strong style="color:var(--text-primary)">KPI Architect</strong> and the <strong style="color:var(--text-primary)">evaluation cycle</strong> together, so they never drift apart. Current period: <strong style="color:var(--cyan)">${_kpiPeriodLabel || '—'}</strong></p>
+        <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:10px;overflow:hidden">
+          ${[['annual', 'Annual'], ['semi-annual', 'Semi-annual'], ['quarterly', 'Quarterly']].map(function (o) { var on = (typeof PE_FREQUENCY !== 'undefined' && PE_FREQUENCY === o[0]); return '<button onclick="kpiSetPeriod(\'' + o[0] + '\')" style="padding:9px 18px;border:none;background:' + (on ? 'linear-gradient(135deg,var(--cyan),#1338b0)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text-muted)') + ';font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">' + o[1] + '</button>'; }).join('')}
+        </div>
       </div>
       ${summary}
       ${detailHtml}
@@ -19529,7 +19601,7 @@
       var body = 'Reminder: your KPIs for ' + (s.fnName || '') + (s.level ? ' · ' + s.level : '') + ' are waiting on your 1:1'
         + (repNames ? ' with ' + repNames : '') + '. Please hold the 1:1, then click “Complete 1:1 step” to send them to HC for review & approval.';
       try { addNotification(s.email, { type: 'note', fromName: 'Human Capital', fromEmail: (typeof HC_MAIL !== 'undefined' ? HC_MAIL : 'hc@kabi.ai'), title: '<i class="ti ti-bell"></i> Reminder: complete your 1:1', body: body }); } catch (e) {}
-      try { if (typeof peSendEmail === 'function') peSendEmail(s.email, 'Reminder: complete your 1:1 for ' + (s.fnName || 'your KPIs'), body, (typeof EJ_TPL_EVAL !== 'undefined' ? EJ_TPL_EVAL : undefined)); } catch (e) {}
+      try { if (typeof kabiSendEmail === 'function') kabiSendEmail(s.email, 'Reminder: complete your 1:1 for ' + (s.fnName || 'your KPIs'), 'kpi_1on1_reminder', { toName: (s.name || 'Manager'), fnName: (s.fnName || ''), level: (s.level || ''), employeeName: repNames, message: body, fromName: 'Human Capital', replyTo: (typeof HC_MAIL !== 'undefined' ? HC_MAIL : 'hc@kabi.ai') }); } catch (e) {}
       try { if (typeof _updateNotifBadge === 'function') _updateNotifBadge(); } catch (e) {}
       toast('<i class="ti ti-bell"></i> Reminder sent to ' + who, 'ok');
     };
@@ -22391,6 +22463,10 @@
       const list = NOTIFICATIONS[email] || [];
       const n = list.find(x => x.id === notifId);
       if (n) n.read = true;
+      // v81 FIX: keep the top-bar bell badge in sync. Without this the badge kept
+      // showing a stale unread count after the user read items in the Notifications
+      // tab — so the bell showed a number but the dropdown said "all caught up".
+      try { if (me && (email || '').toLowerCase() === (me.email || '').toLowerCase() && typeof _updateNotifBadge === 'function') _updateNotifBadge(); } catch (e) {}
     }
 
     // Time-ago helper
@@ -23016,6 +23092,7 @@
       toast('All notifications marked as read',  'ok');
       const body = document.getElementById('emp-side-body');
       if (body) _empRefreshNotifSurface();
+      try { if (typeof _updateNotifBadge === 'function') _updateNotifBadge(); } catch (e) {}  // v81: sync top-bar bell
     }
 
     function empAcceptMeetingSlot(notifId, slotIdx) {
@@ -23026,6 +23103,7 @@
       notif.meta.status = 'accepted';
       notif.meta.selectedSlot = slotIdx;
       notif.read = true;
+      try { if (typeof _updateNotifBadge === 'function') _updateNotifBadge(); } catch (e) {}  // v81: sync top-bar bell
 
       // Send confirmation notification BACK to the manager
       // v67.40: Use plain-text labels instead of embedded HTML icons.
@@ -27651,6 +27729,19 @@
       renderPEAdmin(document.getElementById('hc-body'));
     }
 
+    // v81: set the KPI period from the KPI Framework section. It IS the evaluation
+    // cadence (PE_FREQUENCY) — KPIs/targets and the evaluation cycle share one period,
+    // so they can never drift apart. Stays in the KPI Framework view after changing.
+    function kpiSetPeriod(f) {
+      if (f === PE_FREQUENCY) return;
+      if (!confirm('Set the KPI & evaluation period to "' + f + '"?\n\nKPIs and their targets are framed for this period, and the evaluation cycles rebuild to match. Historical data is preserved in reports.\n\nContinue?')) return;
+      PE_FREQUENCY = f;
+      try { peRebuildCycles(f); } catch (e) {}
+      try { _updateTopbarPeriod(); } catch (e) {}
+      toast('<i class="ti ti-circle-check ti-green"></i> KPI period set to ' + f + ' — the KPI Architect and evaluation cycles now use it.', 'ok');
+      try { renderKPIFramework(document.getElementById('hc-body')); } catch (e) {}
+    }
+    window.kpiSetPeriod = kpiSetPeriod;
     // Set INVIEWS frequency (Super Admin)
     function peSetINVFrequency(f) {
       if (f === INVIEWS_CONFIG.frequency) return;
