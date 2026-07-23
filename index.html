@@ -4687,7 +4687,7 @@
 
     /* ── v67.21: Responsive layout ── */
     html,body { min-height:100dvh; }
-    body { overflow-x:hidden; }
+    body { overflow-x:clip; }   /* v81.1: `clip` keeps the sticky top bar working (not `hidden`) */
     #app,#main-content,#emp-main { max-width:100vw; }
     @media(max-width:900px){
       #sidebar { display:none !important; }
@@ -17822,11 +17822,14 @@
       // ── Compute stats ─────────────────────────────────────────
       const totalFns = Object.keys(FNS).length;
       const totalKPIs = Object.values(FNS).reduce((a, f) => a + f.sections.reduce((b, s) => b + s.kpis.length, 0), 0);
+      // v81: exclude superseded submissions — a re-submitted/replaced approval must not
+      // linger and double-count. "Approved" = current approved only.
+      const _isApr = s => s.status === 'approved' && !s.superseded;
       const totalSubs = subs.length;
-      const approvedSubs = subs.filter(s => s.status === 'approved').length;
+      const approvedSubs = subs.filter(_isApr).length;
       const rejectedSubs = subs.filter(s => s.status === 'rejected').length;
       const pendingSubs = subs.filter(s => s.status === 'pending').length;
-      const totalApprovedKPIs = subs.filter(s => s.status === 'approved').reduce((a, s) => a + s.selKPIs.length, 0);
+      const totalApprovedKPIs = subs.filter(_isApr).reduce((a, s) => a + s.selKPIs.length, 0);
       const totalEditedKPIs = subs.reduce((a, s) => a + s.selKPIs.filter(k => k.edited).length, 0);
       const coveragePct = Math.round(totalSubs / totalFns * 100);
 
@@ -17834,7 +17837,7 @@
       const pillarStats = Object.entries(PILLARS).map(([pk, p]) => {
         const fns = Object.keys(FNS).filter(k => FNS[k].pillar === pk);
         const done = fns.filter(k => subs.find(s => s.fnKey === k));
-        const approved = fns.filter(k => subs.find(s => s.fnKey === k && s.status === 'approved'));
+        const approved = fns.filter(k => subs.find(s => s.fnKey === k && _isApr(s)));
         const rejected = fns.filter(k => subs.find(s => s.fnKey === k && s.status === 'rejected'));
         const pending = fns.filter(k => subs.find(s => s.fnKey === k && s.status === 'pending'));
         const pct = fns.length ? Math.round(done.length / fns.length * 100) : 0;
@@ -17857,7 +17860,7 @@
 
       // ── KPI status breakdown (approved functions only) ────────
       let kpiBreakdown = '';
-      subs.filter(s => s.status === 'approved').forEach(s => {
+      subs.filter(_isApr).forEach(s => {
         const f = FNS[s.fnKey]; const p = PILLARS[f.pillar];
         const edited = s.selKPIs.filter(k => k.edited);
         kpiBreakdown += `<div style="padding:14px 16px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:10px;margin-bottom:10px;">
@@ -35916,7 +35919,7 @@
     }
 
     /* Eliminate accidental overflow that creates horizontal scroll */
-    body { overflow-x: hidden; }
+    body { overflow-x: clip; }   /* v81.1: `clip` (not `hidden`) so the sticky top bar stays frozen */
     #app, #main-content, #emp-main { max-width: 100vw; }
 
     /* Compact negative space on cards and section headers */
