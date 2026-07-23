@@ -726,8 +726,21 @@
     @media (max-width: 920px) {
       .auth-split { grid-template-columns: 1fr; max-width: 440px; }
       .auth-brand { display: none; }
-      .auth-split .auth-card { border-radius: 24px; padding: 44px 34px; }
+      .auth-split .auth-card { border-radius: 24px; padding: 40px 32px; }
+      /* v81: the left brand panel is hidden on small screens — bring the KABi logo back
+         above the form so the sign-in stays branded (theme picks the right light/dark logo).
+         !important beats the inline display:none set by the branding applier for split. */
+      #auth-screen.lt-split .auth-logo-wrap { display: flex !important; margin-bottom: 26px; }
     }
+    /* v81: small-phone polish — tighter gutters + card padding so nothing feels cramped. */
+    @media (max-width: 420px) {
+      #auth-screen { padding: 14px; }
+      .auth-split { max-width: 100%; }
+      .auth-split .auth-card { padding: 30px 22px; border-radius: 20px; }
+    }
+    /* v81: never clip the sign-in on short viewports — center when it fits, scroll from the
+       top when it doesn't (margin auto avoids the flexbox top-cut-off on tall content). */
+    #auth-screen > .auth-split, #auth-screen > .auth-card { margin: auto; }
 
     .auth-card {
       width: 460px;
@@ -7466,7 +7479,7 @@
       var _lab = 'font-size:11px;font-weight:700;color:var(--text-primary);display:block;margin-bottom:6px';
       // v81: profile card + change-password card side-by-side on wide screens
       // (auto-fit falls back to a single column on narrow / the super-admin modal).
-      return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;align-items:start">'
+      return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;align-items:stretch">'
         + '<div style="' + _cardCss + ';margin-bottom:0">'
         + '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:6px">'
         + '<div class="u-avatar" style="width:74px;height:74px;border-radius:50%;font-size:30px;flex-shrink:0;overflow:hidden;position:relative">' + (_pend ? '<img src="' + _pend + '" alt="" style="width:100%;height:100%;object-fit:cover">' : _avatarInner(me.email, gender)) + '</div>'
@@ -7495,13 +7508,13 @@
             }).join('');
           })()
         + '</div></div>'
-        + '<div style="' + _cardCss + ';margin-bottom:0">'
+        + '<div style="' + _cardCss + ';margin-bottom:0;display:flex;flex-direction:column">'
         + '<h3 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0 0 4px">Change password</h3>'
         + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Update the password you use to sign in. <strong style="color:var(--text-primary)">All fields are required.</strong></div>'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><label style="' + _lab + ';margin-bottom:0">Current password *</label><button type="button" onclick="profileForgotPassword()" style="background:none;border:none;color:var(--cyan);font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;padding:0;text-decoration:underline">Forgot?</button></div>'
         + '<input id="pf-cur" type="password" placeholder="Current password" style="' + _inp + ';margin-bottom:14px">'
-        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="pf-pw-grid"><div><label style="' + _lab + '">New password *</label><input id="pf-new" type="password" placeholder="New password (min 6 characters)" style="' + _inp + '"></div><div><label style="' + _lab + '">Confirm *</label><input id="pf-cf" type="password" placeholder="Confirm new password" style="' + _inp + '"></div></div>'
-        + '<button onclick="profileChangePassword()" style="margin-top:16px;padding:11px 20px;border-radius:9px;border:none;background:var(--brand-primary,#0a1f52);color:var(--brand-on-primary,#fff);font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Update password</button>'
+        + '<div style="display:flex;flex-direction:column;gap:14px" class="pf-pw-grid"><div><label style="' + _lab + '">New password *</label><input id="pf-new" type="password" placeholder="New password (min 6 characters)" style="' + _inp + '"></div><div><label style="' + _lab + '">Confirm *</label><input id="pf-cf" type="password" placeholder="Confirm new password" style="' + _inp + '"></div></div>'
+        + '<button onclick="profileChangePassword()" onmouseover="this.style.filter=\'brightness(1.08)\'" onmouseout="this.style.filter=\'none\'" style="margin-top:auto;align-self:flex-start;padding:12px 24px;border-radius:9px;border:none;background:linear-gradient(135deg,#216AB1,#1EAFD9);color:#fff !important;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:8px;box-shadow:0 6px 18px -6px rgba(33,106,177,.6);transition:filter .15s"><i class="ti ti-lock" style="color:#fff !important"></i> Update password</button>'
         + '</div>'
         + '</div>';
     }
