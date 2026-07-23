@@ -148,7 +148,10 @@
 
     html {
       scroll-behavior: smooth;
-      overflow-x: hidden;   /* v81: global no-horizontal-scroll safety (clips stray fixed panels too) */
+      /* v81.1: use `clip` (not `hidden`) — `hidden` forces overflow-y to `auto`, turning
+         html/body into scroll containers, which BREAKS the sticky top bar. `clip` clips the
+         stray horizontal overflow (fixed panels) WITHOUT creating a scroll container. */
+      overflow-x: clip;
     }
     /* v81: responsive media — images/svg/video/canvas never overflow their container on any screen. */
     img, svg, video, canvas { max-width: 100%; }
@@ -160,7 +163,7 @@
       min-height: 100vh;
       font-size: 15px;
       line-height: 1.5;
-      overflow-x: hidden;
+      overflow-x: clip;   /* v81.1: `clip` not `hidden` — keeps the sticky top bar working (see html) */
       /* v67.15 FIX: Sticky-footer layout. #app / #auth-screen grow to fill
          remaining space (flex:1 below), pushing .app-footer to the bottom of
          the viewport on short pages. On tall pages, content simply overflows
@@ -8243,7 +8246,7 @@
 
     // ─── Training Reset — clears all demo-related data for a fresh session ───
     function kabiTrainingReset() {
-      if (!confirm('Reset all training data?\n\nThis will clear:\n• All evaluations for Fahad & Noura\n• KPI submissions\n• Evaluation cycles (back to closed)\n• Session/login state\n\nThe next training group starts completely fresh.')) return;
+      if (!confirm('Reset all training data?\n\nThis will clear:\n• All evaluations for Fahad & Noura\n• KPI submissions\n• Evaluation cycles (back to closed)\n• Well-being check-ins & notifications\n• Session/login state\n\nThe next training group starts completely fresh.')) return;
 
       // 1. Clear PE_EVALS for demo users
       var demoIds = ['D0001', 'D0002'];
@@ -8252,7 +8255,9 @@
           delete PE_EVALS[k];
         }
       });
-      _saveEvals();
+      // v81 FIX: was `_saveEvals()` which doesn't exist — the reset threw here and never
+      // completed (cycles/subs/well-being were never actually cleared). Correct name is _savePEEvals.
+      try { if (typeof _savePEEvals === 'function') _savePEEvals(); } catch (e) {}
 
       // 2. Close all evaluation cycles
       if (typeof PE_QUARTERS !== 'undefined') {
@@ -8299,6 +8304,20 @@
           }
         }
       }
+
+      // 5b. v81: clear the Well-being check-in history + per-user notifications for the
+      // demo users, so a fresh session truly starts from zero — no logged feelings, no
+      // wellbeing pattern/insight, no leftover notifications.
+      var _demoEmails = ['demo.manager@kabi.ai', 'demo.employee@kabi.ai', 'hc.pm@kabi.ai'];
+      try {
+        var _wb = JSON.parse(localStorage.getItem('kabi_wellbeing_v75') || '{}');
+        _demoEmails.forEach(function (em) { delete _wb[em]; });
+        localStorage.setItem('kabi_wellbeing_v75', JSON.stringify(_wb));
+      } catch (e) {}
+      try { window._wbCopilotPref = null; } catch (e) {}
+      try {
+        if (typeof NOTIFICATIONS !== 'undefined') _demoEmails.forEach(function (em) { if (NOTIFICATIONS[em]) NOTIFICATIONS[em] = []; });
+      } catch (e) {}
 
       // 6. Clear session
       _clearSession();
