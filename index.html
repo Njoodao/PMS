@@ -148,10 +148,9 @@
 
     html {
       scroll-behavior: smooth;
-      /* v81.1: use `clip` (not `hidden`) — `hidden` forces overflow-y to `auto`, turning
-         html/body into scroll containers, which BREAKS the sticky top bar. `clip` clips the
-         stray horizontal overflow (fixed panels) WITHOUT creating a scroll container. */
-      overflow-x: clip;
+      /* v81.2: NO overflow on <html> — setting any overflow (even clip) here stops the
+         viewport from scrolling (breaks the whole page scroll + sticky header/sidebar).
+         Horizontal-overflow clipping lives on <body> instead. */
     }
     /* v81: responsive media — images/svg/video/canvas never overflow their container on any screen. */
     img, svg, video, canvas { max-width: 100%; }
@@ -1315,7 +1314,10 @@
 
     .page.active {
       display: block;
-      animation: pgIn .5s cubic-bezier(.22, 1, .36, 1) both;
+      /* v81: `backwards` (not `both`) — `both` keeps the final transform:translateY(0)
+         applied forever, and a transformed ancestor BREAKS position:sticky (frozen header
+         /sidebar). `backwards` still plays the intro, then reverts to no transform. */
+      animation: pgIn .5s cubic-bezier(.22, 1, .36, 1) backwards;
     }
 
     @keyframes pgIn {
@@ -1333,7 +1335,9 @@
 
     /* Cascading entrance for direct children of .wrap (cards, sections, hero) */
     .page.active .wrap > * {
-      animation: cardIn .5s cubic-bezier(.22, 1, .36, 1) both;
+      /* v81: `backwards` not `both` — otherwise cardIn's final transform lingers on every
+         card (incl. the sidebar's container), breaking sticky. Intro still plays. */
+      animation: cardIn .5s cubic-bezier(.22, 1, .36, 1) backwards;
       animation-delay: calc(var(--stagger, 0) * 60ms);
     }
 
@@ -5051,6 +5055,7 @@
           </div>
           <div class="tb-menu-role" id="tb-menu-role">—</div>
           <button class="tb-menu-item" onclick="closeUserMenu();openProfile()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"/></svg> Profile</button>
+          <button class="tb-menu-item" onclick="closeUserMenu();kabiOpenGuide(true)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8a3.5 3 0 0 1 3.5 -3h1a3.5 3 0 0 1 3.5 3a3 3 0 0 1 -2 3a3 4 0 0 0 -2 4"/><path d="M12 19l0 .01"/></svg> Guide</button>
           <button class="tb-menu-item danger" onclick="logout()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2"/><path d="M9 12h12l-3 -3"/><path d="M18 15l3 -3"/></svg> Sign out</button>
         </div>
         <!-- Notifications popover -->
@@ -7736,8 +7741,9 @@
         empSideTab = 'dashboard'; showPg('pg-employee'); renderEmployeeDashboard();
       }
       else { showPg('pg-home'); renderHome(); }
-      // Onboarding guide cancelled per request — no auto-show, no menu entry.
-      // (kabiOpenGuide/kabiMaybeShowOnboarding remain defined but are not triggered.)
+      // v81: onboarding guide re-enabled — auto-shows once per user on first login
+      // (role-aware), and is reopenable anytime from the profile menu (Guide).
+      try { kabiMaybeShowOnboarding(u); } catch (e) {}
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -7781,41 +7787,46 @@
       var hero   = function () { var e = document.querySelector('.emp-hero-card'); return _ogVis(e) ? e : _ogText('Card'); };
       const S = {
         employee: [
-          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: "Here's a quick guide to everything on your KABi Workspace — one card at a time." },
-          { icon: 'ti-user',             title: 'Your Employee Card',       body: 'This card shows your name, department, function, and level. Once HC releases results, your Final Score for the cycle appears here too.', target: hero },
-          { icon: 'ti-heart',            title: 'Well-being Check-in',      body: "A quick pulse before your week — tap how you're feeling. It's light-touch, takes seconds, and helps your manager support you.", target: text('Well-being'), req: textReq('Well-being') },
-          { icon: 'ti-target',           title: 'My KPI Framework',         body: "After your manager proposes KPIs for your function and HC approves them, they appear here — this is exactly what you'll be evaluated on this cycle.", target: text('KPI Framework'), req: textReq('KPI Framework') },
-          { icon: 'ti-bulb',             title: 'My Initiatives',           body: 'Completed a course or have an improvement idea? Submit it as an initiative. Your manager reviews it first, then HC gives final approval.', target: text('Initiative'), req: textReq('Initiative') },
-          { icon: 'ti-confetti',         title: "You're all set!",          body: 'Everything lives on this page — explore freely. You can reopen this guide anytime from your profile menu.' }
+          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: "This is your KABi Workspace. Here's a quick tour of what lives on your home page — one card at a time." },
+          { icon: 'ti-id-badge-2',       title: 'Your Employee Card',       body: 'Your name, department, function and career level. Once HC releases the cycle results, your Final Score appears here too.', target: hero },
+          { icon: 'ti-heart',            title: 'Well-being Check-in',      body: 'Tap how your day is going. It stays completely private, is never used in your evaluation, and nothing reaches your manager unless you choose to share it — just a quick, supportive pulse.', target: text('Well-being'), req: textReq('Well-being') },
+          { icon: 'ti-target-arrow',     title: 'My KPI Framework',         body: 'Once your manager proposes your KPIs and HC approves them, they appear here — this is exactly what you are measured on this cycle. Targets come from connected data; nothing is invented.', target: text('KPI Framework'), req: textReq('KPI Framework') },
+          { icon: 'ti-bulb',             title: 'My Initiatives',           body: 'Finished a course or have an improvement idea? Log it as an initiative. Your manager reviews it first, then HC gives final approval — so your extra effort is recognised.', target: text('Initiative'), req: textReq('Initiative') },
+          { icon: 'ti-map-2',            title: 'Where Are You?',           body: 'An interactive map of the whole organisation — every pillar, department and function — with a marker showing exactly where you fit in.', target: side('whereami'), pre: sidePre('whereami'), req: sideReq('whereami') },
+          { icon: 'ti-bell',             title: 'Notification Center',      body: 'Notes, meeting requests and updates from your manager and HC collect here, so nothing gets missed.', target: side('notifications'), pre: sidePre('notifications'), req: sideReq('notifications') },
+          { icon: 'ti-confetti',         title: "You're all set!",          body: "That's your Workspace. Switch light/dark from the top bar, and reopen this guide anytime from your profile menu.", pre: sidePre('dashboard') }
         ],
         manager: [
-          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: "You manage a team on KABi. Here's a tour of your Workspace sidebar." },
-          { icon: 'ti-layout-dashboard', title: 'Dashboard',                body: "Your personal home — your own card, KPIs, and evaluation status, plus an AI Insight summarizing your team's key patterns.", target: side('dashboard'), pre: sidePre('dashboard') },
-          { icon: 'ti-users',            title: 'My Team',                  body: 'Your direct reports live here. Send notes, schedule 1:1s, and — during an open cycle — start their performance reviews.', target: side('team'), pre: sidePre('team'), req: sideReq('team') },
-          { icon: 'ti-target',           title: 'KPI Framework',            body: 'Propose up to 4 KPIs per level for each function you manage. HC approves them, and the approved set becomes the official basis for the cycle.', target: side('kpi'), pre: sidePre('kpi'), req: sideReq('kpi') },
-          { icon: 'ti-clipboard-check',  title: 'Evaluate Team',            body: 'When a cycle opens, score each report across KPIs, digital adoption, and initiatives. The AI Coach assists — the final call is yours.', target: side('eval'), pre: sidePre('eval'), req: sideReq('eval') },
-          { icon: 'ti-chart-line',       title: 'Insights & INVIEWS',       body: "Team insights are grounded in real evaluation data, never mock. Team INVIEWS tracks each report's Technical and Behavioral assessment when a cycle is running.", target: side('ai_insights'), pre: sidePre('ai_insights'), req: sideReq('ai_insights') },
+          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: "You manage a team on KABi. Here's a tour of your Workspace — the sidebar takes you everywhere." },
+          { icon: 'ti-layout-dashboard', title: 'Dashboard',                body: 'Your personal home — your own card and KPIs, plus an AI nudge summarising what needs your attention today.', target: side('dashboard'), pre: sidePre('dashboard') },
+          { icon: 'ti-users',            title: 'My Team',                  body: 'Your direct reports. Send notes, schedule 1:1s, and — when a cycle is open — start their performance reviews.', target: side('team'), pre: sidePre('team'), req: sideReq('team') },
+          { icon: 'ti-target-arrow',     title: 'KPI Architect',            body: "Design each report's KPIs with AI assistance — up to 4 level-specific KPIs per function, checked for SMART quality. You hold a 1:1 to align, then HC approves; the approved set is the official basis for the cycle.", target: side('kpi_architect'), pre: sidePre('kpi_architect'), req: sideReq('kpi_architect') },
+          { icon: 'ti-clipboard-check',  title: 'Evaluate Team',            body: 'When a cycle opens, score each report across their KPIs, digital adoption and initiatives. The Advisor Copilot reviews the evidence and flags gaps — but the final call is always yours.', target: side('eval'), pre: sidePre('eval'), req: sideReq('eval') },
+          { icon: 'ti-chart-line',       title: 'Dept & Team Insights',     body: 'Real, evidence-based insights about your team — new joiners, workload, performance signals and pending evaluations. Grounded in live data, never invented.', target: side('ai_insights'), pre: sidePre('ai_insights'), req: sideReq('ai_insights') },
+          { icon: 'ti-brain',            title: 'Team INVIEWS',             body: "Track each report's Technical and Behavioural assessment while a cycle is running.", target: side('inviews'), pre: sidePre('inviews'), req: sideReq('inviews') },
+          { icon: 'ti-map-2',            title: 'Where Are You?',           body: 'The organisation map — explore every pillar, department and function, and see where your team sits.', target: side('whereami'), pre: sidePre('whereami'), req: sideReq('whereami') },
           { icon: 'ti-confetti',         title: "You're all set!",          body: 'Reopen this guide anytime from your profile menu. Have a productive cycle!', pre: sidePre('dashboard') }
         ],
         ceo: [
-          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: 'Welcome to your Executive View at KABi.' },
-          { icon: 'ti-layout-dashboard', title: 'Executive Dashboard',      body: 'Your executive home — your profile, organization-wide stats, and shortcuts to the KPI and Performance dashboards.', target: side('dashboard'), pre: sidePre('dashboard'), req: sideReq('dashboard') },
-          { icon: 'ti-target',           title: 'KPI Framework',            body: "Full read access across every department and function. Browse any function's KPIs and add comments to share your perspective with HC.", target: side('kpi'), pre: sidePre('kpi'), req: sideReq('kpi') },
-          { icon: 'ti-chart-histogram',  title: 'KPI & Performance',        body: 'Live KPI progress and organization-wide evaluation results — by department, level, and cycle, with trends over time.', target: side('exec_kpi_dashboard'), pre: sidePre('exec_kpi_dashboard'), req: sideReq('exec_kpi_dashboard') },
-          { icon: 'ti-sparkles',         title: 'AI Insights',              body: 'Company-wide patterns in performance, KPI health, and retention — grounded in real evaluation data, never mock.', target: side('ai_insights'), pre: sidePre('ai_insights'), req: sideReq('ai_insights') },
+          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: 'Welcome to your Executive View at KABi — a read-across of the whole organisation.' },
+          { icon: 'ti-layout-dashboard', title: 'Executive Dashboard',      body: 'Your executive home: organisation-wide stats and shortcuts into the KPI and Performance dashboards.', target: side('dashboard'), pre: sidePre('dashboard'), req: sideReq('dashboard') },
+          { icon: 'ti-target-arrow',     title: 'KPI Framework',            body: "Full read access across every department and function. Browse any function's KPIs and add comments to share your perspective with HC.", target: side('kpi'), pre: sidePre('kpi'), req: sideReq('kpi') },
+          { icon: 'ti-chart-histogram',  title: 'KPI Dashboard',            body: 'Live KPI coverage and approvals across the organisation — by pillar, department and level.', target: side('exec_kpi_dashboard'), pre: sidePre('exec_kpi_dashboard'), req: sideReq('exec_kpi_dashboard') },
+          { icon: 'ti-clipboard-check',  title: 'Performance Dashboard',    body: 'Organisation-wide evaluation results and trends over time, once HC releases each cycle.', target: side('exec_performance'), pre: sidePre('exec_performance'), req: sideReq('exec_performance') },
+          { icon: 'ti-map-2',            title: 'Where Are You?',           body: 'The full organisation map — every pillar, department and function at a glance.', target: side('whereami'), pre: sidePre('whereami'), req: sideReq('whereami') },
           { icon: 'ti-confetti',         title: "You're all set!",          body: 'Welcome to the executive suite. Reopen this guide anytime from your profile menu.', pre: sidePre('dashboard') }
         ],
         admin: [
-          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: "You're signed in as HC Super Admin. Here's a tour of your command center." },
-          { icon: 'ti-clipboard-check',  title: 'Performance Evaluation',   body: 'Configure cycles, weights, and scoring logic. Track manager progress, handle edit requests, and release final scores. HC sets up how evaluations run; managers do the scoring.', target: box('pe') },
-          { icon: 'ti-target',           title: 'KPI Framework',            body: 'Review and approve manager KPI submissions, and manage the KPI library across every function.', target: box('kpi') },
-          { icon: 'ti-users',            title: 'People & Access',          body: 'Manage employee records, accounts, access permissions, and password resets — the full employee lifecycle in one place.', target: box('people') },
-          { icon: 'ti-settings',         title: 'Settings & Branding',      body: 'Tune AI, connectors, nudges, and white-label branding — your logo and colours flow across the whole system, including this topbar.', target: box('settings') },
-          { icon: 'ti-confetti',         title: "You're all set!",          body: 'Each box has its own tools inside. Reopen this guide anytime from your profile menu.' }
+          { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: "You're signed in as HC Super Admin — your command center. Four modules run the whole system." },
+          { icon: 'ti-clipboard-check',  title: 'Performance Evaluation',   body: 'Set the evaluation cadence, weights and scoring logic; track manager progress; handle edit requests; and release final scores. HC configures how evaluations run — managers do the scoring.', target: box('pe') },
+          { icon: 'ti-target-arrow',     title: 'KPI Framework',            body: 'Review and approve (or return) manager KPI submissions, set the KPI period, and manage the level-specific KPI library across every function.', target: box('kpi') },
+          { icon: 'ti-users',            title: 'People & Access',          body: 'Employee records, accounts, KPI/portal access and password resets — the full employee lifecycle in one place.', target: box('people') },
+          { icon: 'ti-settings',         title: 'Settings & Branding',      body: 'Tune the AI engine, data connectors and nudges, and white-label the system — your logo and colours flow everywhere, including this top bar.', target: box('settings') },
+          { icon: 'ti-confetti',         title: "You're all set!",          body: 'Each module opens its own tools inside. Reopen this guide anytime from your profile menu.' }
         ],
         lead: [
           { icon: 'ti-mood-smile',       title: 'Welcome, ' + F + '!',      body: "Here's a quick guide to your KABi workspace." },
-          { icon: 'ti-target',           title: 'KPI Definition Portal',    body: "Define and manage KPIs for the functions you're responsible for, organized by pillar.", target: function () { var e = document.getElementById('pillars-wrapper'); return _ogVis(e) ? e : null; } },
+          { icon: 'ti-target-arrow',     title: 'KPI Definition Portal',    body: "Define and manage KPIs for the functions you're responsible for, organised by pillar.", target: function () { var e = document.getElementById('pillars-wrapper'); return _ogVis(e) ? e : null; } },
           { icon: 'ti-folder',           title: 'Your Functions',           body: 'Pick a function to view and propose its KPIs. Submissions go to HC for approval before they count.' },
           { icon: 'ti-sparkles',         title: 'AI Assist',                body: 'The KPI generator suggests grounded, level-appropriate KPIs you can refine — never fabricated targets.' },
           { icon: 'ti-confetti',         title: "You're all set!",          body: 'Explore freely. Reopen this guide anytime from your profile menu.' }
@@ -18528,11 +18539,17 @@
       document.getElementById('hc-tabs').style.display = 'none';
       document.getElementById('hc-body').innerHTML = '';
       document.getElementById('hc-back-btn').style.display = 'none';
+      // v81: restore the hero on the dashboard home (hidden inside a section — see hcOpenSection).
+      try { var _h = document.querySelector('#pg-hc .hc-hero'); if (_h) _h.style.display = ''; } catch (e) {}
       hcRenderStats('home');
     }
 
     function hcOpenSection(tab) {
       hcT = tab;
+      // v81: hide the tall dashboard hero inside a section — the sidebar header already
+      // names the section, and removing it lets the sidebar show FULL without scrolling
+      // (and its sticky "freeze" then starts right under the top bar).
+      try { var _h = document.querySelector('#pg-hc .hc-hero'); if (_h) _h.style.display = 'none'; } catch (e) {}
       document.getElementById('hc-home-boxes').style.display = 'none';
       // Hide the tabs row entirely — the sidebar header already shows the current
       // section name, so the standalone pill button was a duplicate. Users navigate
