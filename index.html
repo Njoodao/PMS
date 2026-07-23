@@ -2868,9 +2868,11 @@
       align-self: start;         /* don't stretch to the grid row height, else sticky can't move */
       max-height: calc(100vh - 96px);
       overflow-y: auto;          /* long nav scrolls inside itself, stays fully reachable */
+      scrollbar-width: none;     /* v81: hide the scrollbar strip (still scrollable via wheel/trackpad) */
       backdrop-filter: blur(20px) saturate(160%);
       box-shadow: 0 8px 32px rgba(2, 10, 30, .4), 0 0 0 1px rgba(255, 255, 255, .03) inset;
     }
+    .hc-side-nav::-webkit-scrollbar { width: 0; height: 0; display: none; }   /* v81: no scroll strip in the sidebar */
     .hc-side-section {
       font-size: 10px;
       font-weight: 700;
@@ -7462,7 +7464,10 @@
       var _cardCss = 'background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:14px;padding:22px;box-shadow:var(--shadow-card,0 1px 2px rgba(10,31,82,.05),0 10px 26px -16px rgba(10,31,82,.22));margin-bottom:16px';
       var _inp = 'width:100%;height:40px;padding:0 13px;background:rgba(127,140,170,.06);border:1px solid var(--glass-border,#e5eaf3);border-radius:9px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none';
       var _lab = 'font-size:11px;font-weight:700;color:var(--text-primary);display:block;margin-bottom:6px';
-      return '<div style="' + _cardCss + '">'
+      // v81: profile card + change-password card side-by-side on wide screens
+      // (auto-fit falls back to a single column on narrow / the super-admin modal).
+      return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;align-items:start">'
+        + '<div style="' + _cardCss + ';margin-bottom:0">'
         + '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:6px">'
         + '<div class="u-avatar" style="width:74px;height:74px;border-radius:50%;font-size:30px;flex-shrink:0;overflow:hidden;position:relative">' + (_pend ? '<img src="' + _pend + '" alt="" style="width:100%;height:100%;object-fit:cover">' : _avatarInner(me.email, gender)) + '</div>'
         + '<div style="flex:1;min-width:160px"><div style="font-size:19px;font-weight:900;color:var(--text-primary)">' + (me.name || '') + '</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">' + title + '</div>'
@@ -7497,6 +7502,7 @@
         + '<input id="pf-cur" type="password" placeholder="Current password" style="' + _inp + ';margin-bottom:14px">'
         + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="pf-pw-grid"><div><label style="' + _lab + '">New password *</label><input id="pf-new" type="password" placeholder="New password (min 6 characters)" style="' + _inp + '"></div><div><label style="' + _lab + '">Confirm *</label><input id="pf-cf" type="password" placeholder="Confirm new password" style="' + _inp + '"></div></div>'
         + '<button onclick="profileChangePassword()" style="margin-top:16px;padding:11px 20px;border-radius:9px;border:none;background:var(--brand-primary,#0a1f52);color:var(--brand-on-primary,#fff);font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">Update password</button>'
+        + '</div>'
         + '</div>';
     }
     // Profile as a sidebar tab (employee/manager/CEO).
@@ -9488,7 +9494,9 @@
         Health: 'Health — a quality, risk or stability guardrail (defect rate, uptime, error rate, compliance).'
       };
       var _covSummary = 'Coverage — a strong KPI set is balanced across four complementary types, so performance isn\'t judged on a single dimension. Hover each type for what it means.\n\nReference: the Balanced Scorecard + the leading-vs-lagging indicator framework.';
-      var _covWord = function (label, color) { return '<strong class="cov-chip" data-cov-tip="' + _tipEsc(_covDefs[label]) + '" style="color:' + color + ';cursor:help;border-bottom:1px dotted currentColor">' + label + '</strong>'; };
+      // v81: the 4 type words are plain labels now — the definition tooltip lives ONLY
+      // on each per-KPI category badge (no duplicate hover in the header line).
+      var _covWord = function (label, color) { return '<strong style="color:' + color + '">' + label + '</strong>'; };
       var _coverage = '<strong class="cov-chip" data-cov-tip="' + _tipEsc(_covSummary) + '" style="cursor:help;border-bottom:1px dotted currentColor;color:var(--text-muted)">Coverage</strong> › '
         + _covWord('Leading', '#00c2e0') + ' · ' + _covWord('Process', '#216AB1') + ' · ' + _covWord('Lagging', '#6d5bd0') + ' · ' + _covWord('Health', '#12a17a');
       var head = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin:22px 0 12px"><strong style="font-size:14px;color:var(--text-primary)">' + (_kpiArchState.submitted ? 'Submitted set' : 'Generated set') + ' · <span style="color:var(--cyan)">' + fnName + ' · ' + _kpiArchState.level + '</span></strong><span style="font-size:11px;color:var(--text-muted)">' + _coverage + '</span></div>';
@@ -9573,8 +9581,18 @@
       var k = (_kpiArchState.set || [])[i]; if (!k) return;
       var ta = document.getElementById('kpi-arch-ta-' + i);
       if (ta) k.edited = ta.value;
+      // v81: the bold heading (first line) tracks the edited statement, so editing a KPI
+      // updates its title too — not just the sub-line. Derive a short title from the new
+      // text: the first clause, minus a trailing "(...)" note, capped at ~72 chars.
+      var _stmt = (k.edited || k.statement || '').trim();
+      if (_stmt) {
+        var _title = _stmt.split(/[.;\n]|\s+—\s+|\s+–\s+| - /)[0].trim();
+        _title = _title.replace(/\s*\([^)]*\)\s*$/, '').trim();
+        if (_title.length > 72) _title = _title.slice(0, 70).replace(/\s+\S*$/, '') + '…';
+        if (_title) k.title = _title;
+      }
       toast('<i class="ti ti-circle-check ti-green"></i> KPI updated', 'ok');
-      kpiArchRenderResults();
+      kpiArchRenderResults();   // re-renders the card → the S·M·A·R·T letters recompute from the new text
     }
     window.kpiArchSaveEdit = kpiArchSaveEdit;
     function kpiArchValidate(i) {
@@ -17123,8 +17141,8 @@
 
       var ov = document.getElementById('kabi-1on1-modal');
       if (!ov) { ov = document.createElement('div'); ov.id = 'kabi-1on1-modal'; document.body.appendChild(ov); ov.onclick = function (e) { if (e.target === ov) ov.style.display = 'none'; }; }
-      ov.style.cssText = 'position:fixed;inset:0;z-index:9600;background:rgba(10,31,82,.55);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:38px 16px;font-family:var(--font)';
-      ov.innerHTML = '<div style="width:100%;max-width:520px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:18px;overflow:hidden;box-shadow:0 30px 80px -20px rgba(10,31,82,.55)">'
+      ov.style.cssText = 'position:fixed;inset:0;z-index:9600;background:rgba(10,31,82,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:38px 16px;font-family:var(--font)';
+      ov.innerHTML = '<div style="width:100%;max-width:520px;margin:auto;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:18px;overflow:hidden;box-shadow:0 30px 80px -20px rgba(10,31,82,.55)">'
         // header
         + '<div style="padding:22px 24px;background:linear-gradient(135deg,var(--brand-primary,#0a1f52),color-mix(in srgb,var(--brand-primary,#0a1f52) 60%,#060f2a));color:var(--brand-on-primary,#fff);position:relative">'
         +   '<button type="button" onclick="document.getElementById(\'kabi-1on1-modal\').style.display=\'none\'" title="Close" style="position:absolute;top:14px;right:14px;width:30px;height:30px;border:none;border-radius:9px;background:rgba(255,255,255,.16);color:var(--brand-on-primary,#fff);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;font-family:inherit">&times;</button>'
@@ -17141,10 +17159,15 @@
         +   '</div>'
         // step 1 — schedule (v80.9: the confirmation checkbox moved to a dedicated
         // confirm dialog shown after "Complete 1:1 step").
-        +   '<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">'
+        +   '<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap">'
         +     '<span style="width:26px;height:26px;border-radius:50%;background:rgba(0,194,224,.12);color:var(--cyan);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0">1</span>'
-        +     '<div style="flex:1"><div style="font-size:13px;font-weight:800;color:var(--text-primary)">Schedule the 1:1</div><div style="font-size:11px;color:var(--text-muted)">Opens Outlook with the invite pre-filled' + (repNames.length ? ' for ' + escapeHtml(whoLabel) : '') + '.</div></div>'
-        +     '<a href="' + outlookUrl + '" target="_blank" rel="noopener" style="padding:9px 15px;border-radius:9px;background:#0F6CBD;color:#fff;font-size:12px;font-weight:800;text-decoration:none;font-family:inherit;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;flex-shrink:0"><i class="ti ti-calendar-event"></i> Outlook meeting</a>'
+        +     '<div style="flex:1;min-width:150px"><div style="font-size:13px;font-weight:800;color:var(--text-primary)">Schedule the 1:1</div><div style="font-size:11px;color:var(--text-muted)">Opens Outlook with the invite pre-filled' + (repNames.length ? ' for ' + escapeHtml(whoLabel) : '') + '.</div></div>'
+        +     '<div style="display:inline-flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap">'
+        +       '<a href="' + outlookUrl + '" target="_blank" rel="noopener" style="padding:9px 15px;border-radius:9px;background:#0F6CBD;color:#fff;font-size:12px;font-weight:800;text-decoration:none;font-family:inherit;display:inline-flex;align-items:center;gap:7px;white-space:nowrap"><i class="ti ti-calendar-event"></i> Outlook meeting</a>'
+        // v81: let the manager defer — the KPIs stay a draft (awaiting_1on1) and can be
+        // completed later via the "Complete 1:1 step" button on the page.
+        +       '<button type="button" onclick="document.getElementById(\'kabi-1on1-modal\').style.display=\'none\';if(typeof toast===\'function\')toast(\'Saved as a draft — hold the 1:1 and complete it when you\\\'re ready\',\'ok\')" style="padding:9px 14px;border-radius:9px;border:1px solid var(--glass-border,#e5eaf3);background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap"><i class="ti ti-clock"></i> Will do it later</button>'
+        +     '</div>'
         +   '</div>'
         // v81: the ONLY action here is scheduling via Outlook (above). Confirming the 1:1
         // was held moved OUT to the page's "Complete 1:1 step" button → confirm dialog.
@@ -19252,14 +19275,36 @@
           ${inner}
         </div>`;
       }
-      const recent = subs.slice(-3).reverse().map(s => `
-    <div class="sub-card">
-      <div class="sub-hd">
-        <div><div class="sub-user">${s.name}</div><div class="sub-dept">${s.fnName}${s.level ? (function(){ var _ls = getLevelStyle(s.level); return ' · <span style="color:' + _ls.color + ';font-weight:700">' + s.level + '</span>'; })() : ''}</div></div>
-        <div style="text-align:right"><div class="sub-time">${s.ts}</div><span class="status s${s.status[0]}">${s.status}</span></div>
-      </div>
-      <div style="font-size:12px;color:var(--text-muted)">${s.selKPIs.length} KPIs · ${s.selKPIs.filter(k => k.edited).length} edited</div>
-    </div>`).join('');
+      // v81: cleaner, professional row — avatar · name · function/level · KPI chips,
+      // with a friendly status pill (dot + label, no raw "AWAITING_1ON1") and time.
+      const _subStatusMeta = {
+        awaiting_1on1: { label: 'Awaiting 1:1',       color: '#7c3aed' },
+        pending:       { label: 'Pending HC review',  color: '#c2820b' },
+        approved:      { label: 'Approved',           color: '#12a17a' },
+        rejected:      { label: 'Needs changes',      color: '#dc4b57' }
+      };
+      const _hexA = function (hex, a) { var m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return hex; var n = parseInt(m[1], 16); return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')'; };
+      const recent = subs.slice(-5).reverse().map(function (s) {
+        var sm = _subStatusMeta[s.status] || { label: String(s.status || '').replace(/_/g, ' '), color: '#7f8cAA' };
+        var initials = (s.name || '').split(' ').map(function (w) { return w[0] || ''; }).join('').toUpperCase().slice(0, 2);
+        var ls = (s.level && typeof getLevelStyle === 'function') ? getLevelStyle(s.level) : null;
+        var edited = (s.selKPIs || []).filter(function (k) { return k.edited; }).length;
+        return '<div style="display:flex;align-items:center;gap:13px;padding:13px 15px;border:1px solid var(--glass-border,#e5eaf3);border-radius:12px;background:var(--surface-2,#fbfcfe);margin-bottom:9px">'
+          + '<div style="width:38px;height:38px;border-radius:11px;flex-shrink:0;background:linear-gradient(135deg,#216AB1,#3D3185);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">' + (initials || '—') + '</div>'
+          + '<div style="flex:1;min-width:0">'
+          +   '<div style="font-size:13px;font-weight:800;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + s.name + '</div>'
+          +   '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">' + s.fnName + (s.level ? (' · <span style="color:' + (ls ? ls.color : 'var(--cyan)') + ';font-weight:700">' + s.level + '</span>') : '') + '</div>'
+          +   '<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">'
+          +     '<span style="font-size:9.5px;font-weight:700;color:var(--text-muted);background:rgba(127,140,170,.1);padding:2px 9px;border-radius:20px">' + (s.selKPIs || []).length + ' KPIs</span>'
+          +     (edited ? ('<span style="font-size:9.5px;font-weight:700;color:var(--cyan);background:rgba(0,194,224,.1);padding:2px 9px;border-radius:20px">' + edited + ' edited</span>') : '')
+          +   '</div>'
+          + '</div>'
+          + '<div style="flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:7px">'
+          +   '<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;color:' + sm.color + ';background:' + _hexA(sm.color, .1) + ';border:1px solid ' + _hexA(sm.color, .28) + ';padding:4px 11px;border-radius:20px;white-space:nowrap"><span style="width:6px;height:6px;border-radius:50%;background:' + sm.color + '"></span>' + sm.label + '</span>'
+          +   '<span style="font-size:10px;color:var(--text-dim)">' + s.ts + '</span>'
+          + '</div>'
+          + '</div>';
+      }).join('');
       el.innerHTML = `
     <div style="margin-bottom:24px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
@@ -19271,17 +19316,40 @@
       </div>
       <!-- v81: KPI period (Super Admin) — governs KPI Architect + targets + eval cycle. -->
       <div style="background:linear-gradient(135deg,rgba(0,194,224,.06),rgba(37,87,232,.03));border:1px solid rgba(0,194,224,.22);border-radius:14px;padding:15px 18px;margin-bottom:18px">
-        <div style="display:flex;align-items:center;gap:9px;margin-bottom:3px"><i class="ti ti-calendar-stats" style="color:var(--cyan);font-size:16px"></i><strong style="font-size:13.5px;color:var(--text-primary)">KPI period</strong><span style="font-size:8.5px;font-weight:800;color:#c2820b;background:rgba(251,191,36,.14);border:1px solid rgba(251,191,36,.32);padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.4px">Super Admin</span></div>
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:3px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M11.795 21H5a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v4"/><path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.5v1.5l1 1"/></svg><strong style="font-size:13.5px;color:var(--text-primary)">KPI period</strong><span style="font-size:8.5px;font-weight:800;color:#c2820b;background:rgba(251,191,36,.14);border:1px solid rgba(251,191,36,.32);padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.4px">Super Admin</span></div>
         <p style="font-size:11px;color:var(--text-muted);margin:0 0 12px;line-height:1.5">KPIs &amp; their targets are set for this period — it drives the <strong style="color:var(--text-primary)">KPI Architect</strong> and the <strong style="color:var(--text-primary)">evaluation cycle</strong> together, so they never drift apart. Current period: <strong style="color:var(--cyan)">${_kpiPeriodLabel || '—'}</strong></p>
         <div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:10px;overflow:hidden">
           ${[['annual', 'Annual'], ['semi-annual', 'Semi-annual'], ['quarterly', 'Quarterly']].map(function (o) { var on = (typeof PE_FREQUENCY !== 'undefined' && PE_FREQUENCY === o[0]); return '<button onclick="kpiSetPeriod(\'' + o[0] + '\')" style="padding:9px 18px;border:none;background:' + (on ? 'linear-gradient(135deg,var(--cyan),#1338b0)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text-muted)') + ';font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">' + o[1] + '</button>'; }).join('')}
         </div>
+        ${(function(){
+            if (typeof PE_QUARTERS === 'undefined') return '';
+            var keys = Object.keys(PE_QUARTERS); if (!keys.length) return '';
+            var openK = (typeof peGetOpenQ === 'function' && peGetOpenQ()) || keys[0];
+            // v81: annual = one cycle → no sub-choice; just show the active full-year label.
+            if (keys.length <= 1) {
+              return '<div style="margin-top:11px;font-size:11px;color:var(--text-muted)">Active cycle: <strong style="color:var(--text-primary)">' + ((PE_QUARTERS[keys[0]] && PE_QUARTERS[keys[0]].label) || keys[0]) + '</strong></div>';
+            }
+            var q = (typeof PE_FREQUENCY !== 'undefined' && PE_FREQUENCY === 'semi-annual') ? 'Which half' : 'Which quarter';
+            return '<div style="margin-top:12px">'
+              + '<div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">' + q + '? <span style="text-transform:none;font-weight:600;color:var(--text-muted)">· the year is set automatically</span></div>'
+              + '<div style="display:inline-flex;border:1px solid var(--glass-border,rgba(255,255,255,.14));border-radius:10px;overflow:hidden;flex-wrap:wrap">'
+              + keys.map(function (k) { var on = (k === openK); return '<button onclick="kpiSetCyclePeriod(\'' + k + '\')" title="' + ((PE_QUARTERS[k] && PE_QUARTERS[k].label) || k) + '" style="padding:8px 16px;border:none;border-left:1px solid var(--glass-border,rgba(255,255,255,.1));background:' + (on ? 'linear-gradient(135deg,var(--cyan),#1338b0)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text-muted)') + ';font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">' + k + '</button>'; }).join('')
+              + '</div></div>';
+          })()}
       </div>
       ${summary}
       ${detailHtml}
       <div style="display:grid;grid-template-columns:repeat(${_pillars.length},minmax(0,1fr));gap:14px">${cards}</div>
     </div>
-    ${subs.length ? `<div class="panel"><h2>Recent Activity</h2><div class="panel-sub">Latest submissions from managers</div>${recent}</div>` : ''}`;
+    ${subs.length ? `<div style="margin-top:24px;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:16px;padding:20px 22px;${_SHADOW}">
+      <div style="display:flex;align-items:center;gap:11px;margin-bottom:2px">
+        <span style="width:31px;height:31px;border-radius:9px;background:rgba(0,194,224,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8l4 -16l3 8h4"/></svg></span>
+        <h2 style="font-size:15px;font-weight:900;color:var(--text-primary);margin:0">Recent Activity</h2>
+        <span style="margin-left:auto;font-size:10px;font-weight:800;color:var(--text-muted);background:rgba(127,140,170,.1);padding:3px 11px;border-radius:20px">${subs.length} total</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin:0 0 15px 42px">Latest KPI submissions from managers</div>
+      ${recent}
+    </div>` : ''}`;
     }
 
     // v75: toggle the KPI-Overview drill-down drawer (click a stat box again to close)
@@ -27742,6 +27810,19 @@
       try { renderKPIFramework(document.getElementById('hc-body')); } catch (e) {}
     }
     window.kpiSetPeriod = kpiSetPeriod;
+    // v81: pick WHICH cycle within the frequency is active — H1/H2 for semi-annual,
+    // Q1..Q4 for quarterly. The year is automatic (peRebuildCycles stamps the current
+    // year), so this only chooses the sub-period. Setting the cycle "open" drives the
+    // KPI Architect's period label + the eval cycle label; it does NOT open the
+    // evaluation submission window (that still needs open/close dates in Cycle Control).
+    function kpiSetCyclePeriod(key) {
+      if (typeof PE_QUARTERS === 'undefined' || !PE_QUARTERS[key]) return;
+      Object.keys(PE_QUARTERS).forEach(function (k) { PE_QUARTERS[k].open = (k === key); });
+      try { _updateTopbarPeriod(); } catch (e) {}
+      toast('<i class="ti ti-circle-check ti-green"></i> Active period set to ' + (PE_QUARTERS[key].label || key) + ' — the KPI Architect and eval cycle now use it.', 'ok');
+      try { renderKPIFramework(document.getElementById('hc-body')); } catch (e) {}
+    }
+    window.kpiSetCyclePeriod = kpiSetCyclePeriod;
     // Set INVIEWS frequency (Super Admin)
     function peSetINVFrequency(f) {
       if (f === INVIEWS_CONFIG.frequency) return;
@@ -36767,7 +36848,9 @@
         },
         // HR / Talent domain
         hr: {
-          en: /\b(time-to-hire|onboarding|recruit[a-z]*|employee engagement|retention|turnover|training hours|headcount|workforce|talent acquisition)\b/i,
+          // v81: scope "retention"/"onboarding" to EMPLOYEES — bare "retention" wrongly
+          // flagged account-management KPIs (net revenue / customer retention) as HR.
+          en: /\b(time-to-hire|(employee|staff|new-?hire)\s+onboarding|recruit[a-z]*|employee engagement|(employee|staff)\s+retention|(employee|staff)\s+turnover|training hours|headcount|workforce|talent acquisition)\b/i,
           ar: /(التوظيف|إعداد الموظف|الاستقطاب|الاحتفاظ بالموظفين|ساعات تدريب)/
         },
         // Marketing domain
@@ -36801,7 +36884,10 @@
       measurableNounsAr: /(معدل|نسبة|عدد|مؤشر|درجة|متوسط|تكرار|دقة|زمن|وقت|حصة)/,
 
       // Time-bound patterns
-      timePatternEN: /\b(quarterly|monthly|weekly|daily|annual(ly)?|yearly|by\s+(Q[1-4]|end|the\s+end|end\s+of)|by\s+\d{4}|by\s+(January|February|March|April|May|June|July|August|September|October|November|December)|per\s+(quarter|month|week|year|sprint|cycle)|Q[1-4]\s*\d{2,4}|deadline|every\s+(quarter|month|week))\b/i,
+      // v81: also detect abbreviated months ("Jun 30, 2026"), half-years ("H1 2026"),
+      // ISO / numeric dates, and "by <year>" — the old pattern only matched full month
+      // names, so a KPI ending "by Jun 30, 2026" was wrongly flagged not-Time-bound.
+      timePatternEN: /\b(quarterly|monthly|weekly|daily|annual(ly)?|yearly|semi[-\s]?annual(ly)?|bi[-\s]?annual(ly)?|by\s+(Q[1-4]|H[12]|end|the\s+end|end\s+of)|by\s+\d{4}|(H[12]|Q[1-4])\s*['’]?\d{2,4}|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\/\d{1,2}\/\d{2,4}|(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(st|nd|rd|th)?,?\s*\d{2,4}|(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{4}|per\s+(quarter|month|week|year|sprint|cycle)|deadline|every\s+(quarter|month|week))\b/i,
       timePatternAr: /(ربعياً|ربعيا|شهرياً|شهريا|أسبوعياً|أسبوعيا|يومياً|يوميا|سنوياً|سنويا|بحلول|نهاية\s*الربع|نهاية\s*السنة|كل\s*(ربع|شهر|أسبوع|سنة))/,
 
       // Achievable patterns (unrealistic = bad; softener = ok even with absolutes)
@@ -36963,6 +37049,13 @@
           return { pass: false, evidence: 'Missing both action verb and domain noun' };
         }
         if (!hasNoun) {
+          // v81: verb present but no domain noun matched — still specific enough when it
+          // carries a concrete number and enough detail. Prevents false "not Specific"
+          // flags on valid KPIs whose metric noun simply isn't in this function's KB
+          // (e.g. "net revenue retention", "account health coverage").
+          if (t.length >= 25 && /\d/.test(t)) {
+            return { pass: true, evidence: 'Specific action with a concrete number (domain noun not in KB)' };
+          }
           return { pass: false, evidence: 'Has action verb but no clear object/subject from this domain' };
         }
         return { pass: true, evidence: 'Clear action and domain object identified' };
@@ -44731,6 +44824,42 @@
         result.criticalCount = result.issues.filter(function (i) { return i.severity === 'critical'; }).length;
         result.warningCount = result.issues.filter(function (i) { return i.severity === 'warning'; }).length;
         if (!result.issues.length) result.decision = 'approved';
+
+        // v81: CONSISTENCY with the per-KPI S·M·A·R·T letter chips shown at generation.
+        // The letters use the rule-based validate(); this review used a separate (LLM)
+        // engine — so a KPI whose letters were red could still pass the review silently
+        // (the exact mismatch users reported). Run the SAME validator here and surface a
+        // not-SMART warning for any KPI with a failing criterion, anchored to that KPI.
+        try {
+          if (window.KABi && KABi.Agents && KABi.Agents.kpiArchitect && typeof KABi.Agents.kpiArchitect.validate === 'function') {
+            var _smNames = { S: 'Specific', M: 'Measurable', A: 'Achievable', R: 'Relevant', T: 'Time-bound' };
+            kpis.forEach(function (kt, idx) {
+              var sib = kpis.map(function (s, j) { return j === idx ? '' : String(s || ''); });
+              var v = null;
+              try { v = KABi.Agents.kpiArchitect.validate(String(kt || ''), fnKey, sib); } catch (_) {}
+              if (!v || !v.smart) return;
+              var failed = ['S', 'M', 'A', 'R', 'T'].filter(function (c) { return v.smart[c] === false; });
+              if (!failed.length) return;
+              // don't double-report if the LLM already flagged this KPI as not-SMART
+              var already = (result.issues || []).some(function (i) {
+                return String(i.code || i.type || '').toLowerCase().indexOf('smart') >= 0 && (i.kpisInvolved || []).indexOf(idx) >= 0;
+              });
+              if (already) return;
+              var names = failed.map(function (c) { return _smNames[c]; });
+              result.issues.push({
+                code: 'not_smart',
+                severity: 'warning',
+                kpisInvolved: [idx],
+                title: 'Not fully SMART — missing ' + names.join(', '),
+                description: 'The S·M·A·R·T letters on this KPI flag ' + names.join(', ') + ' as not met. This is the same assessment shown on the card, kept consistent here.',
+                suggestion: 'Edit the KPI so it clearly satisfies ' + names.join(', ').toLowerCase() + ', then re-validate.'
+              });
+            });
+            result.criticalCount = (result.issues || []).filter(function (i) { return i.severity === 'critical'; }).length;
+            result.warningCount = (result.issues || []).filter(function (i) { return i.severity === 'warning'; }).length;
+            if (result.issues.length) result.decision = 'review';
+          }
+        } catch (_) {}
 
         // If no issues, skip the modal entirely and proceed
         if (result.issues.length === 0) {
