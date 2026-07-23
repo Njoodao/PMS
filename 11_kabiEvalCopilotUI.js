@@ -177,7 +177,7 @@
     });
 
     h += listBlock('Manager actions', r.manager_actions_required, '#0891b2', 'ti-checklist');
-    h += listBlock('Data gaps', r.data_gaps, '#d97706', 'ti-database-off');
+    if (_hcSeesGaps()) h += listBlock('Data gaps', r.data_gaps, '#d97706', 'ti-database-off');
     if (r.portfolio_note) h += noteBlock('Note', r.portfolio_note);
     h += auditFooter(r, payload);
     // Pre-submission gate: the evaluator reviews this advisory BEFORE submitting.
@@ -211,15 +211,20 @@
         + chip((d.evidence_available === false ? 'no evidence' : 'evidence: ' + (d.strength || 'n/a')), strengthCol) + '</div>'
         + (d.what_the_data_shows ? '<div style="font-size:13px;color:var(--kc-fg-mid);margin-top:7px;line-height:1.55">' + esc(d.what_the_data_shows) + '</div>' : '')
         + (d.activity_vs_outcome ? '<div style="font-size:12px;color:var(--kc-fg-dim);margin-top:6px"><i class="ti ti-arrows-split"></i> ' + esc(d.activity_vs_outcome) + '</div>' : '')
-        + (d.data_gaps ? '<div style="font-size:12px;color:#d97706;margin-top:6px"><i class="ti ti-database-off"></i> ' + esc(d.data_gaps) + '</div>' : '')
+        + ((d.data_gaps && _hcSeesGaps()) ? '<div style="font-size:12px;color:#d97706;margin-top:6px"><i class="ti ti-database-off"></i> ' + esc(d.data_gaps) + '</div>' : '')
         + (d.suggested_follow_up ? '<div style="font-size:12px;color:#0891b2;margin-top:6px"><i class="ti ti-arrow-right"></i> ' + esc(d.suggested_follow_up) + '</div>' : '')
         + '</div>';
     });
-    h += listBlock('Org data gaps', r.org_data_gaps, '#d97706', 'ti-database-off');
+    if (_hcSeesGaps()) h += listBlock('Org data gaps', r.org_data_gaps, '#d97706', 'ti-database-off');
     h += listBlock('CEO follow-ups', r.ceo_follow_ups, '#0891b2', 'ti-checklist');
     h += auditFooter(r, payload);
     openModal(h);
   }
+
+  // v81: "Data gaps" are HC-only. Connecting data sources is Human Capital's
+  // responsibility (Settings → Connectors), so managers, employees and the CEO must
+  // never see data-gap notes in the Advisor Copilot — only the super-admin (HC) view.
+  function _hcSeesGaps() { try { return !!(window.me && window.me.role === 'pm_super_admin'); } catch (e) { return false; } }
 
   function listBlock(title, arr, color, icon) {
     if (!arr || !arr.length) return '';

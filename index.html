@@ -742,6 +742,27 @@
        top when it doesn't (margin auto avoids the flexbox top-cut-off on tall content). */
     #auth-screen > .auth-split, #auth-screen > .auth-card { margin: auto; }
 
+    /* v81.1: fit the ENTIRE sign-in box on screen without scrolling — compress vertical
+       spacing as the viewport gets shorter (laptops). Tall monitors keep the roomy design. */
+    @media (max-height: 880px) {
+      #auth-screen { padding: 16px; }
+      .auth-split .auth-card { padding: 30px 46px !important; }
+      .auth-brand { min-height: 0 !important; padding: 34px 56px !important; }
+      .auth-heading { font-size: 22px; }
+      .auth-sub { margin-bottom: 16px; }
+      .field { margin-bottom: 12px; }
+      .btn-signin { margin-top: 6px !important; padding: 12px !important; }
+      .demo-row { padding: 9px 13px !important; }
+      .auth-logo-wrap { margin-bottom: 18px !important; }
+    }
+    @media (max-height: 730px) {
+      .auth-split .auth-card { padding: 20px 44px !important; }
+      .auth-brand { padding: 22px 52px !important; }
+      .auth-sub { margin-bottom: 10px; }
+      .auth-brand h2 { font-size: 30px !important; }
+      .demo-row { padding: 8px 12px !important; }
+    }
+
     .auth-card {
       width: 460px;
       background: linear-gradient(145deg, rgba(10, 31, 82, .7), rgba(5, 15, 46, .85));
@@ -4937,8 +4958,8 @@
       <div id="auth-forgot" style="text-align:center;margin-top:8px;display:none"><a href="#" onclick="event.preventDefault();alert('Contact HC Department to reset your password.\n\nEmail: hc.pm@kabi.ai')" style="font-size:10px;color:var(--text-dim);text-decoration:none">Forgot password?</a></div>
 
       <!-- TRAINING MODE — Quick Access (TEMPORARY — remove after go-live) -->
-      <div style="margin-top:20px;padding-top:18px;border-top:1px dashed rgba(0,194,224,.15)">
-        <div style="text-align:center;margin-bottom:12px">
+      <div style="margin-top:14px;padding-top:14px;border-top:1px dashed rgba(0,194,224,.15)">
+        <div style="text-align:center;margin-bottom:9px">
           <div style="display:inline-block;padding:3px 10px;background:rgba(30,175,217,.1);color:#1EAFD9;border:1px solid rgba(30,175,217,.25);border-radius:20px;font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase"><i class="ti ti-school"></i> Training Mode</div>
           <div style="font-size:10px;color:var(--text-muted);margin-top:6px">Fictitious accounts for live demonstration only</div>
         </div>
@@ -18773,7 +18794,12 @@
           + ('#app .hc-side-nav .hc-side-item .hc-side-icon, #app .hc-side-nav .hc-side-item .hc-side-icon *{ color:' + _onPrimaryAuto + ' !important; }')
           // theme background glow → brand accent
           + 'body.light-mode::before { background: radial-gradient(ellipse 80% 60% at 50% -20%, ' + accRgbaWeak + ' 0%, transparent 65%), radial-gradient(ellipse 60% 40% at 100% 100%, ' + accRgbaFaint + ' 0%, transparent 60%) !important; }';
-        try { document.title = b.productName + ' — ' + b.companyName; } catch (e) {}
+        // v81: build the browser-tab title from whatever branding parts exist — never
+        // leave it as a bare "—" when productName/companyName are empty.
+        try {
+          var _pn = (b.productName || '').trim(), _cn = (b.companyName || '').trim();
+          document.title = (_pn && _cn) ? (_pn + ' — ' + _cn) : (_pn || _cn || 'KABi · Performance System');
+        } catch (e) {}
         try { _applyBrandToLogin(b); } catch (e) {}
         try { _applyBrandToTopbar(b); } catch (e) {}
         try { _applyBrandToFooter(b); } catch (e) {}
