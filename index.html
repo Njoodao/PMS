@@ -9264,7 +9264,18 @@
         return keys.length ? keys : Object.keys(FNS || {});
       } catch (e) { return Object.keys(FNS || {}); }
     }
-    function _kpiArchPeriod() { try { return (window.kabiEvalPeriod ? window.kabiEvalPeriod() : '').replace(/\s*\(.*\)\s*$/, ''); } catch (e) { return ''; } }
+    // v81: KPI-Architect period — prefers the Super Admin's KPI sub-period selection
+    // (window.KPI_ARCH_CYCLE, e.g. H2 / Q3), decoupled from the evaluation cycle. Falls
+    // back to the general eval-period label only when no KPI sub-period is chosen.
+    function _kpiArchPeriod() {
+      try {
+        var k = window.KPI_ARCH_CYCLE;
+        if (k && typeof PE_QUARTERS !== 'undefined' && PE_QUARTERS[k] && PE_QUARTERS[k].label) {
+          return PE_QUARTERS[k].label.replace(/\s*\(.*\)\s*$/, '');
+        }
+        return (window.kabiEvalPeriod ? window.kabiEvalPeriod() : '').replace(/\s*\(.*\)\s*$/, '');
+      } catch (e) { return ''; }
+    }
     function _kpiArchMetricTitle(t) {
       var s = String(t || '').split(/\s+[—–-]\s+/)[0].split(/\s*\(/)[0].trim();
       return s || String(t || '').slice(0, 48);
@@ -10126,15 +10137,15 @@
             { ic: 'ti-mood-happy', label: 'Great', color: '#12a17a' },
             { ic: 'ti-mood-smile', label: 'Good', color: '#216ab1' },
             { ic: 'ti-mood-neutral', label: 'Okay', color: '#c2820b' },
-            { ic: 'ti-mood-sad', label: 'Low', color: '#6d5bd0' },
-            { ic: 'ti-mood-confuzed', label: 'Stressed', color: '#dc4b57' }
+            { ic: 'ti-mood-sad', label: 'Not great', color: '#6d5bd0' },
+            { ic: 'ti-mood-sad', label: 'Difficult day', color: '#dc4b57' }
           ];
           _wbHtml = `
             <div class="ai-wellbeing-card" style="flex:1;display:flex">
               <div style="border-radius:16px;padding:16px 18px;width:100%;box-sizing:border-box;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
                   <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#00c2e0,#2557e8);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:16px"><i class="ti ti-heart"></i></div>
-                  <div style="flex:1;min-width:0"><h4 style="font-size:13px;font-weight:800;color:var(--text-primary);margin:0">Well-being check-in</h4><p style="font-size:10px;color:var(--text-muted);margin:2px 0 0">How are you feeling today</p></div>
+                  <div style="flex:1;min-width:0"><h4 style="font-size:13px;font-weight:800;color:var(--text-primary);margin:0">Well-being check-in</h4><p style="font-size:10px;color:var(--text-muted);margin:2px 0 0">Hi ${(me && me.name || '').split(' ')[0] || 'there'}! How’s your day going?</p></div>
                   ${_todayMood ? '<span style="padding:3px 8px;border-radius:20px;background:rgba(18,161,122,.12);color:#12a17a;font-size:8px;font-weight:800;white-space:nowrap"><i class="ti ti-check ti-green"></i> Logged</span>' : ''}
                 </div>
                 <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px">
@@ -15489,16 +15500,16 @@
 
             <!-- Interactive mood selector -->
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <span style="font-size:10px;color:var(--text-muted);font-weight:600">How are you feeling today?</span>
+              <span style="font-size:11px;color:var(--text-primary);font-weight:700">Hi ${(me && me.name || '').split(' ')[0] || 'there'}! How’s your day going?</span>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
                 ${[
                   { e: '<i class=\"ti ti-mood-happy\"></i>', label: 'Great', color: '#4ade80' },
                   { e: '<i class=\"ti ti-mood-smile\"></i>', label: 'Good', color: '#60a5fa' },
                   { e: '<i class=\"ti ti-mood-neutral\"></i>', label: 'Okay', color: '#fbbf24' },
-                  { e: '<i class=\"ti ti-mood-sad\"></i>', label: 'Low', color: '#a78bfa' },
-                  { e: '<i class=\"ti ti-mood-confuzed\"></i>', label: 'Stressed', color: '#f87171' }
+                  { e: '<i class=\"ti ti-mood-sad\"></i>', label: 'Not great', color: '#a78bfa' },
+                  { e: '<i class=\"ti ti-mood-sad\"></i>', label: 'Difficult day', color: '#f87171' }
                 ].map(m => `
-                  <button class="ai-mood-btn" onclick="empAIRespondMood('${m.label}',event)" style="width:34px;height:34px;border-radius:50%;border:1.5px solid rgba(255,255,255,.08);background:rgba(10,31,82,.5);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;transition:all .2s;font-family:inherit" title="${m.label}" onmouseover="this.style.transform='scale(1.15)';this.style.borderColor='${m.color}';this.style.boxShadow='0 4px 14px ${m.color}40'" onmouseout="this.style.transform='scale(1)';this.style.borderColor='rgba(255,255,255,.08)';this.style.boxShadow='none'">${m.e}</button>
+                  <button class="ai-mood-btn" onclick="empAIRespondMood('${m.label}')" style="width:34px;height:34px;border-radius:50%;border:1.5px solid rgba(255,255,255,.08);background:rgba(10,31,82,.5);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;transition:all .2s;font-family:inherit" title="${m.label}" onmouseover="this.style.transform='scale(1.15)';this.style.borderColor='${m.color}';this.style.boxShadow='0 4px 14px ${m.color}40'" onmouseout="this.style.transform='scale(1)';this.style.borderColor='rgba(255,255,255,.08)';this.style.boxShadow='none'">${m.e}</button>
                 `).join('')}
               </div>
               <button onclick="empAIOpenChat()" style="margin-left:auto;padding:6px 14px;border-radius:20px;border:1px solid rgba(0,194,224,.3);background:rgba(0,194,224,.08);color:var(--cyan);font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:all .15s" onmouseover="this.style.background='rgba(0,194,224,.15)';this.style.transform='translateX(2px)'" onmouseout="this.style.background='rgba(0,194,224,.08)';this.style.transform='translateX(0)'"><i class=\"ti ti-message-circle\"></i> Chat with AI →</button>
@@ -15958,17 +15969,30 @@
     // the "link wellbeing/feeling check-ins with team insights" wiring. Nothing
     // is sent anywhere; it stays in the browser and is exposed as a summary.
     var _WB_LS_KEY = 'kabi_wellbeing_v75';
-    var _WB_SCORE = { 'Great': 5, 'Good': 4, 'Okay': 3, 'Low': 2, 'Stressed': 1 };
+    // v81: support the new 5-feeling scale AND the legacy labels, so old logs still score.
+    var _WB_SCORE = { 'Great': 5, 'Good': 4, 'Okay': 3, 'Not great': 2, 'Difficult day': 1, 'Low': 2, 'Stressed': 1 };
     function _wbGetLog() { try { return JSON.parse(localStorage.getItem(_WB_LS_KEY) || '{}'); } catch (e) { return {}; } }
     function _wbSaveLog(o) { try { localStorage.setItem(_WB_LS_KEY, JSON.stringify(o)); } catch (e) {} }
-    function _wbRecord(email, mood) {
+    // v81: `detail` (optional) holds the private comment, selected reasons and consent
+    // choices. It stays in the employee's own browser store and is NEVER exposed to a
+    // manager except as a consented, comment-free support signal (see wbSubmit).
+    function _wbRecord(email, mood, detail) {
       if (!email || !mood) return;
       email = email.toLowerCase();
       var o = _wbGetLog();
       if (!o[email]) o[email] = [];
-      o[email].push({ mood: mood, score: _WB_SCORE[mood] || 3, ts: Date.now() });
+      var rec = { mood: mood, score: _WB_SCORE[mood] || 3, ts: Date.now() };
+      if (detail) rec.detail = detail;
+      o[email].push(rec);
       if (o[email].length > 60) o[email] = o[email].slice(-60);
       _wbSaveLog(o);
+    }
+    // v81: the consent attached to the employee's most recent check-in (privacy gate).
+    function _wbLatestConsent(email) {
+      if (!email) return null;
+      var arr = _wbGetLog()[email.toLowerCase()] || [];
+      for (var i = arr.length - 1; i >= 0; i--) { if (arr[i].detail && arr[i].detail.consent) return arr[i].detail.consent; }
+      return null;
     }
     function _wbTodayMood(email) {
       if (!email) return null;
@@ -15991,57 +16015,243 @@
         trend: avg >= 4 ? 'positive' : avg >= 3 ? 'steady' : 'watch'
       };
     };
-    // AI-readable: team roll-up for a manager (indirect — names + trend, no raw log).
+    // v81 PRIVACY: a manager sees an employee's wellbeing signal ONLY when that employee
+    // has explicitly consented to share a support signal (share_general_support_signal_with_manager
+    // or request_manager_check_in). Without consent, nothing about their mood is returned —
+    // wellbeing is a support feature, never a monitoring tool, and never a rating input.
     window.kabiWellbeingTeamSignal = function (managerEmail) {
       var team = (typeof peGetAllReports === 'function') ? peGetAllReports(managerEmail) : [];
       var out = [];
       team.forEach(function (e) {
+        var c = _wbLatestConsent(e.email);
+        if (!c || !(c.share_general_support_signal_with_manager || c.request_manager_check_in)) return;  // no consent → not shared
         var s = window.kabiWellbeingSignal(e.email);
-        if (s) out.push({ name: e.name, trend: s.trend, avgScore: s.avgScore, latest: s.latest });
+        if (s) out.push({ name: e.name, trend: s.trend, category: (c.category || 'general support'), consented: true });
       });
       return out;
     };
 
-    function empAIRespondMood(mood, evt) {
-      var _mEmail = (typeof me !== 'undefined' && me && me.email) ? me.email : null;
-      // v77: one check-in per day — if already logged today, it's locked until tomorrow.
-      try { if (_mEmail && _wbTodayMood(_mEmail)) { return; } } catch (e) {}
-      // v75: record the check-in so the AI agents can read the signal indirectly
-      try { if (_mEmail) _wbRecord(_mEmail, mood); } catch (e) {}
-      const resp = document.getElementById('ai-mood-response');
-      if (!resp) return;
-      const messages = {
-        'Great': { icon: '<i class="ti ti-clipboard-list"></i>', text: "That's wonderful! Your positive energy has a ripple effect on the team. Keep up the momentum — your recent wins are being recognized.", color: '#4ade80' },
-        'Good':  { icon: '<i class="ti ti-clipboard-list"></i>', text: "Glad to hear that! Steady progress is the foundation of great performance. Is there anything I can help surface or prepare for you today?", color: '#60a5fa' },
-        'Okay':  { icon: '<i class="ti ti-clipboard-list"></i>', text: "Okay days are normal — they're the rhythm between breakthroughs. Consider a short walk or a 5-min focus break. I'll keep things low-friction today.", color: '#fbbf24' },
-        'Low':   { icon: '<i class="ti ti-clipboard-list"></i>', text: "Thanks for sharing — that takes honesty. Some days are heavier. If it's workload, I can help prioritize; if it's something else, your HR Business Partner is available.", color: '#a78bfa' },
-        'Stressed': { icon: '<i class="ti ti-clipboard-list"></i>', text: "Hang in there — stress is information, not failure. Let's break things down: tell me your top concern and I'll help you find the first small step. You're not alone.", color: '#f87171' }
+    // ═══ v81: Wellbeing Check-in & Employee Support Agent ═══════════════════════
+    // A privacy-first SUPPORT feature — never a hidden performance-monitoring tool.
+    // The check-in (feeling + optional comment + reasons) is PRIVATE to the employee.
+    // Nothing reaches the manager unless the employee explicitly opts in, and wellbeing
+    // data is NEVER passed to KPI/evaluation scoring. Governed by the system prompt below.
+    var WB_FEELINGS = [
+      { key: 'GREAT',         label: 'Great',         ic: 'ti-mood-happy',   color: '#12a17a' },
+      { key: 'GOOD',          label: 'Good',          ic: 'ti-mood-smile',   color: '#216ab1' },
+      { key: 'OKAY',          label: 'Okay',          ic: 'ti-mood-neutral', color: '#c2820b' },
+      { key: 'NOT_GREAT',     label: 'Not great',     ic: 'ti-mood-sad',     color: '#6d5bd0' },
+      { key: 'DIFFICULT_DAY', label: 'Difficult day', ic: 'ti-mood-sad',     color: '#dc4b57' }
+    ];
+    var WB_REASONS = ['Workload', 'Too many priorities', 'Deadline pressure', 'Unclear expectations', 'Cross-team dependency', 'Manager support', 'Team collaboration', 'Client pressure', 'System or tool problem', 'Too many meetings', 'Need focus time', 'Learning or confidence', 'Career concern', 'Personal matter', 'Prefer not to say'];
+    var _WB_FALLBACK = {
+      GREAT: "Glad to hear that, {N}! It might be a good day to build momentum on one important priority, or to capture what's working well. Want me to help organize today's priorities?",
+      GOOD: "Good to hear, {N}. I can help protect that momentum — organizing your top priorities or prepping for an upcoming deadline. What would help most?",
+      OKAY: "Thanks for checking in, {N}. An okay day can still be productive without overloading it. Would it help to pick one main priority and one task that can wait?",
+      NOT_GREAT: "Thanks for sharing, {N}. You don't need to explain more unless you'd like to. I can help reorganize today's priorities, spot a workload issue, or draft a short message requesting support.",
+      DIFFICULT_DAY: "I'm sorry today feels difficult, {N}. This check-in stays private. I can trim today's workload to the essentials, prepare a private manager check-in request, or point you to the HC support option — whatever helps."
+    };
+    var KABI_WELLBEING_SYSTEM_PROMPT = [
+      'You are the KABi Wellbeing Check-in and Employee Support Agent, inside the KABi Performance Management System.',
+      'CORE PRINCIPLE: employee wellbeing data is SUPPORT data, not performance data. Never use a check-in to calculate a KPI, influence a rating, rank or compare employees, infer productivity/motivation/engagement as fact, predict resignation, or diagnose burnout/depression/anxiety or any medical condition. A negative feeling is never poor performance; a positive feeling is never strong performance.',
+      'You are NOT a psychologist, doctor, diagnostic tool, performance evaluator, disciplinary tool, resignation predictor or productivity monitor.',
+      'Respond warmly, briefly and respectfully. Do not overreact to one low check-in. Do not pressure the employee to explain. Do not give medical advice. Do not promise secrecy beyond system policy. Do not use alarming language unless the employee states explicit immediate risk.',
+      'Privacy & consent: the raw feeling and comment are PRIVATE by default. Never share anything with the manager automatically. Manager sharing happens ONLY on explicit employee consent, and then only a comment-free, diagnosis-free, score-free general support category. Never reveal personal circumstances (e.g. never "the employee\'s mother is in hospital" — at most "a personal circumstance is affecting current capacity", only if consented).',
+      'Personalization: when permitted, use the check-in only to adjust tone, length, priority-planning help, reminder intensity and workload organization. On a difficult day, keep it calm, prioritize only critical work, avoid long task lists and motivational pressure.',
+      'Never pass the feeling or comment to the KPI or evaluation scoring engine. Only a separately-approved operational fact (e.g. a documented system outage) may inform performance context, and never adjusts a rating automatically.',
+      'For THIS interface, reply with ONLY a short, warm, plain-text message to the employee (2-4 sentences). No JSON, no headings, no markdown. Address them by first name once.'
+    ].join('\n');
+    function _wbUserPrompt(emp, f, reasons, comment) {
+      return [
+        'Execute the KABi Wellbeing Check-in Agent for this voluntary check-in.',
+        'Employee first name: ' + ((me && (me.name || '').split(' ')[0]) || 'there'),
+        'Function: ' + (emp.fn || '—') + ' · Level: ' + (emp.level || '—'),
+        "Feeling today: " + f.label,
+        'Selected work reasons: ' + (reasons.length ? reasons.join(', ') : 'none'),
+        'Optional comment: ' + (comment ? '"' + comment + '"' : 'none'),
+        'Acknowledge with empathy, identify only themes the employee stated, offer at most one or two practical support options, and remind them this check-in is private and will not affect their performance evaluation. Plain text only, 2-4 sentences.'
+      ].join('\n');
+    }
+    var _wbSel = { feeling: null, reasons: {} };
+    function _wbFirstName() { try { return (me && (me.name || '').split(' ')[0]) || 'there'; } catch (e) { return 'there'; } }
+    function _wbFeel(x) { if (!x) return null; return WB_FEELINGS.filter(function (f) { return f.key === x || f.label.toLowerCase() === String(x).toLowerCase(); })[0] || null; }
+    function _wbChk(id) { var el = document.getElementById(id); return !!(el && el.checked); }
+
+    // Entry points from the dashboard cards.
+    function empAIRespondMood(mood) { try { wbOpenSupport(mood); } catch (e) { console.error('[wb]', e); } }
+    function empAIOpenChat() { try { wbOpenSupport(null); } catch (e) { console.error('[wb]', e); } }
+    window.empAIRespondMood = empAIRespondMood;
+    window.empAIOpenChat = empAIOpenChat;
+
+    function wbOpenSupport(preFeeling) {
+      if (!me) return;
+      var f = _wbFeel(preFeeling);
+      _wbSel = { feeling: f ? f.key : null, reasons: {} };
+      var ov = document.getElementById('kabi-wb-modal');
+      if (!ov) { ov = document.createElement('div'); ov.id = 'kabi-wb-modal'; document.body.appendChild(ov); ov.onclick = function (e) { if (e.target === ov) ov.style.display = 'none'; }; }
+      ov.style.cssText = 'position:fixed;inset:0;z-index:9700;background:rgba(10,31,82,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:32px 16px;font-family:var(--font)';
+      ov.innerHTML = _wbBuildInner();
+      ov.style.display = 'flex';
+      if (_wbSel.feeling) wbPickFeeling(_wbSel.feeling);
+    }
+    function wbClose() { var ov = document.getElementById('kabi-wb-modal'); if (ov) ov.style.display = 'none'; }
+    window.wbOpenSupport = wbOpenSupport; window.wbClose = wbClose;
+
+    function _wbBuildInner() {
+      var name = _wbFirstName();
+      var esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s || ''); };
+      var feelBtns = WB_FEELINGS.map(function (f) {
+        return '<button id="wb-feel-' + f.key + '" type="button" onclick="wbPickFeeling(\'' + f.key + '\')" style="flex:1;min-width:78px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 6px;border:1.5px solid var(--glass-border,#e5eaf3);border-radius:12px;background:var(--surface-2,#f7f9fc);cursor:pointer;font-family:inherit;transition:all .15s">'
+          + '<i class="ti ' + f.ic + '" style="font-size:22px;color:' + f.color + '"></i>'
+          + '<span style="font-size:10.5px;font-weight:700;color:var(--text-primary)">' + f.label + '</span></button>';
+      }).join('');
+      var reasonChips = WB_REASONS.map(function (r) {
+        return '<button type="button" onclick="wbToggleReason(this,\'' + r.replace(/'/g, "\\'") + '\')" style="font-size:10.5px;font-weight:600;padding:6px 12px;border-radius:20px;border:1px solid var(--glass-border,#e5eaf3);background:transparent;color:var(--text-muted);cursor:pointer;font-family:inherit;transition:all .12s">' + r + '</button>';
+      }).join('');
+      var _toggle = function (id, checked, title, sub) {
+        return '<label style="display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border:1px solid var(--glass-border,#e5eaf3);border-radius:11px;cursor:pointer;background:var(--surface-2,#f7f9fc)">'
+          + '<input type="checkbox" id="' + id + '"' + (checked ? ' checked' : '') + ' style="margin-top:2px;width:16px;height:16px;accent-color:#12a17a;cursor:pointer">'
+          + '<div style="flex:1"><div style="font-size:12px;font-weight:700;color:var(--text-primary)">' + title + '</div><div style="font-size:10.5px;color:var(--text-muted);margin-top:1px">' + sub + '</div></div></label>';
       };
-      const m = messages[mood] || messages['Good'];
-      // v76: cancelled the "AI Response · Mood" message — just a neutral confirmation.
-      resp.style.borderColor = 'rgba(18,161,122,.28)';
-      resp.style.background = 'rgba(18,161,122,.1)';
-      resp.innerHTML = '<span style="color:var(--text-primary)"><i class="ti ti-check ti-green"></i> Checked in for today — you can check in again tomorrow.</span>';
-      resp.style.display = 'block';
-      // Highlight the selected mood, then LOCK every mood button until the next day.
-      var selBtn = evt && evt.currentTarget;
-      if (selBtn) {
-        selBtn.style.background = m.color + '1a';
-        selBtn.style.borderColor = m.color;
-        selBtn.classList.add('sel');
-      }
-      document.querySelectorAll('.wb-mood-btn').forEach(function (b) {
-        b.disabled = true;
-        b.style.pointerEvents = 'none';
-        b.style.cursor = 'default';
-        if (b !== selBtn) { b.classList.remove('sel'); b.style.opacity = '.4'; }
+      return '<div style="width:100%;max-width:560px;margin:auto;background:var(--glass,#fff);border:1px solid var(--glass-border,#e5eaf3);border-radius:18px;overflow:hidden;box-shadow:0 30px 80px -20px rgba(10,31,82,.55)">'
+        // header
+        + '<div style="padding:20px 22px;background:linear-gradient(135deg,#00c2e0,#2557e8);color:#fff;position:relative">'
+        +   '<button type="button" onclick="wbClose()" title="Close" style="position:absolute;top:14px;right:14px;width:30px;height:30px;border:none;border-radius:9px;background:rgba(255,255,255,.18);color:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;font-family:inherit">&times;</button>'
+        +   '<div style="display:inline-flex;align-items:center;gap:6px;font-size:8.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.18);padding:4px 10px;border-radius:20px;margin-bottom:9px"><i class="ti ti-lock"></i> Private support · not performance</div>'
+        +   '<div style="font-size:19px;font-weight:900;line-height:1.2">Hi ' + esc(name) + '! How’s your day going?</div>'
+        +   '<div style="font-size:12px;opacity:.9;margin-top:5px;line-height:1.5">This is a voluntary check-in to help me support you. It’s private and is never used in your performance evaluation.</div>'
+        + '</div>'
+        // body
+        + '<div style="padding:20px 22px;max-height:64vh;overflow-y:auto" id="wb-form">'
+        +   '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">' + feelBtns + '</div>'
+        +   '<label style="font-size:11px;font-weight:700;color:var(--text-primary);display:block;margin-bottom:6px">Want to tell me more? <span style="font-weight:500;color:var(--text-muted)">(optional — workload, priorities, tools, or anything personal)</span></label>'
+        +   '<textarea id="wb-comment" placeholder="Optional — this stays private to you" style="width:100%;min-height:64px;padding:11px 13px;background:var(--surface-2,#f7f9fc);border:1px solid var(--glass-border,#e5eaf3);border-radius:10px;color:var(--text-primary);font-size:12.5px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box"></textarea>'
+        +   '<label style="font-size:11px;font-weight:700;color:var(--text-primary);display:block;margin:16px 0 8px">What’s affecting your day? <span style="font-weight:500;color:var(--text-muted)">(optional)</span></label>'
+        +   '<div style="display:flex;gap:7px;flex-wrap:wrap">' + reasonChips + '</div>'
+        +   '<div style="margin:18px 0 8px;font-size:11px;font-weight:800;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px">Your choices</div>'
+        +   '<div style="display:flex;gap:9px;align-items:flex-start;padding:11px 13px;border-radius:11px;background:rgba(18,161,122,.07);border:1px solid rgba(18,161,122,.25);margin-bottom:10px"><i class="ti ti-lock" style="color:#12a17a;font-size:15px;margin-top:1px"></i><div style="font-size:11.5px;color:var(--text-primary);line-height:1.5"><strong>Private by default.</strong> Sharing with your manager is never automatic — only what you choose below is shared.</div></div>'
+        +   '<div style="display:flex;flex-direction:column;gap:8px">'
+        +     _toggle('wb-c-personalize', true, 'Personalize my Copilot with this check-in', 'Adjusts tone and how I help you today. Stays private.')
+        +     _toggle('wb-c-share', false, 'Share a general support signal with my manager', 'A category only (e.g. workload) — never your comment.')
+        +     _toggle('wb-c-mgrcheck', false, 'Request a private 1:1 check-in with my manager', 'Sends a neutral request. No personal details shared.')
+        +     _toggle('wb-c-hc', false, 'Request HC support', 'Sends a private, consented support request to Human Capital.')
+        +   '</div>'
+        +   '<div id="wb-response" style="display:none;margin-top:16px;padding:13px 15px;border-radius:12px;background:linear-gradient(135deg,rgba(0,194,224,.08),rgba(37,87,232,.04));border:1px solid rgba(0,194,224,.22)"></div>'
+        +   '<div id="wb-status" style="display:none;margin-top:10px;font-size:11px;color:var(--text-muted);line-height:1.6"></div>'
+        + '</div>'
+        // footer
+        + '<div id="wb-foot" style="display:flex;gap:9px;justify-content:flex-end;padding:16px 22px;border-top:1px solid var(--glass-border,#eef1f6)">'
+        +   '<button type="button" onclick="wbClose()" style="padding:10px 16px;border-radius:9px;border:1px solid var(--glass-border,#e5eaf3);background:transparent;color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Cancel</button>'
+        +   '<button type="button" id="wb-submit" onclick="wbSubmit()" style="padding:10px 20px;border-radius:9px;border:none;background:linear-gradient(135deg,#0d9960,#12a17a);color:#fff;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px"><i class="ti ti-heart"></i> Check in & get support</button>'
+        + '</div>'
+        + '</div>';
+    }
+    function wbPickFeeling(key) {
+      _wbSel.feeling = key;
+      WB_FEELINGS.forEach(function (f) {
+        var b = document.getElementById('wb-feel-' + f.key); if (!b) return;
+        var on = (f.key === key);
+        b.style.borderColor = on ? f.color : 'var(--glass-border,#e5eaf3)';
+        b.style.background = on ? (f.color + '14') : 'var(--surface-2,#f7f9fc)';
+        b.style.boxShadow = on ? ('0 4px 14px ' + f.color + '33') : 'none';
       });
-      // Show the "Logged" pill in the card header if present.
-      var _lp = document.querySelector('.ai-wellbeing-card'); if (_lp) { /* pill re-renders on next dashboard render */ }
+    }
+    function wbToggleReason(el, r) {
+      var on = !_wbSel.reasons[r]; _wbSel.reasons[r] = on;
+      el.style.background = on ? 'rgba(0,194,224,.1)' : 'transparent';
+      el.style.borderColor = on ? 'rgba(0,194,224,.4)' : 'var(--glass-border,#e5eaf3)';
+      el.style.color = on ? 'var(--cyan)' : 'var(--text-muted)';
+      el.style.fontWeight = on ? '800' : '600';
+    }
+    window.wbPickFeeling = wbPickFeeling; window.wbToggleReason = wbToggleReason;
+
+    async function wbSubmit() {
+      if (!_wbSel.feeling) { toast('Pick how your day is going first', 'err'); return; }
+      var f = _wbFeel(_wbSel.feeling);
+      var comment = ((document.getElementById('wb-comment') || {}).value || '').trim();
+      var reasons = Object.keys(_wbSel.reasons).filter(function (k) { return _wbSel.reasons[k]; });
+      var consent = {
+        private_only: true,
+        personalize_copilot: _wbChk('wb-c-personalize'),
+        share_general_support_signal_with_manager: _wbChk('wb-c-share'),
+        request_manager_check_in: _wbChk('wb-c-mgrcheck'),
+        request_hc_support: _wbChk('wb-c-hc')
+      };
+      // manager-safe category — never a personal reason, never the raw comment.
+      var workReasons = reasons.filter(function (r) { return r !== 'Personal matter' && r !== 'Prefer not to say'; });
+      consent.category = (workReasons[0] || 'general support').toLowerCase();
+      // record PRIVATELY (employee's own browser store)
+      try { _wbRecord(me.email, f.label, { comment: comment, reasons: reasons, consent: consent }); } catch (e) {}
+      // personalize the Copilot only if opted-in (never touches KPI/eval)
+      try { window._wbCopilotPref = consent.personalize_copilot ? { feeling: f.key, reasons: reasons, ts: Date.now() } : null; } catch (e) {}
+      // sharing — ONLY on explicit consent
+      var shareMsgs = [];
+      try {
+        var emp = (typeof _empByEmail === 'function') ? (_empByEmail(me.email) || {}) : {};
+        var mgrEmail = emp.mgr || emp.mgrEmail || emp.managerEmail || null;
+        var hc = (typeof HC_MAIL !== 'undefined' && HC_MAIL) ? HC_MAIL : 'hc@kabi.ai';
+        var fn = (me.name || '').split(' ')[0] || 'The employee';
+        if (mgrEmail && typeof addNotification === 'function') {
+          if (consent.request_manager_check_in) {
+            addNotification(mgrEmail, { type: 'note', fromName: me.name, fromEmail: me.email, title: 'Private check-in requested', body: fn + ' has requested a short private conversation regarding ' + consent.category + '. Please agree on a suitable time. No personal details have been shared through the system, and this must not be used as performance-rating evidence.' });
+            shareMsgs.push('A private 1:1 check-in request was sent to your manager — your comment was not shared.');
+          } else if (consent.share_general_support_signal_with_manager) {
+            addNotification(mgrEmail, { type: 'note', fromName: me.name, fromEmail: me.email, title: 'Employee support check-in', body: fn + ' has chosen to share a general support signal related to ' + consent.category + '. A brief private conversation may help clarify support needs. This signal is confidential, does not include the private comment, and must not be used as performance-rating evidence.' });
+            shareMsgs.push('A general support signal (' + consent.category + ') was shared with your manager — your comment was NOT shared.');
+          }
+        }
+        if (consent.request_hc_support) {
+          addNotification(hc, { type: 'note', fromName: me.name, fromEmail: me.email, title: 'HC support requested', body: fn + ' has requested HC support. Please reach out privately. No performance conclusion should be drawn from this request.' });
+          shareMsgs.push('A private support request was sent to Human Capital.');
+        }
+      } catch (e) {}
+      // thinking state
+      var resp = document.getElementById('wb-response');
+      if (resp) { resp.style.display = 'block'; resp.innerHTML = '<span style="font-size:12px;color:var(--text-muted)"><i class="ti ti-sparkles ti-cyan"></i> Thinking with you…</span>'; }
+      var aiText = await wbGenerateResponse(f, comment, reasons);
+      _wbRenderResult(aiText, consent, shareMsgs);
+    }
+    window.wbSubmit = wbSubmit;
+
+    async function wbGenerateResponse(f, comment, reasons) {
+      var name = _wbFirstName();
+      var fallback = (_WB_FALLBACK[f.key] || _WB_FALLBACK.GOOD).replace(/\{N\}/g, name);
+      try {
+        // Use a real LLM only when a provider key is configured; otherwise the clean,
+        // on-brand fallback (the offline/demo path). The check-in is AI-connected but
+        // degrades gracefully and never blocks the employee.
+        if (window.KABi && KABi.LLM && typeof KABi.LLM.call === 'function' && KABi.LLM.hasApiKey && KABi.LLM.hasApiKey()) {
+          var emp = (typeof _empByEmail === 'function') ? (_empByEmail(me.email) || {}) : {};
+          var r = await KABi.LLM.call([{ role: 'user', content: _wbUserPrompt(emp, f, reasons, comment) }], { systemPrompt: KABI_WELLBEING_SYSTEM_PROMPT, maxTokens: 400, temperature: 0.5 });
+          var txt = r && (r.text || '').trim();
+          // guard: if the model returned JSON/headers, fall back to the clean message
+          if (txt && txt.charAt(0) !== '{' && txt.length < 900) return txt;
+        }
+      } catch (e) { /* best-effort — fall through to fallback */ }
+      return fallback;
     }
 
-    function empAIOpenChat() {
-      toast('AI chat coming soon — for now, talk to your HR Business Partner or manager.',  'ok');
+    function _wbRenderResult(aiText, consent, shareMsgs) {
+      var esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s || ''); };
+      var resp = document.getElementById('wb-response');
+      if (resp) {
+        resp.style.display = 'block';
+        resp.innerHTML = '<div style="display:flex;gap:10px;align-items:flex-start"><span style="width:28px;height:28px;border-radius:50%;background:#fff;box-shadow:0 3px 10px rgba(0,194,224,.3);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-heart" style="color:#00c2e0;font-size:14px"></i></span>'
+          + '<div style="font-size:12.5px;line-height:1.6;color:var(--text-primary)">' + esc(aiText) + '</div></div>';
+      }
+      var status = document.getElementById('wb-status');
+      if (status) {
+        status.style.display = 'block';
+        var priv = '<div><i class="ti ti-lock" style="color:#12a17a"></i> This check-in is private and will not be used in your performance evaluation.</div>';
+        var share = shareMsgs.length
+          ? shareMsgs.map(function (s) { return '<div style="color:#216ab1"><i class="ti ti-send"></i> ' + s + '</div>'; }).join('')
+          : '<div><i class="ti ti-shield-check" style="color:#12a17a"></i> Nothing was shared with your manager.</div>';
+        status.innerHTML = priv + share;
+      }
+      // collapse the form controls, swap the footer to a single "Done".
+      var foot = document.getElementById('wb-foot');
+      if (foot) foot.innerHTML = '<button type="button" onclick="wbClose()" style="padding:10px 20px;border-radius:9px;border:none;background:linear-gradient(135deg,#0d9960,#12a17a);color:#fff;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit"><i class="ti ti-check"></i> Done</button>';
+      var sub = document.getElementById('wb-submit'); if (sub) sub.disabled = true;
     }
 
     // v67.21: Returns true if the Well-being Check-in card should be shown
@@ -19227,7 +19437,7 @@
         { key: 'kpi', v: totalKpis,        l: 'KPIs in library',  c: '#a78bfa' },
       ];
       const _active = window.__kpiOvDetail || '';
-      var _kpiPeriodLabel = ''; try { _kpiPeriodLabel = (window.kabiEvalPeriod ? window.kabiEvalPeriod() : '') || ''; } catch (e) {}
+      var _kpiPeriodLabel = ''; try { var _kac = window.KPI_ARCH_CYCLE; if (_kac && typeof PE_QUARTERS !== 'undefined' && PE_QUARTERS[_kac]) { _kpiPeriodLabel = PE_QUARTERS[_kac].label; } else { _kpiPeriodLabel = (window.kabiEvalPeriod ? window.kabiEvalPeriod() : '') || ''; } } catch (e) {}
       const summary = `<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:${_active ? '12px' : '18px'}">
         ${_statCards.map(s => `
           <button class="kpi-ov-stat${_active === s.key ? ' on' : ''}" style="--sc:${s.c};--sc-bg:${s.c}14;--sc-ring:${s.c}33" onclick="kpiOvToggleDetail('${s.key}')" title="Click to ${_active === s.key ? 'hide' : 'view'} details">
@@ -19324,7 +19534,8 @@
         ${(function(){
             if (typeof PE_QUARTERS === 'undefined') return '';
             var keys = Object.keys(PE_QUARTERS); if (!keys.length) return '';
-            var openK = (typeof peGetOpenQ === 'function' && peGetOpenQ()) || keys[0];
+            // v81: highlight the KPI-Architect sub-period (decoupled from the eval cycle).
+            var openK = (window.KPI_ARCH_CYCLE && PE_QUARTERS[window.KPI_ARCH_CYCLE]) ? window.KPI_ARCH_CYCLE : keys[0];
             // v81: annual = one cycle → no sub-choice; just show the active full-year label.
             if (keys.length <= 1) {
               return '<div style="margin-top:11px;font-size:11px;color:var(--text-muted)">Active cycle: <strong style="color:var(--text-primary)">' + ((PE_QUARTERS[keys[0]] && PE_QUARTERS[keys[0]].label) || keys[0]) + '</strong></div>';
@@ -27513,6 +27724,9 @@
           [`FY${year}`]: { open: false, done: false, year, label: `Full Year ${year}` }
         };
       }
+      // v81: keep the KPI-Architect sub-period valid after a rebuild — default to the
+      // first cycle of the new frequency (the Super Admin can re-pick H2/Q2/… after).
+      try { window.KPI_ARCH_CYCLE = Object.keys(PE_QUARTERS)[0]; } catch (e) {}
     }
 
     // ── Shared header banner for every HC-admin tab (Design Guide · one consistent layout) ──
@@ -27810,16 +28024,16 @@
       try { renderKPIFramework(document.getElementById('hc-body')); } catch (e) {}
     }
     window.kpiSetPeriod = kpiSetPeriod;
-    // v81: pick WHICH cycle within the frequency is active — H1/H2 for semi-annual,
-    // Q1..Q4 for quarterly. The year is automatic (peRebuildCycles stamps the current
-    // year), so this only chooses the sub-period. Setting the cycle "open" drives the
-    // KPI Architect's period label + the eval cycle label; it does NOT open the
-    // evaluation submission window (that still needs open/close dates in Cycle Control).
+    // v81: pick WHICH sub-period the KPI Architect frames KPIs for — H1/H2 for
+    // semi-annual, Q1..Q4 for quarterly. The year is automatic (current year).
+    // DECOUPLED from the evaluation cycle: this is a KPI-Architect-only selection
+    // (window.KPI_ARCH_CYCLE) and does NOT change the eval cycle's open state or
+    // its label — the two are independent per the Super Admin's request.
     function kpiSetCyclePeriod(key) {
       if (typeof PE_QUARTERS === 'undefined' || !PE_QUARTERS[key]) return;
-      Object.keys(PE_QUARTERS).forEach(function (k) { PE_QUARTERS[k].open = (k === key); });
+      window.KPI_ARCH_CYCLE = key;
       try { _updateTopbarPeriod(); } catch (e) {}
-      toast('<i class="ti ti-circle-check ti-green"></i> Active period set to ' + (PE_QUARTERS[key].label || key) + ' — the KPI Architect and eval cycle now use it.', 'ok');
+      toast('<i class="ti ti-circle-check ti-green"></i> KPI Architect period set to ' + (PE_QUARTERS[key].label || key) + '.', 'ok');
       try { renderKPIFramework(document.getElementById('hc-body')); } catch (e) {}
     }
     window.kpiSetCyclePeriod = kpiSetCyclePeriod;
