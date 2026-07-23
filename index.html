@@ -10156,7 +10156,7 @@
                     return '<button class="ai-mood-btn wb-mood-btn' + (sel ? ' sel' : '') + '"' + (lock ? ' disabled' : '') + ' onclick="empAIRespondMood(\'' + m.label + '\',event)" title="' + m.label + '"' + (st ? ' style="' + st + '"' : '') + '><span class="m-ic" style="color:' + m.color + '"><i class="ti ' + m.ic + '"></i></span><span class="m-lb">' + m.label + '</span></button>';
                   }).join('')}
                 </div>
-                <div id="ai-mood-response" style="display:${_todayMood ? 'block' : 'none'};margin-top:10px;padding:10px 12px;border-radius:10px;border:1px solid rgba(18,161,122,.28);background:rgba(18,161,122,.1);font-size:10.5px;color:var(--text-primary);line-height:1.5">${_todayMood ? '<i class="ti ti-check ti-green"></i> Checked in for today — you can check in again tomorrow.' : ''}</div>
+                <div id="ai-mood-response" style="display:${_todayMood ? 'block' : 'none'};margin-top:10px;padding:10px 12px;border-radius:10px;border:1px solid rgba(18,161,122,.28);background:rgba(18,161,122,.1);font-size:10.5px;color:var(--text-primary);line-height:1.5">${_todayMood ? ('<i class="ti ti-circle-check ti-green"></i> Thanks for checking in today, ' + ((me && me.name || '').split(' ')[0] || 'there') + '. You can check in again tomorrow.' + (function () { try { var sf = window.kabiWellbeingSelfFeedback && window.kabiWellbeingSelfFeedback(me.email); return sf ? ('<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(18,161,122,.2);color:var(--text-muted)"><i class="ti ti-sparkles ti-cyan"></i> ' + sf.text + '<div style="font-size:8.5px;margin-top:3px;opacity:.85">A support insight from your recent check-ins — not a performance assessment.</div></div>') : ''; } catch (e) { return ''; } })()) : ''}</div>
               </div>
             </div>`;
         }
@@ -16001,7 +16001,7 @@
       var last = arr[arr.length - 1];
       return (new Date(last.ts).toDateString() === new Date().toDateString()) ? last.mood : null;
     }
-    // AI-readable: per-user feeling summary (last 14 check-ins) — used by insights/nudge.
+    // Self-only: the employee's own recent feeling summary (their private data).
     window.kabiWellbeingSignal = function (email) {
       if (!email) return null;
       var arr = (_wbGetLog()[email.toLowerCase()] || []).slice(-14);
@@ -16015,20 +16015,64 @@
         trend: avg >= 4 ? 'positive' : avg >= 3 ? 'steady' : 'watch'
       };
     };
-    // v81 PRIVACY: a manager sees an employee's wellbeing signal ONLY when that employee
-    // has explicitly consented to share a support signal (share_general_support_signal_with_manager
-    // or request_manager_check_in). Without consent, nothing about their mood is returned —
-    // wellbeing is a support feature, never a monitoring tool, and never a rating input.
+
+    // v81.3: AI behavioral reading across MANY check-ins (never one day). Returns a
+    // GENERAL, INDIRECT pattern — trend + direction only, never a raw feeling or score.
+    // Governance threshold: >=3 readings across >=7 days, so nobody is labelled from a
+    // single check-in. This is the basis for all general feedback and indirect insight.
+    window.kabiWellbeingInsight = function (email) {
+      if (!email) return { status: 'INSUFFICIENT_DATA', readings: 0 };
+      var arr = _wbGetLog()[(email || '').toLowerCase()] || [];
+      if (arr.length < 3) return { status: 'INSUFFICIENT_DATA', readings: arr.length };
+      var spanDays = (arr[arr.length - 1].ts - arr[0].ts) / 86400000;
+      if (spanDays < 7) return { status: 'INSUFFICIENT_DATA', readings: arr.length };
+      var recent = arr.slice(-10);
+      var avg = recent.reduce(function (a, b) { return a + (b.score || 3); }, 0) / recent.length;
+      var half = Math.max(1, Math.floor(recent.length / 2));
+      var eAvg = recent.slice(0, half).reduce(function (a, b) { return a + (b.score || 3); }, 0) / half;
+      var lAvg = recent.slice(-half).reduce(function (a, b) { return a + (b.score || 3); }, 0) / half;
+      var direction = (lAvg - eAvg) > 0.4 ? 'improving' : (eAvg - lAvg) > 0.4 ? 'dipping' : 'stable';
+      var trend = avg >= 4 ? 'positive' : avg >= 3 ? 'steady' : 'watch';
+      return { status: 'PATTERN', readings: arr.length, spanDays: Math.round(spanDays), trend: trend, direction: direction };
+    };
+
+    // v81.3: employee-facing GENERAL feedback after many readings — a support insight,
+    // never a performance assessment. Relates the pattern to how work is going only in a
+    // general, indirect, non-scoring way (never "your mood lowered your score").
+    window.kabiWellbeingSelfFeedback = function (email) {
+      var ins = window.kabiWellbeingInsight(email);
+      if (!ins || ins.status !== 'PATTERN') return null;
+      // indirect, general performance context (never exposes/implies a score effect)
+      var perfCtx = '';
+      try {
+        var emp = (typeof _empByEmail === 'function') ? _empByEmail(email) : null;
+        var sc = (emp && typeof peGetFinalScore === 'function') ? peGetFinalScore(emp.id) : null;
+        if (sc != null) perfCtx = (sc >= 70) ? ' Your work has also been tracking well over this time — a good balance to protect.' : '';
+      } catch (e) {}
+      var text;
+      if (ins.trend === 'positive') text = 'Over your recent check-ins your days have felt mostly good' + (ins.direction === 'improving' ? ', and trending up' : '') + '.' + perfCtx;
+      else if (ins.trend === 'steady') text = 'Your recent check-ins have been fairly steady. Okay stretches are normal — I\'ll keep your day focused and low-friction.';
+      else text = 'Your recent check-ins have felt a bit heavier' + (ins.direction === 'dipping' ? ' lately' : '') + '. If workload or priorities are a factor, I can help you reorganize or prepare a support request — entirely your choice, and this stays private.';
+      return { status: 'PATTERN', trend: ins.trend, direction: ins.direction, readings: ins.readings, text: text, supportOnly: true };
+    };
+
+    // v81.3: NO direct wellbeing → line-manager check-in. A manager NEVER sees an
+    // individual's feelings, scores or names. This returns only a GENERAL, INDIRECT,
+    // AGGREGATED team reading built from many check-ins (min 3 people with a pattern, so
+    // no individual can be inferred). Support context only — never a performance measure.
     window.kabiWellbeingTeamSignal = function (managerEmail) {
       var team = (typeof peGetAllReports === 'function') ? peGetAllReports(managerEmail) : [];
-      var out = [];
+      var withData = 0, sum = 0;
       team.forEach(function (e) {
-        var c = _wbLatestConsent(e.email);
-        if (!c || !(c.share_general_support_signal_with_manager || c.request_manager_check_in)) return;  // no consent → not shared
-        var s = window.kabiWellbeingSignal(e.email);
-        if (s) out.push({ name: e.name, trend: s.trend, category: (c.category || 'general support'), consented: true });
+        var ins = window.kabiWellbeingInsight(e.email);
+        if (!ins || ins.status !== 'PATTERN') return;
+        withData++;
+        sum += (ins.trend === 'positive' ? 5 : ins.trend === 'steady' ? 3 : 1);
       });
-      return out;
+      if (withData < 3) return { status: 'INSUFFICIENT_DATA', note: 'Not enough check-ins for a privacy-safe team reading. Individual feelings are never shown.' };
+      var m = sum / withData;
+      var overall = m >= 4 ? 'positive' : m >= 2.4 ? 'steady' : 'watch';
+      return { status: 'AGGREGATE', teamWithData: withData, overallTrend: overall, note: 'General, indirect team reading from many check-ins — no individual feelings, scores or names. Support context only, never a performance measure.' };
     };
 
     // ═══ v81: Wellbeing Check-in & Employee Support Agent ═══════════════════════
@@ -16094,12 +16138,14 @@
         b.disabled = true; b.style.pointerEvents = 'none'; b.style.cursor = 'default';
         if (b !== selBtn) { b.classList.remove('sel'); b.style.opacity = '.4'; }
       });
+      // v81.2: a simple, warm acknowledgment is enough — no AI paragraph.
       var resp = document.getElementById('ai-mood-response');
-      if (resp) { resp.style.display = 'block'; resp.style.borderColor = 'rgba(0,194,224,.25)'; resp.style.background = 'linear-gradient(135deg,rgba(0,194,224,.08),rgba(37,87,232,.04))'; resp.innerHTML = '<span style="font-size:11px;color:var(--text-muted)"><i class="ti ti-sparkles ti-cyan"></i> Thinking with you…</span>'; }
-      var txt = await wbGenerateResponse(f, '', []);
       if (resp) {
         var esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return String(s || ''); };
-        resp.innerHTML = '<div style="display:flex;gap:9px;align-items:flex-start"><span style="width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 3px 9px rgba(0,194,224,.3);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-heart" style="color:#00c2e0;font-size:12px"></i></span><div style="flex:1"><div style="font-size:11.5px;line-height:1.55;color:var(--text-primary)">' + esc(txt) + '</div><div style="font-size:9.5px;color:var(--text-muted);margin-top:6px"><i class="ti ti-lock" style="color:#12a17a"></i> Private · not used in your evaluation. Nothing shared with your manager.</div></div></div>';
+        resp.style.display = 'block';
+        resp.style.borderColor = 'rgba(18,161,122,.28)';
+        resp.style.background = 'rgba(18,161,122,.1)';
+        resp.innerHTML = '<span style="font-size:11.5px;color:var(--text-primary)"><i class="ti ti-circle-check ti-green" style="color:#12a17a"></i> Thanks for checking in today, ' + esc(_wbFirstName()) + '. You can check in again tomorrow.</span>';
       }
     }
     function empAIOpenChat() { try { toast('Pick how your day is going above — I\'ll respond right here, privately.', 'ok'); } catch (e) {} }
@@ -22678,16 +22724,11 @@
             actions: [{ label: '<i class=\"ti ti-calendar\"></i> Schedule 1:1', type: 'schedule', priority: 'primary' }, { label: '<i class=\"ti ti-message-circle\"></i> Send Welcome Note', type: 'message', priority: 'secondary' }] });
         }
 
-        // ═══ v75: Well-being signal — from THIS report's own mood check-ins ═══
-        // Links the well-being/feeling check-ins to team insights (indirectly):
-        // if their recent pulse trends low, surface a private, supportive nudge.
-        try {
-          var _wb = (typeof window.kabiWellbeingSignal === 'function') ? window.kabiWellbeingSignal(r.email) : null;
-          if (_wb && _wb.trend === 'watch' && !insights.find(i => i.targetEmail === r.email && i.type === 'wellbeing')) {
-            insights.push({ text: `${firstName}'s recent well-being check-ins are trending low (avg ${_wb.avgScore}/5, latest "${_wb.latest}"). A supportive, private 1:1 may help — no numbers shared, just reach out.`, trend: 'Well-being — check in', target: r.name, targetEmail: r.email, icon: '<i class="ti ti-heart"></i>', color: '#a78bfa', type: 'wellbeing',
-              actions: [{ label: '<i class=\"ti ti-calendar\"></i> Schedule 1:1', type: 'schedule', priority: 'primary' }, { label: '<i class=\"ti ti-message-circle\"></i> Send Note', type: 'message', priority: 'secondary' }] });
-          }
-        } catch(e) {}
+        // ═══ v81.3: NO per-employee well-being exposure to the manager ═══
+        // A direct wellbeing check-in to the line manager is not acceptable — the
+        // manager never sees an individual's feelings, scores or a "they're low" nudge.
+        // Any wellbeing insight is GENERAL, INDIRECT and AGGREGATED (added once, after
+        // this loop, from kabiWellbeingTeamSignal). Nothing individual is surfaced here.
 
         // ═══ REAL: Long tenure recognition (5+ years) ═══
         if (tenureDays > 1825) {
@@ -22698,6 +22739,18 @@
           }
         }
       });
+
+      // ═══ v81.3: GENERAL, INDIRECT, AGGREGATED team well-being reading ═══
+      // One team-level insight (never per-person) from many check-ins — no individual
+      // feelings, scores or names, and only when >=3 reports have a pattern so nobody
+      // can be inferred. It's a supportive prompt, never a performance signal.
+      try {
+        var _wbAgg = (typeof window.kabiWellbeingTeamSignal === 'function') ? window.kabiWellbeingTeamSignal(mgrEmail) : null;
+        if (_wbAgg && _wbAgg.status === 'AGGREGATE' && _wbAgg.overallTrend === 'watch') {
+          insights.push({ text: 'General team well-being reading (indirect, no individuals): your team\'s recent check-in pattern looks a little heavier than usual. A light-touch team conversation about workload or priorities may help. No individual feelings, scores or names are shared, and this is never a performance signal.', trend: 'Team well-being', target: 'Your team', targetEmail: '', icon: '<i class="ti ti-heart"></i>', color: '#a78bfa', type: 'wellbeing_team',
+            actions: [{ label: '<i class=\"ti ti-users\"></i> Plan a team check-in', type: 'schedule', priority: 'secondary' }] });
+        }
+      } catch (e) {}
 
       // Sort: today events first, then by date proximity
       insights.sort(function(a, b) {
